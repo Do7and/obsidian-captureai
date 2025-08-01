@@ -1,8 +1,221 @@
-/*
+/* Screenshot overlay styles */
+.screenshot-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	background: rgba(0, 0, 0, 0.3);
+	z-index: 1000000;
+	cursor: crosshair;
+	user-select: none;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.screenshot-selection {
+	position: absolute;
+	border: 2px solid #00ff00;
+	background: rgba(0, 255, 0, 0.1);
+	pointer-events: none;
+	box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3);
+}
 
-If your plugin does not need CSS, delete this file.
+/* Image editor modal styles */
+.image-editor-modal .modal {
+	width: 90vw;
+	max-width: 1200px;
+	height: 80vh;
+	max-height: 800px;
+}
 
-*/
+.image-editor-container {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.image-editor-toolbar {
+	display: flex;
+	padding: 10px;
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	gap: 5px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.image-editor-toolbar button {
+	padding: 8px 12px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	cursor: pointer;
+	border-radius: 4px;
+	transition: all 0.2s ease;
+}
+
+.image-editor-toolbar button:hover {
+	background: var(--background-modifier-hover);
+}
+
+.image-editor-toolbar button.active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.image-editor-canvas-container {
+	flex: 1;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	overflow: auto;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	margin: 10px 0;
+	padding: 20px;
+}
+
+.image-editor-canvas-container canvas {
+	max-width: 100%;
+	max-height: 100%;
+	box-shadow: 0 0 10px rgba(0,0,0,0.3);
+	border-radius: 4px;
+}
+
+.image-editor-button-bar {
+	display: flex;
+	justify-content: space-between;
+	padding: 10px;
+	background: var(--background-secondary);
+	border-top: 1px solid var(--background-modifier-border);
+	gap: 10px;
+}
+
+.image-editor-button-bar > div {
+	display: flex;
+	gap: 10px;
+}
+
+.image-editor-button-bar button {
+	padding: 8px 16px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	cursor: pointer;
+	border-radius: 4px;
+	transition: all 0.2s ease;
+	min-width: 80px;
+}
+
+.image-editor-button-bar button:hover {
+	background: var(--background-modifier-hover);
+}
+
+/* Color picker styling */
+.image-editor-toolbar input[type="color"] {
+	width: 40px;
+	height: 36px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	cursor: pointer;
+	background: transparent;
+}
+
+.image-editor-toolbar input[type="range"] {
+	width: 100px;
+	height: 36px;
+}
+
+/* Settings page enhancements */
+.setting-item-description ul {
+	margin: 10px 0;
+	padding-left: 20px;
+}
+
+.setting-item-description ol {
+	margin: 10px 0;
+	padding-left: 20px;
+}
+
+.setting-item-description kbd {
+	background: var(--background-modifier-border);
+	border: 1px solid var(--background-modifier-border-hover);
+	border-radius: 3px;
+	box-shadow: 0 1px 0 var(--background-modifier-border-hover);
+	display: inline-block;
+	font-family: var(--font-monospace);
+	font-size: 0.8em;
+	line-height: 1;
+	padding: 2px 4px;
+	white-space: nowrap;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+	.image-editor-modal .modal {
+		width: 95vw;
+		height: 90vh;
+	}
+	
+	.image-editor-toolbar {
+		flex-wrap: wrap;
+		padding: 8px;
+		gap: 4px;
+	}
+	
+	.image-editor-toolbar button {
+		padding: 6px 10px;
+		font-size: 12px;
+	}
+	
+	.image-editor-button-bar {
+		flex-direction: column;
+		gap: 8px;
+	}
+	
+	.image-editor-button-bar > div {
+		justify-content: center;
+	}
+}
+
+/* Dark mode adjustments */
+.theme-dark .screenshot-overlay {
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.theme-dark .screenshot-selection {
+	box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+}
+
+/* Loading states */
+.image-editor-loading {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	height: 200px;
+	color: var(--text-muted);
+}
+
+.image-editor-loading::after {
+	content: "Loading...";
+	animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+	0% { opacity: 1; }
+	50% { opacity: 0.5; }
+	100% { opacity: 1; }
+}
+
+/* Tooltip styles */
+.image-editor-tooltip {
+	position: absolute;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	padding: 4px 8px;
+	border-radius: 4px;
+	font-size: 12px;
+	pointer-events: none;
+	z-index: 1000001;
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}

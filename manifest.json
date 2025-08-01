@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "obsidian-screenshot-capture",
+	"name": "Screenshot Capture",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+	"description": "Capture screenshots with region selection and built-in editing tools. Perfect for creating annotated images and snippets.",
+	"author": "Screenshot Plugin Developer",
+	"authorUrl": "https://github.com/obsidian-screenshot-capture",
+	"fundingUrl": "https://github.com/obsidian-screenshot-capture",
+	"isDesktopOnly": true
 }

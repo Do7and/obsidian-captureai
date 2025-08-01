@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.obsidian.md)",
+      "WebFetch(domain:github.com)",
+      "Bash(mkdir:*)",
+      "Bash(find:*)"
+    ],
+    "deny": []
+  }
+}
