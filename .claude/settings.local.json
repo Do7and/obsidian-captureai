@@ -5,7 +5,9 @@
       "WebFetch(domain:docs.obsidian.md)",
       "WebFetch(domain:github.com)",
       "Bash(mkdir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm run build:*)",
+      "WebFetch(domain:openrouter.ai)"
     ],
     "deny": []
   }

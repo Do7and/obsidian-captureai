@@ -3,21 +3,38 @@ import { ScreenshotManager } from './managers/screenshot-manager';
 import { ImageEditor } from './editors/image-editor';
 import { ImageCaptureSettingTab } from './settings/settings-tab';
 import { ImageCaptureSettings, DEFAULT_SETTINGS } from './types';
+import { AIManager } from './ai/ai-manager';
+import { AIChatView, AI_CHAT_VIEW_TYPE } from './ai/ai-chat-view';
 
 export default class ImageCapturePlugin extends Plugin {
 	settings: ImageCaptureSettings;
 	screenshotManager: ScreenshotManager;
 	imageEditor: ImageEditor;
+	aiManager: AIManager;
 
 	async onload() {
 		await this.loadSettings();
 
 		this.screenshotManager = new ScreenshotManager(this);
 		this.imageEditor = new ImageEditor(this);
+		this.aiManager = new AIManager(this);
+
+		// Register AI chat view
+		this.registerView(
+			AI_CHAT_VIEW_TYPE,
+			(leaf) => new AIChatView(leaf, this)
+		);
 
 		this.addRibbonIcon('camera', 'Screenshot Capture', (evt: MouseEvent) => {
 			this.screenshotManager.startRegionCapture();
 		});
+
+		// Add AI Chat ribbon icon (only if AI is enabled)
+		if (this.settings.enableAIAnalysis) {
+			this.addRibbonIcon('bot', 'AI Chat Panel', (evt: MouseEvent) => {
+				this.showAIChatPanel();
+			});
+		}
 
 		this.addCommand({
 			id: 'capture-selected-area',
@@ -29,6 +46,18 @@ export default class ImageCapturePlugin extends Plugin {
 			id: 'capture-full-screen',
 			name: 'Capture full screen',
 			callback: () => this.screenshotManager.captureFullScreen()
+		});
+
+		this.addCommand({
+			id: 'show-ai-chat',
+			name: 'Show AI Chat Panel',
+			callback: () => this.showAIChatPanel()
+		});
+
+		this.addCommand({
+			id: 'toggle-ai-chat',
+			name: 'Toggle AI Chat Panel',
+			callback: () => this.toggleAIChatPanel()
 		});
 
 		this.addCommand({
@@ -49,6 +78,9 @@ export default class ImageCapturePlugin extends Plugin {
 		if (this.imageEditor) {
 			this.imageEditor.cleanup();
 		}
+		if (this.aiManager) {
+			this.aiManager.cleanup();
+		}
 	}
 
 	async loadSettings() {
@@ -57,6 +89,61 @@ export default class ImageCapturePlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	async sendImageToAI(imageDataUrl: string, textContent: string, fileName: string): Promise<void> {
+		if (!this.aiManager) {
+			throw new Error('AI Manager not initialized');
+		}
+		
+		return await this.aiManager.sendImageToAI(imageDataUrl, textContent, fileName);
+	}
+
+	async showAIChatPanel(): Promise<void> {
+		try {
+			// Remove any existing instances to prevent duplicates
+			this.app.workspace.detachLeavesOfType(AI_CHAT_VIEW_TYPE);
+			
+			// Create new leaf in right sidebar and set view state
+			const leaf = this.app.workspace.getRightLeaf(false);
+			await leaf.setViewState({
+				type: AI_CHAT_VIEW_TYPE,
+				active: true,
+			});
+			
+			// Reveal the leaf
+			this.app.workspace.revealLeaf(leaf);
+		} catch (error) {
+			console.error('Failed to show AI chat panel:', error);
+			throw new Error(`Failed to create AI chat panel: ${error.message}`);
+		}
+	}
+
+	async toggleAIChatPanel(): Promise<void> {
+		try {
+			// Check if AI panel already exists and is visible
+			const aiLeaf = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
+			
+			if (aiLeaf) {
+				// If panel exists, check if it's active
+				const rightLeaves = this.app.workspace.rightSplit?.children || [];
+				const isVisible = rightLeaves.some(leaf => leaf === aiLeaf && leaf === this.app.workspace.activeLeaf);
+				
+				if (isVisible) {
+					// If visible and active, close it
+					aiLeaf.detach();
+				} else {
+					// If exists but not active, reveal it
+					this.app.workspace.revealLeaf(aiLeaf);
+				}
+			} else {
+				// If doesn't exist, create and show it
+				await this.showAIChatPanel();
+			}
+		} catch (error) {
+			console.error('Failed to toggle AI chat panel:', error);
+			new Notice(`❌ Failed to toggle AI chat panel: ${error.message}`);
+		}
 	}
 
 	async testAdvancedCapture() {

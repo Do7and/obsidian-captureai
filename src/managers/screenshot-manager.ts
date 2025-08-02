@@ -42,12 +42,12 @@ export class ScreenshotManager {
 			}
 			
 			console.log('✅ Screen captured successfully');
-			console.log('🔍 Cropping image to selected region...');
-			const croppedImage = await this.cropImage(screenshot, region);
+			console.log('🔍 Creating extended crop with surrounding area...');
+			const extendedImage = await this.createExtendedCrop(screenshot, region);
 			
-			console.log('✅ Image cropped successfully');
+			console.log('✅ Extended image created successfully');
 			console.log('🔍 Opening image editor...');
-			this.plugin.imageEditor.showEditor(croppedImage, region);
+			this.plugin.imageEditor.showEditor(extendedImage.imageData, region, extendedImage.extendedRegion, screenshot);
 			
 		} catch (error: any) {
 			console.error('❌ Region capture failed:', error);
@@ -477,6 +477,92 @@ export class ScreenshotManager {
 			}
 			return null;
 		}
+	}
+
+	private async createExtendedCrop(imageData: string, region: Region): Promise<{imageData: string, extendedRegion: Region}> {
+		return new Promise((resolve) => {
+			const img = new Image();
+			img.onload = () => {
+				console.log('🔍 Creating extended crop...');
+				console.log('🔍 Original region:', region);
+				
+				// Calculate extended region (1.2x the area around the original crop)
+				const extensionFactor = 0.2; // 20% extension on each side (total 1.4x)
+				const extensionX = Math.floor(region.width * extensionFactor);
+				const extensionY = Math.floor(region.height * extensionFactor);
+				
+				const extendedRegion = {
+					x: Math.max(0, region.x - extensionX),
+					y: Math.max(0, region.y - extensionY),
+					width: Math.min(img.width - Math.max(0, region.x - extensionX), region.width + extensionX * 2),
+					height: Math.min(img.height - Math.max(0, region.y - extensionY), region.height + extensionY * 2)
+				};
+				
+				// Adjust if extended region would go beyond screen bounds
+				if (region.x - extensionX < 0) {
+					extendedRegion.width = region.width + extensionX + region.x;
+				}
+				if (region.y - extensionY < 0) {
+					extendedRegion.height = region.height + extensionY + region.y;
+				}
+				if (region.x + region.width + extensionX > img.width) {
+					extendedRegion.width = img.width - extendedRegion.x;
+				}
+				if (region.y + region.height + extensionY > img.height) {
+					extendedRegion.height = img.height - extendedRegion.y;
+				}
+				
+				console.log('🔍 Extended region:', extendedRegion);
+				
+				const canvas = document.createElement('canvas');
+				const ctx = canvas.getContext('2d')!;
+				
+				canvas.width = extendedRegion.width;
+				canvas.height = extendedRegion.height;
+				
+				// Convert region coordinates from browser to screen space
+				const windowX = window.screenX || window.screenLeft || 0;
+				const windowY = window.screenY || window.screenTop || 0;
+				
+				const isFullscreen = window.outerWidth >= screen.width * 0.95 && 
+								   window.outerHeight >= screen.height * 0.95;
+				const isMaximized = window.outerWidth === screen.width && 
+								  (window.outerHeight === screen.height || window.outerHeight === screen.height - 48);
+				
+				let screenX, screenY;
+				
+				if (isFullscreen || isMaximized) {
+					const hasVisibleUI = window.innerHeight < window.outerHeight - 10;
+					if (hasVisibleUI) {
+						const titleBarHeight = window.outerHeight - window.innerHeight;
+						screenX = extendedRegion.x;
+						screenY = extendedRegion.y + titleBarHeight;
+					} else {
+						screenX = extendedRegion.x;
+						screenY = extendedRegion.y;
+					}
+				} else {
+					screenX = windowX + extendedRegion.x;
+					screenY = windowY + extendedRegion.y + (window.outerHeight - window.innerHeight);
+				}
+				
+				console.log('🔍 Final screen coordinates for extended crop:', { x: screenX, y: screenY });
+				console.log('🔍 Extended crop dimensions:', { width: extendedRegion.width, height: extendedRegion.height });
+				
+				// Draw the extended crop
+				ctx.drawImage(
+					img,
+					screenX, screenY, extendedRegion.width, extendedRegion.height,
+					0, 0, extendedRegion.width, extendedRegion.height
+				);
+				
+				resolve({
+					imageData: canvas.toDataURL('image/png'),
+					extendedRegion: extendedRegion
+				});
+			};
+			img.src = imageData;
+		});
 	}
 
 	private async cropImage(imageData: string, region: Region): Promise<string> {
