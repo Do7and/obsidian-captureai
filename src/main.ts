@@ -71,7 +71,20 @@ export default class ImageCapturePlugin extends Plugin {
 		this.addSettingTab(new ImageCaptureSettingTab(this.app, this));
 	}
 
-	onunload() {
+	async onunload() {
+		// Perform final auto-save for any active AI chat sessions
+		try {
+			const aiChatLeaves = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE);
+			for (const leaf of aiChatLeaves) {
+				const view = leaf.view as AIChatView;
+				if (view && typeof view.onClose === 'function') {
+					await view.onClose();
+				}
+			}
+		} catch (error) {
+			console.error('Failed to perform final auto-save during plugin unload:', error);
+		}
+		
 		if (this.screenshotManager) {
 			this.screenshotManager.cleanup();
 		}
@@ -99,6 +112,44 @@ export default class ImageCapturePlugin extends Plugin {
 		return await this.aiManager.sendImageToAI(imageDataUrl, textContent, fileName);
 	}
 
+	async sendImagesToAI(images: { dataUrl: string, fileName: string, localPath?: string | null }[], textContent: string): Promise<void> {
+		if (!this.aiManager) {
+			throw new Error('AI Manager not initialized');
+		}
+		
+		return await this.aiManager.sendImagesToAI(images, textContent);
+	}
+
+	async addImageToAIQueue(imageDataUrl: string, fileName: string, localPath?: string | null): Promise<void> {
+		if (!this.aiManager) {
+			throw new Error('AI Manager not initialized');
+		}
+		
+		// Find the AI chat view and add image to its queue
+		const aiLeaf = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
+		
+		if (aiLeaf && (aiLeaf.view as any).addImageToQueue) {
+			(aiLeaf.view as any).addImageToQueue(imageDataUrl, fileName, localPath);
+		} else {
+			throw new Error('AI Chat panel not found or does not support image queue');
+		}
+	}
+
+	async ensureAIChatPanelVisible(): Promise<void> {
+		// Check if AI panel already exists
+		const aiLeaf = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
+		
+		if (aiLeaf) {
+			// Panel exists, just reveal it without recreating
+			this.app.workspace.revealLeaf(aiLeaf);
+			console.log('AI panel already exists, just revealing it');
+		} else {
+			// Panel doesn't exist, create it
+			console.log('Creating new AI panel');
+			await this.showAIChatPanel();
+		}
+	}
+
 	async showAIChatPanel(): Promise<void> {
 		try {
 			// Remove any existing instances to prevent duplicates
@@ -106,13 +157,15 @@ export default class ImageCapturePlugin extends Plugin {
 			
 			// Create new leaf in right sidebar and set view state
 			const leaf = this.app.workspace.getRightLeaf(false);
-			await leaf.setViewState({
-				type: AI_CHAT_VIEW_TYPE,
-				active: true,
-			});
-			
-			// Reveal the leaf
-			this.app.workspace.revealLeaf(leaf);
+			if (leaf) {
+				await leaf.setViewState({
+					type: AI_CHAT_VIEW_TYPE,
+					active: true,
+				});
+				
+				// Reveal the leaf
+				this.app.workspace.revealLeaf(leaf);
+			}
 		} catch (error) {
 			console.error('Failed to show AI chat panel:', error);
 			throw new Error(`Failed to create AI chat panel: ${error.message}`);
@@ -126,8 +179,8 @@ export default class ImageCapturePlugin extends Plugin {
 			
 			if (aiLeaf) {
 				// If panel exists, check if it's active
-				const rightLeaves = this.app.workspace.rightSplit?.children || [];
-				const isVisible = rightLeaves.some(leaf => leaf === aiLeaf && leaf === this.app.workspace.activeLeaf);
+				const rightLeaves = (this.app.workspace.rightSplit as any)?.children || [];
+				const isVisible = rightLeaves.some((leaf: any) => leaf === aiLeaf && leaf === this.app.workspace.activeLeaf);
 				
 				if (isVisible) {
 					// If visible and active, close it

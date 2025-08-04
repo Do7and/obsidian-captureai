@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, LLMProvider, LLMModel } from '../types';
 import { SetKeysModal } from '../ui/set-keys-modal';
@@ -18,15 +18,27 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h2', { text: 'Image Capture Settings' });
 
-		// Basic Settings
+		// Screenshot功能设置分类
+		containerEl.createEl('h3', { text: 'Screenshot Function' });
+
 		new Setting(containerEl)
 			.setName('Default save location')
 			.setDesc('Directory where captured images will be saved. Leave empty to use vault root.')
 			.addText(text => text
-				.setPlaceholder('Enter folder path (e.g., attachments/screenshots)')
+				.setPlaceholder('Enter folder path (e.g., screenshots-capture/savedscreenshots)')
 				.setValue(this.plugin.settings.defaultSaveLocation)
 				.onChange(async (value) => {
 					this.plugin.settings.defaultSaveLocation = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Use relative paths')
+			.setDesc('Use relative paths for images in markdown files. When disabled, uses absolute paths.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.useRelativePath)
+				.onChange(async (value) => {
+					this.plugin.settings.useRelativePath = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -42,18 +54,8 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		new Setting(containerEl)
-			.setName('Enable region selection')
-			.setDesc('Allow selecting specific regions of the screen to capture')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableRegionSelect)
-				.onChange(async (value) => {
-					this.plugin.settings.enableRegionSelect = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// AI Analysis Section
-		containerEl.createEl('h3', { text: 'AI Analysis' });
+		// AI Chat功能设置分类
+		containerEl.createEl('h3', { text: 'AI Chat Function' });
 
 		const aiAnalysisSetting = new Setting(containerEl)
 			.setName('Enable AI analysis')
@@ -68,6 +70,9 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 
 		// AI Configuration Section
 		if (this.plugin.settings.enableAIAnalysis) {
+			// 第一块：AI API配置相关设置
+			containerEl.createEl('h4', { text: 'AI API Configuration' });
+			
 			// Quick access to AI Chat
 			new Setting(containerEl)
 				.setName('AI Chat Panel')
@@ -135,60 +140,6 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					warningEl.style.color = 'var(--text-warning)';
 					warningEl.style.fontWeight = 'bold';
 				}
-
-				// Prompt Settings Section
-				containerEl.createEl('h3', { text: 'AI Prompt Settings' });
-				
-				// Create a container for prompts to ensure consistent styling
-				const promptsContainer = containerEl.createEl('div', { cls: 'prompts-settings-container' });
-				
-				// Global System Prompt
-				new Setting(promptsContainer)
-					.setName('Global System Prompt')
-					.setDesc('This system prompt will be used for all AI conversations. It defines the AI\'s personality and behavior.')
-					.addTextArea(text => text
-						.setPlaceholder('You are a helpful AI assistant...')
-						.setValue(this.plugin.settings.globalSystemPrompt || '')
-						.onChange(async (value) => {
-							this.plugin.settings.globalSystemPrompt = value;
-							await this.plugin.saveSettings();
-						}))
-					.then(setting => {
-						// Adjust textarea size and styling
-						const textArea = setting.controlEl.querySelector('textarea') as HTMLTextAreaElement;
-						if (textArea) {
-							textArea.rows = 4;
-							textArea.style.width = '100%';
-							textArea.style.minHeight = '100px';
-							textArea.style.resize = 'vertical';
-							textArea.style.fontFamily = 'var(--font-monospace)';
-							textArea.style.fontSize = '13px';
-						}
-					});
-
-				// Screenshot Prompt
-				new Setting(promptsContainer)
-					.setName('Screenshot Analysis Prompt')
-					.setDesc('This prompt will be automatically added when analyzing screenshots. It guides the AI on how to analyze images.')
-					.addTextArea(text => text
-						.setPlaceholder('Please analyze this screenshot and provide detailed insights...')
-						.setValue(this.plugin.settings.screenshotPrompt || '')
-						.onChange(async (value) => {
-							this.plugin.settings.screenshotPrompt = value;
-							await this.plugin.saveSettings();
-						}))
-					.then(setting => {
-						// Adjust textarea size and styling to match global prompt
-						const textArea = setting.controlEl.querySelector('textarea') as HTMLTextAreaElement;
-						if (textArea) {
-							textArea.rows = 4;
-							textArea.style.width = '100%';
-							textArea.style.minHeight = '100px';
-							textArea.style.resize = 'vertical';
-							textArea.style.fontFamily = 'var(--font-monospace)';
-							textArea.style.fontSize = '13px';
-						}
-					});
 			} else {
 				// Guide to add models
 				const guideEl = apiKeysContainer.createEl('div', { 
@@ -199,6 +150,147 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				guideEl.style.fontStyle = 'italic';
 				guideEl.style.marginTop = '10px';
 			}
+
+			// 第二块：图片上传和保存功能
+			containerEl.createEl('h4', { text: 'Image Upload and Save' });
+			
+			new Setting(containerEl)
+				.setName('Other source images save location')
+				.setDesc('Directory where images from external sources (drag from outside vault, browse files) will be saved.')
+				.addText(text => text
+					.setPlaceholder('Enter folder path (e.g., screenshots-capture/othersourceimage)')
+					.setValue(this.plugin.settings.otherSourceImageLocation)
+					.onChange(async (value) => {
+						this.plugin.settings.otherSourceImageLocation = value;
+						await this.plugin.saveSettings();
+					}));
+
+			// 第三块：会话记录相关设置
+			containerEl.createEl('h4', { text: 'Conversation Records' });
+			
+			new Setting(containerEl)
+				.setName('Auto-save conversations')
+				.setDesc('Automatically save conversations after each message exchange.')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.autoSaveConversations)
+					.onChange(async (value) => {
+						this.plugin.settings.autoSaveConversations = value;
+						await this.plugin.saveSettings();
+						this.display(); // Refresh to show/hide auto-save options
+					}));
+
+			if (this.plugin.settings.autoSaveConversations) {
+				new Setting(containerEl)
+					.setName('Auto-saved conversation location')
+					.setDesc('Directory where automatically saved conversations will be stored.')
+					.addText(text => text
+						.setPlaceholder('Enter folder path (e.g., screenshots-capture/autosavedconversations)')
+						.setValue(this.plugin.settings.autoSavedConversationLocation)
+						.onChange(async (value) => {
+							this.plugin.settings.autoSavedConversationLocation = value;
+							await this.plugin.saveSettings();
+						}));
+
+				// 新增自动保存间隔设置
+				new Setting(containerEl)
+					.setName('Auto-save interval')
+					.setDesc('How often conversations are automatically saved.')
+					.addDropdown(dropdown => {
+						dropdown.addOption('20', '20 seconds');
+						dropdown.addOption('30', '30 seconds (default)');
+						dropdown.addOption('60', '1 minute');
+						dropdown.addOption('120', '2 minutes');
+						dropdown.addOption('300', '5 minutes');
+						dropdown.addOption('600', '10 minutes');
+						dropdown.addOption('3600', '1 hour');
+						
+						// 默认值为30秒
+						const currentValue = this.plugin.settings.autoSaveInterval?.toString() || '30';
+						dropdown.setValue(currentValue)
+							.onChange(async (value) => {
+								this.plugin.settings.autoSaveInterval = parseInt(value);
+								await this.plugin.saveSettings();
+							});
+					});
+
+				new Setting(containerEl)
+					.setName('Max auto-saved conversations')
+					.setDesc('Maximum number of conversations to keep in auto-save history. Older conversations will be automatically deleted.')
+					.addDropdown(dropdown => {
+						// 预设选项: 1, 2, 3, 4, 5 (默认), 6, 7, 8, 9, 10, 15, 20, 1000
+						const options = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 1000];
+						options.forEach(option => {
+							dropdown.addOption(option.toString(), option.toString());
+						});
+						
+						// 设置默认值为5
+						const currentValue = this.plugin.settings.maxAutoSavedConversations?.toString() || '5';
+						dropdown.setValue(currentValue)
+							.onChange(async (value) => {
+								this.plugin.settings.maxAutoSavedConversations = parseInt(value);
+								await this.plugin.saveSettings();
+							});
+					});
+
+				// 设置默认值为5
+				if (this.plugin.settings.maxAutoSavedConversations === undefined) {
+					this.plugin.settings.maxAutoSavedConversations = 5;
+				}
+			}
+
+			// 第四块：AI prompt设置
+			containerEl.createEl('h4', { text: 'AI Prompt Settings' });
+			
+			// Create a container for prompts to ensure consistent styling
+			const promptsContainer = containerEl.createEl('div', { cls: 'prompts-settings-container' });
+			
+			// Global System Prompt
+			new Setting(promptsContainer)
+				.setName('Global System Prompt')
+				.setDesc('This system prompt will be used for all AI conversations. It defines the AI\'s personality and behavior.')
+				.addTextArea(text => text
+					.setPlaceholder('You are a helpful AI assistant...')
+					.setValue(this.plugin.settings.globalSystemPrompt || '')
+					.onChange(async (value) => {
+						this.plugin.settings.globalSystemPrompt = value;
+						await this.plugin.saveSettings();
+					}))
+				.then(setting => {
+					// Adjust textarea size and styling
+					const textArea = setting.controlEl.querySelector('textarea') as HTMLTextAreaElement;
+					if (textArea) {
+						textArea.rows = 4;
+						textArea.style.width = '100%';
+						textArea.style.minHeight = '100px';
+						textArea.style.resize = 'vertical';
+						textArea.style.fontFamily = 'var(--font-monospace)';
+						textArea.style.fontSize = '13px';
+					}
+				});
+
+			// Screenshot Prompt
+			new Setting(promptsContainer)
+				.setName('Screenshot Analysis Prompt')
+				.setDesc('This prompt will be automatically added when analyzing screenshots. It guides the AI on how to analyze images.')
+				.addTextArea(text => text
+					.setPlaceholder('Please analyze this screenshot and provide detailed insights...')
+					.setValue(this.plugin.settings.screenshotPrompt || '')
+					.onChange(async (value) => {
+						this.plugin.settings.screenshotPrompt = value;
+						await this.plugin.saveSettings();
+					}))
+				.then(setting => {
+					// Adjust textarea size and styling to match global prompt
+					const textArea = setting.controlEl.querySelector('textarea') as HTMLTextAreaElement;
+					if (textArea) {
+						textArea.rows = 4;
+						textArea.style.width = '100%';
+						textArea.style.minHeight = '100px';
+						textArea.style.resize = 'vertical';
+						textArea.style.fontFamily = 'var(--font-monospace)';
+						textArea.style.fontSize = '13px';
+					}
+				});
 		}
 
 		// Shortcuts Section
@@ -298,6 +390,16 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					font-family: var(--font-monospace) !important;
 					font-size: 13px !important;
 					line-height: 1.4 !important;
+				}
+				
+				.number-input-buttons button {
+					width: 24px;
+					height: 16px;
+					padding: 0;
+					font-size: 8px;
+					display: flex;
+					align-items: center;
+					justify-content: center;
 				}
 			`;
 			document.head.appendChild(style);

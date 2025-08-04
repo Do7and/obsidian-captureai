@@ -7,7 +7,15 @@
       "Bash(mkdir:*)",
       "Bash(find:*)",
       "Bash(npm run build:*)",
-      "WebFetch(domain:openrouter.ai)"
+      "WebFetch(domain:openrouter.ai)",
+      "Bash(rm:*)",
+      "Bash(npm install)",
+      "Bash(npm run lint)",
+      "Bash(sed -i '364,511d' /mnt/c/Do7and/DEnv/Study/MyNotes/Do7and/.obsidian/plugins/obsidian-screenshot-capture/src/managers/screenshot-manager.ts)",
+      "Bash(sed:*)",
+      "Bash(ls -la /mnt/c/Do7and/DEnv/Study/MyNotes/Do7and/)",
+      "Bash(ls -la /mnt/c/Do7and/DEnv/Study/MyNotes/Do7and/.obsidian/plugins/obsidian-screenshot-capture/)",
+      "Bash(ls:*)"
     ],
     "deny": []
   }

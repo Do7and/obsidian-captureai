@@ -52,9 +52,16 @@ export interface ProviderCredentials {
 
 export interface ImageCaptureSettings {
 	defaultSaveLocation: string;
+	otherSourceImageLocation: string; // 其他来源图片保存位置
+	conversationSaveLocation: string;
+	autoSavedConversationLocation: string;
 	enableAIAnalysis: boolean;
 	imageFormat: 'png' | 'jpg';
 	enableRegionSelect: boolean;
+	useRelativePath: boolean;
+	autoSaveConversations: boolean;
+	maxAutoSavedConversations: number;
+	autoSaveInterval: number;
 	modelConfigs: ModelConfig[];
 	providerCredentials: ProviderCredentials;
 	defaultModelConfigId: string;
@@ -174,10 +181,17 @@ export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
 };
 
 export const DEFAULT_SETTINGS: ImageCaptureSettings = {
-	defaultSaveLocation: '',
+	defaultSaveLocation: 'screenshots-capture/savedscreenshots',
+	otherSourceImageLocation: 'screenshots-capture/othersourceimage',
+	conversationSaveLocation: 'screenshots-capture/conversations',
+	autoSavedConversationLocation: 'screenshots-capture/autosavedconversations',
 	enableAIAnalysis: true,
 	imageFormat: 'png',
 	enableRegionSelect: true,
+	useRelativePath: true,
+	autoSaveConversations: true,
+	maxAutoSavedConversations: 5,
+	autoSaveInterval: 30,
 	modelConfigs: [],
 	providerCredentials: {},
 	defaultModelConfigId: '',

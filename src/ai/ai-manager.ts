@@ -17,6 +17,7 @@ export interface AIConversation {
 	title: string;
 	messages: AIMessage[];
 	createdAt: Date;
+	lastUpdated: Date;
 }
 
 export class AIManager {
@@ -26,6 +27,120 @@ export class AIManager {
 
 	constructor(plugin: ImageCapturePlugin) {
 		this.plugin = plugin;
+	}
+
+	async sendImagesToAI(images: { dataUrl: string, fileName: string, localPath?: string | null }[], userMessage: string): Promise<void> {
+		if (!this.plugin.settings.enableAIAnalysis) {
+			throw new Error('AI analysis is disabled');
+		}
+
+		// Get the default model config
+		const defaultModelConfig = this.plugin.settings.modelConfigs.find(
+			mc => mc.id === this.plugin.settings.defaultModelConfigId
+		);
+		
+		if (!defaultModelConfig) {
+			throw new Error('No default model configured. Please configure a model in Settings.');
+		}
+
+		if (!defaultModelConfig.isVisionCapable) {
+			throw new Error('Default model does not support vision analysis');
+		}
+
+		// Get provider credentials
+		const credentials = this.plugin.settings.providerCredentials[defaultModelConfig.providerId];
+		if (!credentials || !credentials.verified || !credentials.apiKey.trim()) {
+			throw new Error('Provider credentials not verified. Please verify API key in Settings.');
+		}
+
+		// Create or get current conversation
+		let conversation = this.getCurrentConversation();
+		if (!conversation) {
+			const fileNames = images.map(img => img.fileName).join(', ');
+			conversation = this.createNewConversation(`Multi-Image Analysis - ${fileNames}`);
+		}
+
+		// Add user message with all images
+		const userMsg: AIMessage = {
+			id: this.generateMessageId(),
+			type: 'user',
+			content: userMessage || `Please analyze these ${images.length} images`,
+			image: images[0].dataUrl, // Use first image for display compatibility
+			timestamp: new Date()
+		};
+		// Store all images with both dataUrl and localPath for display and saving
+		(userMsg as any).images = images.map(img => ({
+			dataUrl: img.dataUrl,
+			fileName: img.fileName,
+			localPath: img.localPath
+		}));
+		conversation.messages.push(userMsg);
+
+		// Show the AI panel
+		await this.showAIPanel();
+		this.updateAIPanel();
+
+		// Add typing indicator
+		const typingMessage = {
+			id: 'typing_' + Date.now(),
+			type: 'assistant' as const,
+			content: '',
+			timestamp: new Date(),
+			isTyping: true
+		};
+		conversation.messages.push(typingMessage);
+		this.updateAIPanel();
+
+		try {
+			// Combine prompts for image analysis
+			const fullMessage = this.combinePromptsForImages(userMsg.content, images.length);
+			
+			// Call AI API using the configured model with multiple images
+			const response = await this.callAIAPIWithMultipleImages(fullMessage, images.map(img => img.dataUrl), defaultModelConfig);
+
+			// Remove typing indicator
+			const typingIndex = conversation.messages.findIndex(m => m.id === typingMessage.id);
+			if (typingIndex > -1) {
+				conversation.messages.splice(typingIndex, 1);
+			}
+
+			// Add AI response
+			const assistantMsg: AIMessage = {
+				id: this.generateMessageId(),
+				type: 'assistant',
+				content: response,
+				timestamp: new Date()
+			};
+			conversation.messages.push(assistantMsg);
+
+			// Update last used timestamp
+			defaultModelConfig.lastUsed = new Date();
+			await this.plugin.saveSettings();
+
+			// Update panel
+			this.updateAIPanel();
+
+		} catch (error) {
+			console.error('AI API call failed:', error);
+			
+			// Remove typing indicator
+			const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
+			if (typingIndex > -1) {
+				conversation.messages.splice(typingIndex, 1);
+			}
+
+			// Add error message
+			const errorMsg: AIMessage = {
+				id: this.generateMessageId(),
+				type: 'assistant',
+				content: `Error: ${error.message}`,
+				timestamp: new Date()
+			};
+			conversation.messages.push(errorMsg);
+			this.updateAIPanel();
+			
+			throw error;
+		}
 	}
 
 	async sendImageToAI(imageDataUrl: string, userMessage: string, fileName: string): Promise<void> {
@@ -159,6 +274,67 @@ export class AIManager {
 		}
 		
 		return await this.callTextOnlyAPI(message, defaultModelConfig);
+	}
+
+	private async callAIAPIWithMultipleImages(message: string, imageDataUrls: string[], modelConfig: ModelConfig): Promise<string> {
+		const provider = LLM_PROVIDERS.find(p => p.id === modelConfig.providerId);
+		
+		if (!provider) {
+			throw new Error(`Unknown provider: ${modelConfig.providerId}`);
+		}
+
+		const model = provider.models.find(m => m.id === modelConfig.modelId);
+		if (!model || !model.hasVision) {
+			throw new Error('Selected model does not support vision');
+		}
+
+		// Get provider credentials
+		const credentials = this.plugin.settings.providerCredentials[modelConfig.providerId];
+		if (!credentials || !credentials.verified || !credentials.apiKey.trim()) {
+			throw new Error('Provider credentials not verified');
+		}
+
+		console.log(`Calling AI API with ${imageDataUrls.length} images - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
+
+		// Convert data URLs to base64
+		const base64Images = imageDataUrls.map(dataUrl => dataUrl.split(',')[1]);
+
+		let response: Response;
+
+		if (modelConfig.providerId === 'openai') {
+			response = await this.callOpenAIWithMultipleImages(message, base64Images, modelConfig, credentials);
+		} else if (modelConfig.providerId === 'anthropic') {
+			response = await this.callClaudeWithMultipleImages(message, base64Images, modelConfig, credentials);
+		} else if (modelConfig.providerId === 'google') {
+			response = await this.callGoogleWithMultipleImages(message, base64Images, modelConfig, credentials);
+		} else if (modelConfig.providerId === 'openrouter') {
+			response = await this.callOpenRouterWithMultipleImages(message, base64Images, modelConfig, credentials);
+		} else if (modelConfig.providerId === 'custom') {
+			response = await this.callCustomAPIWithMultipleImages(message, base64Images, modelConfig, credentials);
+		} else {
+			// Fallback to single image for unsupported providers
+			return await this.callAIAPI(message, imageDataUrls[0], modelConfig);
+		}
+
+		console.log(`Multi-image API Response Status: ${response.status}`);
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.error(`Multi-image API call failed. Status: ${response.status}, Response: ${errorText}`);
+			throw new Error(`API call failed: ${response.status} ${errorText}`);
+		}
+
+		const responseText = await response.text();
+		console.log('Multi-image API Response:', responseText.substring(0, 200) + '...');
+		
+		let data;
+		try {
+			data = JSON.parse(responseText);
+		} catch (parseError) {
+			console.error('Failed to parse JSON response:', parseError);
+			throw new Error(`Invalid JSON response from API. Response starts with: ${responseText.substring(0, 100)}`);
+		}
+		return this.extractResponseContent(data, modelConfig.providerId);
 	}
 
 	private async callAIAPI(message: string, imageDataUrl: string, modelConfig: ModelConfig): Promise<string> {
@@ -488,7 +664,8 @@ export class AIManager {
 			id: this.generateConversationId(),
 			title,
 			messages: [],
-			createdAt: new Date()
+			createdAt: new Date(),
+			lastUpdated: new Date()
 		};
 		
 		this.conversations.set(conversation.id, conversation);
@@ -509,7 +686,10 @@ export class AIManager {
 			if (!aiLeaf) {
 				// Use the simplest method - create a new leaf
 				aiLeaf = this.plugin.app.workspace.getLeaf(true);
-				await aiLeaf.setViewType(AI_CHAT_VIEW_TYPE);
+				await aiLeaf.setViewState({
+					type: AI_CHAT_VIEW_TYPE,
+					active: true
+				});
 			}
 
 			// Reveal the AI panel
@@ -673,6 +853,20 @@ export class AIManager {
 		});
 	}
 
+	private combinePromptsForImages(userMessage: string, imageCount: number): string {
+		const screenshotPrompt = this.plugin.settings.screenshotPrompt;
+		if (!screenshotPrompt.trim()) {
+			return userMessage;
+		}
+		
+		// Combine screenshot prompt with user message naturally for multiple images
+		if (userMessage === `Please analyze these ${imageCount} images`) {
+			return `${screenshotPrompt} (analyzing ${imageCount} images)`;
+		} else {
+			return `${screenshotPrompt}\n\nUser request for ${imageCount} images: ${userMessage}`;
+		}
+	}
+
 	private combinePromptsForImage(userMessage: string): string {
 		const screenshotPrompt = this.plugin.settings.screenshotPrompt;
 		if (!screenshotPrompt.trim()) {
@@ -695,5 +889,191 @@ export class AIManager {
 	cleanup(): void {
 		this.conversations.clear();
 		this.currentConversationId = null;
+	}
+
+	// Multi-image API methods
+	private async callOpenAIWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const imageContent = base64Images.map(base64 => ({
+			type: 'image_url',
+			image_url: {
+				url: `data:image/png;base64,${base64}`
+			}
+		}));
+
+		return fetch('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${credentials.apiKey}`
+			},
+			body: JSON.stringify({
+				model: modelConfig.modelId,
+				messages: [
+					{
+						role: 'system',
+						content: this.getEffectiveSystemPrompt()
+					},
+					{
+						role: 'user',
+						content: [
+							{ type: 'text', text: message },
+							...imageContent
+						]
+					}
+				],
+				max_tokens: modelConfig.settings.maxTokens,
+				temperature: modelConfig.settings.temperature,
+				top_p: modelConfig.settings.topP,
+				frequency_penalty: modelConfig.settings.frequencyPenalty,
+				presence_penalty: modelConfig.settings.presencePenalty
+			})
+		});
+	}
+
+	private async callClaudeWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const imageContent = base64Images.map(base64 => ({
+			type: 'image',
+			source: {
+				type: 'base64',
+				media_type: 'image/png',
+				data: base64
+			}
+		}));
+
+		const messages = [{
+			role: 'user',
+			content: [
+				{ type: 'text', text: message },
+				...imageContent
+			]
+		}];
+
+		const requestBody: any = {
+			model: modelConfig.modelId,
+			max_tokens: modelConfig.settings.maxTokens,
+			temperature: modelConfig.settings.temperature,
+			messages: messages,
+			system: this.getEffectiveSystemPrompt()
+		};
+
+		return fetch('https://api.anthropic.com/v1/messages', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'x-api-key': credentials.apiKey,
+				'anthropic-version': '2023-06-01'
+			},
+			body: JSON.stringify(requestBody)
+		});
+	}
+
+	private async callGoogleWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const imageParts = base64Images.map(base64 => ({
+			inline_data: {
+				mime_type: 'image/png',
+				data: base64
+			}
+		}));
+
+		const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`;
+		
+		return fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				contents: [{
+					parts: [
+						{ text: message },
+						...imageParts
+					]
+				}],
+				generationConfig: {
+					temperature: modelConfig.settings.temperature,
+					maxOutputTokens: modelConfig.settings.maxTokens
+				}
+			})
+		});
+	}
+
+	private async callOpenRouterWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const imageContent = base64Images.map(base64 => ({
+			type: 'image_url',
+			image_url: {
+				url: `data:image/png;base64,${base64}`
+			}
+		}));
+
+		return fetch('https://openrouter.ai/api/v1/chat/completions', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${credentials.apiKey}`,
+				'HTTP-Referer': 'https://obsidian.md',
+				'X-Title': 'Obsidian Screenshot Capture Plugin'
+			},
+			body: JSON.stringify({
+				model: modelConfig.modelId,
+				messages: [
+					{
+						role: 'system',
+						content: this.getEffectiveSystemPrompt()
+					},
+					{
+						role: 'user',
+						content: [
+							{ type: 'text', text: message },
+							...imageContent
+						]
+					}
+				],
+				max_tokens: modelConfig.settings.maxTokens,
+				temperature: modelConfig.settings.temperature,
+				top_p: modelConfig.settings.topP,
+				frequency_penalty: modelConfig.settings.frequencyPenalty,
+				presence_penalty: modelConfig.settings.presencePenalty
+			})
+		});
+	}
+
+	private async callCustomAPIWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		if (!credentials.baseUrl) {
+			throw new Error('Base URL is required for custom provider');
+		}
+
+		const imageContent = base64Images.map(base64 => ({
+			type: 'image_url',
+			image_url: {
+				url: `data:image/png;base64,${base64}`
+			}
+		}));
+
+		// Default to OpenAI-compatible format for custom APIs
+		return fetch(`${credentials.baseUrl}/chat/completions`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${credentials.apiKey}`
+			},
+			body: JSON.stringify({
+				model: modelConfig.modelId,
+				messages: [
+					{
+						role: 'system',
+						content: this.getEffectiveSystemPrompt()
+					},
+					{
+						role: 'user',
+						content: [
+							{ type: 'text', text: message },
+							...imageContent
+						]
+					}
+				],
+				max_tokens: modelConfig.settings.maxTokens,
+				temperature: modelConfig.settings.temperature
+			})
+		});
 	}
 }

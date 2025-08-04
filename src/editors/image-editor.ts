@@ -22,7 +22,6 @@ export class ImageEditor extends Modal {
 	private history: ImageData[] = [];
 	private historyIndex = -1;
 	private originalImageData: string = '';
-	private textInput: HTMLTextAreaElement | null = null;
 	
 	// Four-layer system simulation properties
 	// Layer 1: Preview page with center hole (handled by UI)
@@ -55,6 +54,12 @@ export class ImageEditor extends Modal {
 	private editLayerCtx: CanvasRenderingContext2D | null = null;
 	// Backup for temporary preview operations
 	private editLayerBackup: ImageData | null = null;
+	
+	// Layer 3.5: Highlighter layer - stores highlighter strokes with transparency
+	private highlighterLayerCanvas: HTMLCanvasElement | null = null;
+	private highlighterLayerCtx: CanvasRenderingContext2D | null = null;
+	// Backup for highlighter layer
+	private highlighterLayerBackup: ImageData | null = null;
 	
 	private strokeSettings: Record<StrokeSize, number> = {
 		small: 1,
@@ -145,7 +150,6 @@ export class ImageEditor extends Modal {
 		
 		// Calculate modal size (same as before)
 		const toolbarHeight = 60;
-		const textSectionHeight = 100;
 		const buttonBarHeight = 60;
 		
 		const minModalWidth = 500;
@@ -155,7 +159,7 @@ export class ImageEditor extends Modal {
 		const maxModalHeight = window.innerHeight * 0.9;
 		
 		const preferredModalWidth = displayWidth + 140;
-		const preferredModalHeight = displayHeight + toolbarHeight + textSectionHeight + buttonBarHeight + 80;
+		const preferredModalHeight = displayHeight + toolbarHeight + buttonBarHeight + 80;
 		
 		const modalWidth = Math.max(Math.min(preferredModalWidth, maxModalWidth), minModalWidth);
 		const modalHeight = Math.max(Math.min(preferredModalHeight, maxModalHeight), minModalHeight);
@@ -182,6 +186,9 @@ export class ImageEditor extends Modal {
 		contentEl.empty();
 		contentEl.addClass('image-editor-container');
 		
+		// Add tooltip styles
+		this.addTooltipStyles();
+		
 		// Set modal size directly on modalEl to prevent scrollbars
 		const modalWidth = (this as any).calculatedModalWidth || 500;
 		const modalHeight = (this as any).calculatedModalHeight || 400;
@@ -207,6 +214,9 @@ export class ImageEditor extends Modal {
 		
 		this.createEditorInterface(contentEl);
 		this.loadImage();
+		
+		// Add tooltip styles for image editor
+		this.addTooltipStyles();
 	}
 
 	onClose() {
@@ -274,14 +284,6 @@ export class ImageEditor extends Modal {
 		this.ctx = this.canvas.getContext('2d')!;
 		this.bindCanvasEvents();
 		
-		// Fixed height text input area
-		const textSection = container.createDiv({ cls: 'text-input-section' });
-		textSection.style.cssText = `
-			height: ${textSectionHeight}px;
-			flex-shrink: 0;
-		`;
-		this.createTextInputSection(textSection);
-		
 		// Fixed height button bar
 		const buttonBar = container.createDiv({ cls: 'image-editor-button-bar' });
 		buttonBar.style.cssText = `
@@ -304,23 +306,38 @@ export class ImageEditor extends Modal {
 		
 		// Drawing tools
 		const tools: EditTool[] = [
-			{ name: 'pen', icon: '✏️', cursor: 'crosshair' },
-			{ name: 'highlighter', icon: '🖍️', cursor: 'crosshair' },
-			{ name: 'line', icon: '📏', cursor: 'crosshair' },
-			{ name: 'wavy-line', icon: '〰️', cursor: 'crosshair' },
-			{ name: 'dashed-line', icon: '┅', cursor: 'crosshair' },
-			{ name: 'dotted-line', icon: '┈', cursor: 'crosshair' },
-			{ name: 'rectangle', icon: '⬜', cursor: 'crosshair' },
-			{ name: 'circle', icon: '⭕', cursor: 'crosshair' },
-			{ name: 'arrow', icon: '➡️', cursor: 'crosshair' },
-			{ name: 'hand', icon: '👋', cursor: 'crosshair' }
+			{ name: 'pen', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`, cursor: 'crosshair' },
+			{ name: 'highlighter', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9 4 4l-1.5 1.5L7 10"/><path d="M10 10 3 17l-2 2h4l7-7"/><path d="M11 11 20 2l2 2-9 9"/><path d="m7 17 5 5"/><path d="m12 6 5 5"/></svg>`, cursor: 'crosshair' },
+			{ name: 'line', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`, cursor: 'crosshair' },
+			{ name: 'wavy-line', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/></svg>`, cursor: 'crosshair' },
+			{ name: 'dashed-line', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"><line x1="5" y1="12" x2="19" y2="12"/></svg>`, cursor: 'crosshair' },
+			{ name: 'dotted-line', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 3"><line x1="5" y1="12" x2="19" y2="12"/></svg>`, cursor: 'crosshair' },
+			{ name: 'rectangle', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>`, cursor: 'crosshair' },
+			{ name: 'ellipse', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg>`, cursor: 'crosshair' },
+			{ name: 'arrow', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7,7 17,7 17,17"/></svg>`, cursor: 'crosshair' },
+			{ name: 'hand', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10V6a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v6"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M6 14v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/></svg>`, cursor: 'crosshair' }
 		];
+		
+		// Tool names for tooltips
+		const toolNames: Record<string, string> = {
+			'pen': '画笔',
+			'highlighter': '荧光笔',
+			'line': '直线',
+			'wavy-line': '波浪线',
+			'dashed-line': '虚线',
+			'dotted-line': '点线',
+			'rectangle': '矩形',
+			'ellipse': '椭圆',
+			'arrow': '箭头',
+			'hand': '移动工具'
+		};
 		
 		tools.forEach(tool => {
 			const button = toolbar.createEl('button', { 
-				text: tool.icon,
 				cls: this.currentTool === tool.name ? 'active' : ''
 			});
+			button.innerHTML = tool.icon;
+			button.setAttribute('data-tooltip', toolNames[tool.name]); // Use data-tooltip instead of title
 			this.styleToolButton(button, this.currentTool === tool.name);
 			
 				button.addEventListener('click', () => {
@@ -367,18 +384,24 @@ export class ImageEditor extends Modal {
 		// Note: Crop frame is automatically shown for extended regions
 		
 		// History buttons
-		const undoButton = toolbar.createEl('button', { text: '↶' });
+		const undoButton = toolbar.createEl('button');
+		undoButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>`;
 		undoButton.classList.add('non-tool');
+		undoButton.setAttribute('data-tooltip', '撤销');
 		this.styleToolButton(undoButton, false);
 		undoButton.addEventListener('click', () => this.undo());
 		
-		const redoButton = toolbar.createEl('button', { text: '↷' });
+		const redoButton = toolbar.createEl('button');
+		redoButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>`;
 		redoButton.classList.add('non-tool');
+		redoButton.setAttribute('data-tooltip', '重做');
 		this.styleToolButton(redoButton, false);
 		redoButton.addEventListener('click', () => this.redo());
 		
-		const clearButton = toolbar.createEl('button', { text: '🗑️' });
+		const clearButton = toolbar.createEl('button');
+		clearButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
 		clearButton.classList.add('non-tool');
+		clearButton.setAttribute('data-tooltip', '清空画布');
 		this.styleToolButton(clearButton, false);
 		clearButton.addEventListener('click', () => this.clearCanvas());
 		
@@ -489,7 +512,11 @@ export class ImageEditor extends Modal {
 			border-radius: 4px;
 			font-size: 16px;
 			min-width: 40px;
+			position: relative;
 		`;
+		
+		// Add tooltip CSS class
+		button.classList.add('tool-button');
 	}
 
 	private getCurrentColor(): string {
@@ -569,43 +596,6 @@ export class ImageEditor extends Modal {
 		}
 	}
 
-	private createTextInputSection(section: HTMLElement) {
-		section.style.cssText = `
-			padding: 12px;
-			background: var(--background-secondary);
-			border-top: 1px solid var(--background-modifier-border);
-			display: flex;
-			flex-direction: column;
-			gap: 6px;
-		`;
-		
-		const label = section.createEl('label', { text: '图片描述:' });
-		label.style.cssText = `
-			font-size: 13px;
-			font-weight: 500;
-			color: var(--text-normal);
-			flex-shrink: 0;
-		`;
-		
-		this.textInput = section.createEl('textarea');
-		this.textInput.placeholder = '输入图片描述、标注说明或相关信息...';
-		this.textInput.style.cssText = `
-			width: 100%;
-			height: 50px;
-			padding: 8px;
-			border: 1px solid var(--background-modifier-border);
-			background: var(--background-primary);
-			color: var(--text-normal);
-			border-radius: 4px;
-			resize: none;
-			font-family: inherit;
-			font-size: 13px;
-			box-sizing: border-box;
-			flex: 1;
-			min-width: 200px;
-		`;
-	}
-
 	private createActionButtons(buttonBar: HTMLElement) {
 		buttonBar.style.cssText = `
 			display: flex;
@@ -633,7 +623,7 @@ export class ImageEditor extends Modal {
 
 		// Save and Send to AI button
 		if (aiEnabled) {
-			const aiButton = buttonBar.createEl('button', { text: '保存并发给AI' });
+			const aiButton = buttonBar.createEl('button', { text: '保存复制图片并发送给AI' });
 			if (aiButtonEnabled) {
 				this.styleActionButton(aiButton, 'var(--interactive-accent-hover)', 'var(--text-on-accent)');
 			} else {
@@ -653,7 +643,7 @@ export class ImageEditor extends Modal {
 			}
 			aiButton.addEventListener('click', () => {
 				if (aiButtonEnabled) {
-					this.saveAndSendToAI();
+					this.saveAndAddToAIQueue();
 				}
 			});
 		}
@@ -699,6 +689,12 @@ export class ImageEditor extends Modal {
 			this.editLayerCtx = this.editLayerCanvas.getContext('2d')!;
 			this.editLayerCanvas.width = this.fullScreenshotSize.width;
 			this.editLayerCanvas.height = this.fullScreenshotSize.height;
+			
+			// Create highlighter layer canvas (Layer 3.5, same size as full screenshot)
+			this.highlighterLayerCanvas = document.createElement('canvas');
+			this.highlighterLayerCtx = this.highlighterLayerCanvas.getContext('2d')!;
+			this.highlighterLayerCanvas.width = this.fullScreenshotSize.width;
+			this.highlighterLayerCanvas.height = this.fullScreenshotSize.height;
 			
 			// Store full screenshot image for layer 4
 			this.fullScreenshotImage = fullImg;
@@ -758,7 +754,7 @@ export class ImageEditor extends Modal {
 		fullImg.src = this.originalFullScreenshot; // Complete original screenshot
 	}
 
-	// Four-layer rendering system
+	// Four-layer rendering system (now with 3.5 layer for highlighter)
 	private renderAllLayers() {
 		if (!this.canvas || !this.ctx) return;
 		
@@ -767,6 +763,9 @@ export class ImageEditor extends Modal {
 		
 		// Layer 4: Full screenshot background (with offset)
 		this.renderBackgroundLayer();
+		
+		// Layer 3.5: Highlighter layer (with transparency, same offset as background)
+		this.renderHighlighterLayer();
 		
 		// Layer 3: Edit layer (with same offset as background)
 		this.renderEditLayer();
@@ -786,6 +785,27 @@ export class ImageEditor extends Modal {
 			this.layersOffset.x, this.layersOffset.y,
 			this.fullScreenshotSize.width, this.fullScreenshotSize.height
 		);
+	}
+	
+	private renderHighlighterLayer() {
+		if (!this.canvas || !this.ctx || !this.highlighterLayerCanvas) return;
+		
+		// Save current state
+		this.ctx.save();
+		
+		// Set transparency for highlighter effect
+		this.ctx.globalAlpha = 0.4;
+		this.ctx.globalCompositeOperation = 'multiply'; // or 'overlay' for different effect
+		
+		// Draw the highlighter layer with the same offset as background
+		this.ctx.drawImage(
+			this.highlighterLayerCanvas,
+			this.layersOffset.x, this.layersOffset.y,
+			this.fullScreenshotSize.width, this.fullScreenshotSize.height
+		);
+		
+		// Restore state
+		this.ctx.restore();
 	}
 	
 	private renderEditLayer() {
@@ -885,15 +905,20 @@ export class ImageEditor extends Modal {
 		if (fullScreenshotX >= 0 && fullScreenshotX <= this.fullScreenshotSize.width &&
 			fullScreenshotY >= 0 && fullScreenshotY <= this.fullScreenshotSize.height) {
 			
-			// For shape tools, create a backup of current edit layer
-			if (['line', 'wavy-line', 'dashed-line', 'dotted-line', 'rectangle', 'circle', 'arrow'].includes(this.currentTool) && this.editLayerCtx && this.editLayerCanvas) {
-				this.editLayerBackup = this.editLayerCtx.getImageData(0, 0, this.editLayerCanvas.width, this.editLayerCanvas.height);
+			// For shape tools, create a backup of current edit layers
+			if (['line', 'wavy-line', 'dashed-line', 'dotted-line', 'rectangle', 'ellipse', 'arrow'].includes(this.currentTool)) {
+				if (this.editLayerCtx && this.editLayerCanvas) {
+					this.editLayerBackup = this.editLayerCtx.getImageData(0, 0, this.editLayerCanvas.width, this.editLayerCanvas.height);
+				}
+				if (this.highlighterLayerCtx && this.highlighterLayerCanvas) {
+					this.highlighterLayerBackup = this.highlighterLayerCtx.getImageData(0, 0, this.highlighterLayerCanvas.width, this.highlighterLayerCanvas.height);
+				}
 			}
 			
 			this.lastX = fullScreenshotX;
 			this.lastY = fullScreenshotY;
 			this.isDrawing = true;
-			this.saveToHistory();
+			// Don't save to history here - wait until drawing is complete
 		}
 	}
 
@@ -979,13 +1004,14 @@ export class ImageEditor extends Modal {
 			if (fullScreenshotX >= 0 && fullScreenshotX <= this.fullScreenshotSize.width &&
 				fullScreenshotY >= 0 && fullScreenshotY <= this.fullScreenshotSize.height) {
 				
-				// Draw on edit layer (layer 3)
-				this.drawOnEditLayer(fullScreenshotX, fullScreenshotY);
-				
-				// Update last position
 				if (this.currentTool === 'pen' || this.currentTool === 'highlighter') {
+					// Free drawing tools - draw stroke from last position to current
+					this.drawOnEditLayer(fullScreenshotX, fullScreenshotY);
 					this.lastX = fullScreenshotX;
 					this.lastY = fullScreenshotY;
+				} else if (['line', 'wavy-line', 'dashed-line', 'dotted-line', 'rectangle', 'ellipse', 'arrow'].includes(this.currentTool)) {
+					// Shape tools - preview drawing
+					this.handleShapeDrawing(fullScreenshotX, fullScreenshotY);
 				}
 				
 				// Re-render all layers to show the drawing
@@ -997,82 +1023,100 @@ export class ImageEditor extends Modal {
 	private drawOnEditLayer(x: number, y: number) {
 		if (!this.editLayerCtx) return;
 		
+		// For highlighter tool, draw on layer 3.5 instead
+		if (this.currentTool === 'highlighter') {
+			this.drawHighlighterStroke(x, y);
+			return;
+		}
+		
+		// Set drawing properties for regular tools
+		this.editLayerCtx.lineWidth = this.getCurrentStrokeWidth();
+		this.editLayerCtx.lineCap = 'round';
+		this.editLayerCtx.lineJoin = 'round';
+		this.editLayerCtx.strokeStyle = this.getCurrentColor();
+		
+		if (this.currentTool === 'pen') {
+			// Regular pen drawing on layer 3
+			this.editLayerCtx.globalCompositeOperation = 'source-over';
+			this.editLayerCtx.globalAlpha = 1;
+			this.editLayerCtx.beginPath();
+			this.editLayerCtx.moveTo(this.lastX, this.lastY);
+			this.editLayerCtx.lineTo(x, y);
+			this.editLayerCtx.stroke();
+		}
+	}
+	
+	// Highlighter stroke method - drawing on Layer 3.5 with full opacity
+	private drawHighlighterStroke(x: number, y: number) {
+		if (!this.highlighterLayerCtx) return;
+		
+		// Set drawing properties for highlighter on layer 3.5
+		this.highlighterLayerCtx.lineWidth = this.getCurrentStrokeWidth();
+		this.highlighterLayerCtx.lineCap = 'round';
+		this.highlighterLayerCtx.lineJoin = 'round';
+		this.highlighterLayerCtx.strokeStyle = this.getCurrentColor();
+		this.highlighterLayerCtx.globalCompositeOperation = 'source-over';
+		this.highlighterLayerCtx.globalAlpha = 1; // Full opacity on layer 3.5
+		
+		// Draw on highlighter layer
+		this.highlighterLayerCtx.beginPath();
+		this.highlighterLayerCtx.moveTo(this.lastX, this.lastY);
+		this.highlighterLayerCtx.lineTo(x, y);
+		this.highlighterLayerCtx.stroke();
+	}
+	
+	// Handle shape drawing (preview mode)
+	private handleShapeDrawing(x: number, y: number) {
+		if (!this.editLayerCtx || !this.editLayerCanvas) return;
+		
+		// Restore from backup for preview
+		if (this.editLayerBackup) {
+			this.editLayerCtx.putImageData(this.editLayerBackup, 0, 0);
+		}
+		
 		// Set drawing properties
 		this.editLayerCtx.lineWidth = this.getCurrentStrokeWidth();
 		this.editLayerCtx.lineCap = 'round';
+		this.editLayerCtx.lineJoin = 'round';
 		this.editLayerCtx.strokeStyle = this.getCurrentColor();
+		this.editLayerCtx.globalCompositeOperation = 'source-over';
+		this.editLayerCtx.globalAlpha = 1;
 		
-		// Special handling for highlighter
-		if (this.currentTool === 'highlighter') {
-			this.editLayerCtx.globalCompositeOperation = 'multiply';
-			this.editLayerCtx.globalAlpha = 0.3; // Lower alpha for multiply mode to achieve transparency
-		} else {
-			this.editLayerCtx.globalCompositeOperation = 'source-over';
-			this.editLayerCtx.globalAlpha = 1;
-		}
-		
+		// Draw shape based on current tool
 		switch (this.currentTool) {
-			case 'pen':
-			case 'highlighter':
+			case 'line':
 				this.editLayerCtx.beginPath();
 				this.editLayerCtx.moveTo(this.lastX, this.lastY);
 				this.editLayerCtx.lineTo(x, y);
 				this.editLayerCtx.stroke();
 				break;
-				
-			case 'line':
 			case 'wavy-line':
+				this.drawWavyLineOnEditLayer(this.lastX, this.lastY, x, y);
+				break;
 			case 'dashed-line':
+				this.drawDashedLineOnEditLayer(this.lastX, this.lastY, x, y);
+				break;
 			case 'dotted-line':
+				this.drawDottedLineOnEditLayer(this.lastX, this.lastY, x, y);
+				break;
 			case 'rectangle':
-			case 'circle':
+				this.drawRectangleOnEditLayer(this.lastX, this.lastY, x, y);
+				break;
+			case 'ellipse':
+				this.drawEllipseOnEditLayer(this.lastX, this.lastY, x, y);
+				break;
 			case 'arrow':
-				// For all shape tools, restore backup and draw preview
-				if (this.editLayerBackup) {
-					this.editLayerCtx.putImageData(this.editLayerBackup, 0, 0);
-				}
-				
-				// Call the appropriate drawing method based on tool
-				switch (this.currentTool) {
-					case 'line':
-						this.editLayerCtx.beginPath();
-						this.editLayerCtx.moveTo(this.lastX, this.lastY);
-						this.editLayerCtx.lineTo(x, y);
-						this.editLayerCtx.stroke();
-						break;
-					case 'wavy-line':
-						this.drawWavyLineOnEditLayer(this.lastX, this.lastY, x, y);
-						break;
-					case 'dashed-line':
-						this.drawDashedLineOnEditLayer(this.lastX, this.lastY, x, y);
-						break;
-					case 'dotted-line':
-						this.drawDottedLineOnEditLayer(this.lastX, this.lastY, x, y);
-						break;
-					case 'rectangle':
-						this.drawRectangleOnEditLayer(this.lastX, this.lastY, x, y);
-						break;
-					case 'circle':
-						this.drawCircleOnEditLayer(this.lastX, this.lastY, x, y);
-						break;
-					case 'arrow':
-						this.drawArrowOnEditLayer(this.lastX, this.lastY, x, y);
-						break;
-				}
+				this.drawArrowOnEditLayer(this.lastX, this.lastY, x, y);
 				break;
 		}
-		
-		// Reset composition mode
-		this.editLayerCtx.globalCompositeOperation = 'source-over';
-		this.editLayerCtx.globalAlpha = 1;
 	}
 	
 	// Edit layer versions of drawing methods
 	private drawWavyLineOnEditLayer(x1: number, y1: number, x2: number, y2: number) {
 		// Calculate wave parameters
 		const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-		const amplitude = Math.max(5, this.getCurrentStrokeWidth() * 2);
-		const frequency = distance / 40; // Number of waves
+		const amplitude = Math.max(3, this.getCurrentStrokeWidth() * 1.2); // Reduced amplitude
+		const frequency = distance / 50; // Reduced frequency for smaller waves
 		
 		this.editLayerCtx!.beginPath();
 		this.editLayerCtx!.moveTo(x1, y1);
@@ -1132,11 +1176,15 @@ export class ImageEditor extends Modal {
 		this.editLayerCtx!.strokeRect(x1, y1, width, height);
 	}
 	
-	private drawCircleOnEditLayer(x1: number, y1: number, x2: number, y2: number) {
-		const radius = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+	private drawEllipseOnEditLayer(x1: number, y1: number, x2: number, y2: number) {
+		// Calculate ellipse parameters
+		const centerX = (x1 + x2) / 2;
+		const centerY = (y1 + y2) / 2;
+		const radiusX = Math.abs(x2 - x1) / 2;
+		const radiusY = Math.abs(y2 - y1) / 2;
 		
 		this.editLayerCtx!.beginPath();
-		this.editLayerCtx!.arc(x1, y1, radius, 0, 2 * Math.PI);
+		this.editLayerCtx!.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
 		this.editLayerCtx!.stroke();
 	}
 	
@@ -1211,11 +1259,13 @@ export class ImageEditor extends Modal {
 			this.isDrawing = false;
 			
 			// For shape tools, clear the backup as drawing is complete
-			if (['line', 'wavy-line', 'dashed-line', 'dotted-line', 'rectangle', 'circle', 'arrow'].includes(this.currentTool)) {
+			if (['line', 'wavy-line', 'dashed-line', 'dotted-line', 'rectangle', 'ellipse', 'arrow'].includes(this.currentTool)) {
 				this.editLayerBackup = null;
+				this.highlighterLayerBackup = null;
 			}
 			
-			// Drawing content is already on edit layer, no need to redraw
+			// Save to history after drawing is complete
+			this.saveToHistory();
 		}
 	}
 
@@ -1249,175 +1299,19 @@ export class ImageEditor extends Modal {
 	}
 
 
-	private drawLine(x1: number, y1: number, x2: number, y2: number) {
-		if (!this.ctx) return;
-		
-		this.restoreFromHistory();
-		
-		this.ctx.lineWidth = this.getCurrentStrokeWidth();
-		this.ctx.strokeStyle = this.getCurrentColor();
-		this.ctx.lineCap = 'round';
-		
-		this.ctx.beginPath();
-		this.ctx.moveTo(x1, y1);
-		this.ctx.lineTo(x2, y2);
-		this.ctx.stroke();
-	}
-
-	private drawWavyLine(x1: number, y1: number, x2: number, y2: number) {
-		if (!this.ctx) return;
-		
-		this.restoreFromHistory();
-		
-		this.ctx.lineWidth = this.getCurrentStrokeWidth();
-		this.ctx.strokeStyle = this.getCurrentColor();
-		this.ctx.lineCap = 'round';
-		
-		// Calculate wave parameters
-		const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-		const amplitude = Math.max(5, this.getCurrentStrokeWidth() * 2);
-		const frequency = distance / 40; // Number of waves
-		
-		this.ctx.beginPath();
-		this.ctx.moveTo(x1, y1);
-		
-		// Draw wavy line
-		for (let i = 0; i <= 100; i++) {
-			const t = i / 100;
-			const x = x1 + (x2 - x1) * t;
-			const y = y1 + (y2 - y1) * t;
-			
-			// Calculate perpendicular offset for wave
-			const angle = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
-			const waveOffset = Math.sin(t * frequency * Math.PI * 2) * amplitude;
-			
-			const waveX = x + Math.cos(angle) * waveOffset;
-			const waveY = y + Math.sin(angle) * waveOffset;
-			
-			this.ctx.lineTo(waveX, waveY);
-		}
-		
-		this.ctx.stroke();
-	}
-
-	private drawDashedLine(x1: number, y1: number, x2: number, y2: number) {
-		if (!this.ctx) return;
-		
-		this.restoreFromHistory();
-		
-		this.ctx.lineWidth = this.getCurrentStrokeWidth();
-		this.ctx.strokeStyle = this.getCurrentColor();
-		this.ctx.lineCap = 'round';
-		
-		// Set dash pattern
-		const dashLength = Math.max(8, this.getCurrentStrokeWidth() * 3);
-		this.ctx.setLineDash([dashLength, dashLength / 2]);
-		
-		this.ctx.beginPath();
-		this.ctx.moveTo(x1, y1);
-		this.ctx.lineTo(x2, y2);
-		this.ctx.stroke();
-		
-		// Reset dash pattern
-		this.ctx.setLineDash([]);
-	}
-
-	private drawDottedLine(x1: number, y1: number, x2: number, y2: number) {
-		if (!this.ctx) return;
-		
-		this.restoreFromHistory();
-		
-		this.ctx.lineWidth = this.getCurrentStrokeWidth();
-		this.ctx.strokeStyle = this.getCurrentColor();
-		this.ctx.lineCap = 'round';
-		
-		// Set dot pattern
-		const dotSize = Math.max(2, this.getCurrentStrokeWidth());
-		const spacing = dotSize * 3;
-		this.ctx.setLineDash([dotSize, spacing]);
-		
-		this.ctx.beginPath();
-		this.ctx.moveTo(x1, y1);
-		this.ctx.lineTo(x2, y2);
-		this.ctx.stroke();
-		
-		// Reset dash pattern
-		this.ctx.setLineDash([]);
-	}
-
-	private drawRectangle(x1: number, y1: number, x2: number, y2: number) {
-		if (!this.ctx) return;
-		
-		this.restoreFromHistory();
-		
-		this.ctx.lineWidth = this.getCurrentStrokeWidth();
-		this.ctx.strokeStyle = this.getCurrentColor();
-		
-		const width = x2 - x1;
-		const height = y2 - y1;
-		
-		this.ctx.strokeRect(x1, y1, width, height);
-	}
-
-	private drawCircle(x1: number, y1: number, x2: number, y2: number) {
-		if (!this.ctx) return;
-		
-		this.restoreFromHistory();
-		
-		this.ctx.lineWidth = this.getCurrentStrokeWidth();
-		this.ctx.strokeStyle = this.getCurrentColor();
-		
-		const radius = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-		
-		this.ctx.beginPath();
-		this.ctx.arc(x1, y1, radius, 0, 2 * Math.PI);
-		this.ctx.stroke();
-	}
-
-	private drawArrow(x1: number, y1: number, x2: number, y2: number) {
-		if (!this.ctx) return;
-		
-		this.restoreFromHistory();
-		
-		this.ctx.lineWidth = this.getCurrentStrokeWidth();
-		this.ctx.strokeStyle = this.getCurrentColor();
-		this.ctx.lineCap = 'round';
-		this.ctx.lineJoin = 'round';
-		
-		// Calculate arrow properties
-		const angle = Math.atan2(y2 - y1, x2 - x1);
-		const arrowLength = Math.max(15, this.strokeSettings[this.currentStrokeSize] * 4);
-		const arrowAngle = Math.PI / 6; // 30 degrees
-		
-		this.ctx.beginPath();
-		// Main line
-		this.ctx.moveTo(x1, y1);
-		this.ctx.lineTo(x2, y2);
-		
-		// Arrow head - left side
-		this.ctx.moveTo(x2, y2);
-		this.ctx.lineTo(
-			x2 - arrowLength * Math.cos(angle - arrowAngle),
-			y2 - arrowLength * Math.sin(angle - arrowAngle)
-		);
-		
-		// Arrow head - right side
-		this.ctx.moveTo(x2, y2);
-		this.ctx.lineTo(
-			x2 - arrowLength * Math.cos(angle + arrowAngle),
-			y2 - arrowLength * Math.sin(angle + arrowAngle)
-		);
-		
-		this.ctx.stroke();
-	}
 
 	private saveToHistory() {
-		if (!this.editLayerCtx || !this.editLayerCanvas) return;
+		if (!this.editLayerCtx || !this.editLayerCanvas || !this.highlighterLayerCtx || !this.highlighterLayerCanvas) return;
 		
-		// Save the edit layer state (this is what contains all drawings)
-		const imageData = this.editLayerCtx.getImageData(0, 0, this.editLayerCanvas.width, this.editLayerCanvas.height);
+		// Save both edit layer and highlighter layer states
+		const editImageData = this.editLayerCtx.getImageData(0, 0, this.editLayerCanvas.width, this.editLayerCanvas.height);
+		const highlighterImageData = this.highlighterLayerCtx.getImageData(0, 0, this.highlighterLayerCanvas.width, this.highlighterLayerCanvas.height);
+		
+		// Store as a combined state object
+		const combinedState = { edit: editImageData, highlighter: highlighterImageData };
+		
 		this.history = this.history.slice(0, this.historyIndex + 1);
-		this.history.push(imageData);
+		this.history.push(combinedState as any); // Type assertion for now
 		this.historyIndex = this.history.length - 1;
 		
 		if (this.history.length > 20) {
@@ -1427,10 +1321,19 @@ export class ImageEditor extends Modal {
 	}
 
 	private restoreFromHistory() {
-		if (!this.editLayerCtx || this.historyIndex < 0 || this.historyIndex >= this.history.length) return;
+		if (!this.editLayerCtx || !this.highlighterLayerCtx || this.historyIndex < 0 || this.historyIndex >= this.history.length) return;
 		
-		// Restore the edit layer state and re-render all layers
-		this.editLayerCtx.putImageData(this.history[this.historyIndex], 0, 0);
+		const state = this.history[this.historyIndex] as any;
+		
+		// Restore both layers if the state contains them
+		if (state.edit && state.highlighter) {
+			this.editLayerCtx.putImageData(state.edit, 0, 0);
+			this.highlighterLayerCtx.putImageData(state.highlighter, 0, 0);
+		} else {
+			// Backward compatibility with old single-layer history
+			this.editLayerCtx.putImageData(state, 0, 0);
+		}
+		
 		this.renderAllLayers();
 	}
 
@@ -1460,7 +1363,12 @@ export class ImageEditor extends Modal {
 			this.editLayerCtx.clearRect(0, 0, this.editLayerCanvas.width, this.editLayerCanvas.height);
 		}
 		
-		// Re-render all layers to show the cleared edit layer
+		// Clear the highlighter layer (layer 3.5)
+		if (this.highlighterLayerCtx && this.highlighterLayerCanvas) {
+			this.highlighterLayerCtx.clearRect(0, 0, this.highlighterLayerCanvas.width, this.highlighterLayerCanvas.height);
+		}
+		
+		// Re-render all layers to show the cleared layers
 		this.renderAllLayers();
 		
 		this.saveToHistory();
@@ -1477,32 +1385,18 @@ export class ImageEditor extends Modal {
 			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 			const fileName = `screenshot-${timestamp}.png`;
 			
-			// Get text content
-			const textContent = this.textInput?.value?.trim() || '';
+			// Save image to vault and get the path
+			const savedPath = await this.saveImageToVault(dataUrl, fileName);
 			
-			// Create markdown content with image and text
-			let markdownContent = '';
-			
-			if (textContent) {
-				// Image with alt text + description below
-				markdownContent = `![${textContent}](${fileName})\n\n${textContent}`;
-			} else {
-				// Just image without description
-				markdownContent = `![Screenshot](${fileName})`;
-			}
+			// Create markdown content with image path (or fallback to filename if save failed)
+			const imagePath = savedPath || fileName;
+			const markdownContent = `![Screenshot](${imagePath})`;
 			
 			// Copy markdown text to clipboard
 			await navigator.clipboard.writeText(markdownContent);
 			
 			// Show success message
-			if (textContent) {
-				new Notice(`✅ Markdown内容已复制！\n图片: ${fileName}\n描述: ${textContent.slice(0, 30)}${textContent.length > 30 ? '...' : ''}`);
-			} else {
-				new Notice(`✅ 图片Markdown已复制！\n文件: ${fileName}`);
-			}
-			
-			// Also save the image to vault for the markdown to work
-			await this.saveImageToVault(dataUrl, fileName);
+			new Notice(`✅ 图片Markdown已复制！\n文件: ${fileName}`);
 			
 			this.close();
 			
@@ -1512,7 +1406,7 @@ export class ImageEditor extends Modal {
 		}
 	}
 	
-	private async saveImageToVault(dataUrl: string, fileName: string) {
+	private async saveImageToVault(dataUrl: string, fileName: string): Promise<string | null> {
 		try {
 			// Convert dataUrl to binary data
 			const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
@@ -1522,19 +1416,19 @@ export class ImageEditor extends Modal {
 				bytes[i] = binaryData.charCodeAt(i);
 			}
 			
-			// Save to vault's attachments folder or root
+			// Save to plugin's configured save location
 			const vault = this.plugin.app.vault;
 			const adapter = vault.adapter;
 			
-			// Try to get the attachments folder, fallback to root
+			// Use plugin's default save location or fallback to root
 			let savePath = fileName;
-			const attachmentFolderPath = (this.plugin.app.vault as any).getConfig?.('attachmentFolderPath');
-			if (attachmentFolderPath && attachmentFolderPath !== '/') {
-				// Ensure attachment folder exists
-				if (!await vault.adapter.exists(attachmentFolderPath)) {
-					await vault.createFolder(attachmentFolderPath);
+			const saveLocation = this.plugin.settings.defaultSaveLocation;
+			if (saveLocation && saveLocation.trim() !== '') {
+				// Ensure save directory exists
+				if (!await adapter.exists(saveLocation)) {
+					await vault.createFolder(saveLocation);
 				}
-				savePath = `${attachmentFolderPath}/${fileName}`;
+				savePath = `${saveLocation}/${fileName}`;
 			}
 			
 			// Write file to vault
@@ -1542,9 +1436,56 @@ export class ImageEditor extends Modal {
 			
 			console.log('Image saved to vault:', savePath);
 			
+			// Return the path for use in markdown links
+			return savePath;
+			
 		} catch (error: any) {
 			console.error('Failed to save image to vault:', error);
-			// Don't throw error, just log it since the main copy function should still work
+			// Return null on error
+			return null;
+		}
+	}
+
+	private async saveAndAddToAIQueue() {
+		if (!this.canvas) return;
+		
+		try {
+			// Get the final cropped image
+			const dataUrl = this.getFinalCroppedImage();
+			
+			// Generate filename
+			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+			const fileName = `screenshot-${timestamp}.png`;
+			
+			// Show progress notice
+			const notice = new Notice('正在保存图片并添加到AI发送队列...', 2000);
+			
+			try {
+				// Save the image to vault first and get the path
+				const savedPath = await this.saveImageToVault(dataUrl, fileName);
+				console.log('Image saved to vault:', savedPath);
+				
+				// Show AI panel first (only if not already visible)
+				await this.plugin.ensureAIChatPanelVisible();
+				
+				// Add image to queue with both local path and dataUrl
+				await this.plugin.addImageToAIQueue(dataUrl, fileName, savedPath);
+				
+				// Close the editor
+				this.close();
+				
+				notice.hide();
+				new Notice(`✅ 图片已添加到AI发送队列，可继续添加更多图片`);
+				
+			} catch (error: any) {
+				notice.hide();
+				console.error('Add to AI queue failed:', error);
+				new Notice(`❌ 添加到AI队列失败: ${error.message}`);
+			}
+			
+		} catch (error: any) {
+			console.error('Save and add to AI queue failed:', error);
+			new Notice(`❌ 操作失败: ${error.message}`);
 		}
 	}
 
@@ -1559,9 +1500,6 @@ export class ImageEditor extends Modal {
 			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 			const fileName = `screenshot-${timestamp}.png`;
 			
-			// Get text content
-			const textContent = this.textInput?.value?.trim() || '';
-			
 			// Show progress notice immediately
 			const notice = new Notice('正在保存并发送图片给AI分析...', 0);
 			
@@ -1574,7 +1512,7 @@ export class ImageEditor extends Modal {
 				console.log('Image saved to vault:', fileName);
 				
 				// Send to AI for analysis
-				await this.plugin.sendImageToAI(dataUrl, textContent, fileName);
+				await this.plugin.sendImageToAI(dataUrl, '', fileName);
 				
 				notice.hide();
 				new Notice('✅ 图片已发送给AI分析，请查看右侧面板');
@@ -1598,218 +1536,6 @@ export class ImageEditor extends Modal {
 
 
 
-
-	private setupCropOverlay() {
-		// The crop overlay will be drawn on the canvas itself
-		this.redrawCanvas();
-	}
-
-	private redrawCanvas() {
-		if (!this.canvas || !this.ctx) return;
-		
-		// Redraw the base image
-		const img = new Image();
-		img.onload = () => {
-			if (!this.canvas || !this.ctx) return;
-			
-			// Clear and redraw base image
-			this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-			this.ctx.drawImage(img, 0, 0);
-			
-			// Redraw any previous edits from history
-			if (this.history.length > 0 && this.historyIndex >= 0) {
-				const currentState = this.history[this.historyIndex];
-				this.ctx.putImageData(currentState, 0, 0);
-			}
-			
-			// Draw crop overlay if in crop mode
-			if (this.cropModeActive) {
-				this.drawCropOverlay();
-			}
-		};
-		img.src = this.imageUrl;
-	}
-
-	private drawCropOverlay() {
-		if (!this.ctx || !this.canvas) return;
-		
-		// First, redraw the base image to clear any previous overlay
-		const img = new Image();
-		img.onload = () => {
-			if (!this.canvas || !this.ctx) return;
-			
-			// Clear and redraw base image
-			this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-			
-			// If we have an extended region, draw the extended area
-			if (this.extendedRegion) {
-				this.ctx.drawImage(
-					img,
-					0, 0, img.width, img.height,  // Source: entire captured image
-					0, 0, this.canvas.width, this.canvas.height  // Destination: canvas size
-				);
-			} else {
-				this.ctx.drawImage(img, 0, 0);
-			}
-			
-			// Redraw any previous edits from history (but don't include the overlay)
-			if (this.history.length > 0 && this.historyIndex >= 0) {
-				// We need to be careful here - only restore drawing edits, not overlay
-				const currentState = this.history[this.historyIndex];
-				// Create a temporary canvas to extract just the drawings
-				const tempCanvas = document.createElement('canvas');
-				const tempCtx = tempCanvas.getContext('2d')!;
-				tempCanvas.width = this.canvas.width;
-				tempCanvas.height = this.canvas.height;
-				tempCtx.putImageData(currentState, 0, 0);
-				
-				// Now we need to extract just the drawing parts, not the overlay
-				// For now, let's skip this to avoid complexity
-			}
-			
-			// Now draw the crop overlay
-			this.drawCropMask();
-		};
-		img.src = this.imageUrl;
-	}
-	
-	private drawCropMask() {
-		if (!this.ctx || !this.canvas) return;
-		
-		// Save current state
-		this.ctx.save();
-		
-		// Set global composite operation to draw overlay
-		this.ctx.globalCompositeOperation = 'source-over';
-		
-		// Draw semi-transparent overlay outside the crop area only
-		this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-		
-		// Draw overlay in 4 rectangles around the crop area
-		// Top rectangle
-		this.ctx.fillRect(0, 0, this.canvas.width, this.cropRect.y);
-		// Bottom rectangle  
-		this.ctx.fillRect(0, this.cropRect.y + this.cropRect.height, this.canvas.width, this.canvas.height - (this.cropRect.y + this.cropRect.height));
-		// Left rectangle
-		this.ctx.fillRect(0, this.cropRect.y, this.cropRect.x, this.cropRect.height);
-		// Right rectangle
-		this.ctx.fillRect(this.cropRect.x + this.cropRect.width, this.cropRect.y, this.canvas.width - (this.cropRect.x + this.cropRect.width), this.cropRect.height);
-		
-		// Draw crop border (visible border around the crop area)
-		this.ctx.strokeStyle = '#ffffff';
-		this.ctx.lineWidth = 2;
-		this.ctx.setLineDash([]);
-		this.ctx.strokeRect(this.cropRect.x, this.cropRect.y, this.cropRect.width, this.cropRect.height);
-		
-		// Draw inner border for better visibility
-		this.ctx.strokeStyle = '#000000';
-		this.ctx.lineWidth = 1;
-		this.ctx.strokeRect(this.cropRect.x + 1, this.cropRect.y + 1, this.cropRect.width - 2, this.cropRect.height - 2);
-		
-		// Draw edge indicators for the new edge-only resizing system
-		this.drawCropFrameEdges();
-		
-		// Restore state
-		this.ctx.restore();
-	}
-	
-	private redrawCanvasWithoutCrop() {
-		if (!this.canvas || !this.ctx) return;
-		
-		const img = new Image();
-		img.onload = () => {
-			if (!this.canvas || !this.ctx) return;
-			
-			// Clear and redraw base image
-			this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-			
-			// If we have an extended region, draw the extended area
-			if (this.extendedRegion) {
-				this.ctx.drawImage(
-					img,
-					0, 0, img.width, img.height,  // Source: entire captured image
-					0, 0, this.canvas.width, this.canvas.height  // Destination: canvas size
-				);
-			} else {
-				this.ctx.drawImage(img, 0, 0);
-			}
-			
-			// Redraw any previous edits from history
-			if (this.history.length > 0 && this.historyIndex >= 0) {
-				const currentState = this.history[this.historyIndex];
-				// We need to carefully restore only the drawing parts, not overlays
-				// For now, just restore the full state since we're not in crop mode
-				this.ctx.putImageData(currentState, 0, 0);
-			}
-		};
-		img.src = this.imageUrl;
-	}
-
-	// New fixed crop system - no resize handles, only edge detection
-	private drawCropFrameEdges() {
-		if (!this.ctx) return;
-		
-		// Draw edge indicators for resizing
-		const edgeLength = 20;
-		const edgeWidth = 3;
-		
-		this.ctx.strokeStyle = '#007ACC';
-		this.ctx.lineWidth = edgeWidth;
-		this.ctx.setLineDash([]);
-		
-		// Top edge indicator
-		this.ctx.beginPath();
-		this.ctx.moveTo(this.cropRect.x + this.cropRect.width / 2 - edgeLength / 2, this.cropRect.y);
-		this.ctx.lineTo(this.cropRect.x + this.cropRect.width / 2 + edgeLength / 2, this.cropRect.y);
-		this.ctx.stroke();
-		
-		// Bottom edge indicator
-		this.ctx.beginPath();
-		this.ctx.moveTo(this.cropRect.x + this.cropRect.width / 2 - edgeLength / 2, this.cropRect.y + this.cropRect.height);
-		this.ctx.lineTo(this.cropRect.x + this.cropRect.width / 2 + edgeLength / 2, this.cropRect.y + this.cropRect.height);
-		this.ctx.stroke();
-		
-		// Left edge indicator
-		this.ctx.beginPath();
-		this.ctx.moveTo(this.cropRect.x, this.cropRect.y + this.cropRect.height / 2 - edgeLength / 2);
-		this.ctx.lineTo(this.cropRect.x, this.cropRect.y + this.cropRect.height / 2 + edgeLength / 2);
-		this.ctx.stroke();
-		
-		// Right edge indicator
-		this.ctx.beginPath();
-		this.ctx.moveTo(this.cropRect.x + this.cropRect.width, this.cropRect.y + this.cropRect.height / 2 - edgeLength / 2);
-		this.ctx.lineTo(this.cropRect.x + this.cropRect.width, this.cropRect.y + this.cropRect.height / 2 + edgeLength / 2);
-		this.ctx.stroke();
-	}
-
-
-	private updateCanvasDisplaySize() {
-		if (!this.canvas) return;
-		
-		// Recalculate display size based on new canvas dimensions
-		const container = this.canvas.parentElement;
-		if (container) {
-			const containerRect = container.getBoundingClientRect();
-			const availableWidth = containerRect.width - 40;
-			const availableHeight = containerRect.height - 40;
-			
-			const scaleX = availableWidth / this.canvas.width;
-			const scaleY = availableHeight / this.canvas.height;
-			const scale = Math.min(scaleX, scaleY, 1);
-			
-			const displayWidth = Math.floor(this.canvas.width * scale);
-			const displayHeight = Math.floor(this.canvas.height * scale);
-			
-			this.canvas.style.width = displayWidth + 'px';
-			this.canvas.style.height = displayHeight + 'px';
-		}
-	}
-	
-	
-	
-	
-	
-	
 
 	private getFinalCroppedImage(): string {
 		if (!this.canvas || !this.ctx) {
@@ -1838,9 +1564,27 @@ export class ImageEditor extends Modal {
 				);
 			}
 			
-			// Then, draw the edit layer (layer 3) in the crop area
+			// Then, draw the highlighter layer (layer 3.5) with transparency
+			if (this.highlighterLayerCanvas) {
+				const sourceX = this.cropRect.x - this.layersOffset.x;
+				const sourceY = this.cropRect.y - this.layersOffset.y;
+				
+				// Apply transparency for highlighter effect
+				croppedCtx.save();
+				croppedCtx.globalAlpha = 0.4;
+				croppedCtx.globalCompositeOperation = 'multiply';
+				
+				croppedCtx.drawImage(
+					this.highlighterLayerCanvas,
+					sourceX, sourceY, this.cropRect.width, this.cropRect.height,
+					0, 0, this.cropRect.width, this.cropRect.height
+				);
+				
+				croppedCtx.restore();
+			}
+			
+			// Finally, draw the edit layer (layer 3) in the crop area
 			if (this.editLayerCanvas) {
-				// Calculate source rectangle from the edit layer
 				const sourceX = this.cropRect.x - this.layersOffset.x;
 				const sourceY = this.cropRect.y - this.layersOffset.y;
 				
@@ -1858,8 +1602,73 @@ export class ImageEditor extends Modal {
 		return this.canvas.toDataURL('image/png');
 	}
 
-	
 	cleanup() {
 		this.close();
+	}
+
+	private addTooltipStyles(): void {
+		// Add CSS styles for tooltips in image editor
+		if (!document.getElementById('image-editor-tooltip-styles')) {
+			const style = document.createElement('style');
+			style.id = 'image-editor-tooltip-styles';
+			style.textContent = `
+				/* Image editor tooltip styles */
+				.image-editor-toolbar button[data-tooltip] {
+					position: relative;
+				}
+
+				.image-editor-toolbar button[data-tooltip]::after {
+					content: attr(data-tooltip);
+					position: absolute;
+					top: 100%;
+					left: 50%;
+					transform: translateX(-50%);
+					background: #374151;
+					color: white;
+					padding: 6px 8px;
+					border-radius: 4px;
+					font-size: 12px;
+					white-space: nowrap;
+					opacity: 0;
+					pointer-events: none;
+					transition: opacity 0.2s ease;
+					margin-top: 8px;
+					z-index: 1000;
+				}
+
+				.image-editor-toolbar button[data-tooltip]:hover::after {
+					opacity: 1;
+				}
+
+				/* Also add tooltip styles for stroke size buttons */
+				.stroke-size-container button[data-tooltip] {
+					position: relative;
+				}
+
+				.stroke-size-container button[data-tooltip]::after {
+					content: attr(data-tooltip);
+					position: absolute;
+					top: 100%;
+					left: 50%;
+					transform: translateX(-50%);
+					background: #374151;
+					color: white;
+					padding: 6px 8px;
+					border-radius: 4px;
+					font-size: 12px;
+					white-space: nowrap;
+					opacity: 0;
+					pointer-events: none;
+					transition: opacity 0.2s ease;
+					margin-top: 8px;
+					z-index: 1000;
+				}
+
+				.stroke-size-container button[data-tooltip]:hover::after {
+					opacity: 1;
+				}
+			`;
+			document.head.appendChild(style);
+		}
 	}
 }

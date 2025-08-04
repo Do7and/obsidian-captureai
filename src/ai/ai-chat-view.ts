@@ -1,12 +1,21 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIManager, AIMessage, AIConversation } from './ai-manager';
+import { ChatHistoryModal } from '../ui/chat-history-modal';
 
 export const AI_CHAT_VIEW_TYPE = 'ai-chat';
 
 export class AIChatView extends ItemView {
 	private plugin: ImageCapturePlugin;
 	private aiManager: AIManager;
+	
+	// Auto-save management
+	private autoSaveTimer: NodeJS.Timeout | null = null;
+	// 使用设置中的间隔时间，默认30秒
+	private autoSaveInterval = 30000; // 将在onOpen中更新
+	private lastAutoSaveContent: string | null = null;
+	private lastAutoSaveTime = 0;
+	private currentConversationId: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: ImageCapturePlugin) {
 		super(leaf);
@@ -27,11 +36,22 @@ export class AIChatView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
+		// 使用设置中的自动保存间隔，如果未设置则默认为30秒
+		this.autoSaveInterval = (this.plugin.settings.autoSaveInterval || 30) * 1000;
 		this.updateContent();
 	}
 
 	updateContent(): void {
 		const container = this.containerEl.children[1] as HTMLElement;
+		
+		// Save current image queue before clearing container
+		let savedImageQueue: any[] = [];
+		const oldInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
+		if (oldInputArea && (oldInputArea as any)._currentImageDataList) {
+			savedImageQueue = [...(oldInputArea as any)._currentImageDataList];
+			console.log('Saved image queue:', savedImageQueue.length, 'images');
+		}
+		
 		container.empty();
 		container.addClass('ai-chat-container');
 
@@ -51,13 +71,53 @@ export class AIChatView extends ItemView {
 		if (!conversation || conversation.messages.length === 0) {
 			// Show enhanced empty state similar to reference image
 			this.renderEmptyState(chatArea);
+			// Clear auto-save timer for empty conversations
+			this.clearAutoSaveTimer();
 		} else {
 			// Show conversation
 			this.renderConversation(chatArea, conversation);
+			
+			// Start auto-save timer for active conversations
+			this.startAutoSaveTimer();
+			
+			// Track current conversation ID
+			this.currentConversationId = conversation.id;
 		}
 
 		// Always add input area for text-only conversations
 		this.createInputArea(container, conversation);
+		
+		// Restore saved image queue
+		if (savedImageQueue.length > 0) {
+			const newInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
+			if (newInputArea) {
+				(newInputArea as any)._currentImageDataList = savedImageQueue;
+				const imagePreviewArea = (newInputArea as any)._imagePreviewArea as HTMLElement;
+				if (imagePreviewArea) {
+					imagePreviewArea.style.display = 'block';
+					this.renderImagePreviews(imagePreviewArea, savedImageQueue, newInputArea);
+					console.log('Restored image queue:', savedImageQueue.length, 'images');
+				}
+			}
+		}
+	}
+
+	// Method to add image to queue from external sources (like image editor)
+	addImageToQueue(imageDataUrl: string, fileName: string, localPath?: string | null): void {
+		const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
+		if (!inputArea) {
+			console.error('Input area not found');
+			return;
+		}
+		
+		// Check if input area has the required properties
+		if (!(inputArea as any)._imagePreviewArea) {
+			console.error('Image preview area not initialized');
+			return;
+		}
+		
+		// Show image preview by adding to the current image list with local path support
+		this.showImagePreview(imageDataUrl, fileName, localPath);
 	}
 
 	private renderEmptyState(chatArea: HTMLElement): void {
@@ -116,9 +176,16 @@ export class AIChatView extends ItemView {
 		}
 	}
 
-	private startNewConversation(): void {
+	private async startNewConversation(): Promise<void> {
+		// Perform final auto-save before starting new conversation
+		await this.performFinalAutoSave();
+		
+		// Reset last saved content for new conversation
+		this.lastAutoSaveContent = null;
+		
 		// Clear current conversation and start fresh
 		this.aiManager.cleanup();
+		this.currentConversationId = null;
 		this.updateContent();
 	}
 
@@ -209,6 +276,37 @@ export class AIChatView extends ItemView {
 		messagesContainer.scrollTop = messagesContainer.scrollHeight;
 	}
 
+	private formatImagePath(localPath: string | null): string | null {
+		if (!localPath) return null;
+		
+		// If user wants relative paths, just return the path as is
+		if (this.plugin.settings.useRelativePath) {
+			return localPath;
+		}
+		
+		// If user wants absolute paths, convert to vault absolute path
+		// For now, we keep it simple and just return the relative path with vault prefix
+		// In a real implementation, you might want to get the actual vault path
+		return localPath;
+	}
+
+	private getVaultResourceUrl(path: string | null): string | null {
+		if (!path) return null;
+		
+		try {
+			// Try to get the file from the vault
+			const file = this.plugin.app.vault.getAbstractFileByPath(path);
+			if (file) {
+				// Get the resource path that Obsidian can use to display the image
+				return this.plugin.app.vault.getResourcePath(file as any);
+			}
+		} catch (error) {
+			console.warn('Failed to get vault resource URL for path:', path, error);
+		}
+		
+		return null;
+	}
+
 	private renderMessage(container: HTMLElement, message: AIMessage): void {
 		const messageEl = container.createEl('div', { 
 			cls: `ai-chat-message ai-chat-message-${message.type}` 
@@ -243,13 +341,68 @@ export class AIChatView extends ItemView {
 
 		// Show image if present
 		if (message.image) {
-			const imageEl = messageContent.createEl('img', { 
-				cls: 'ai-chat-message-image',
-				attr: { src: message.image, alt: 'Screenshot' }
-			});
-			imageEl.addEventListener('click', () => {
-				this.showImageModal(message.image!);
-			});
+			// Check if there are multiple images
+			const allImages = (message as any).images;
+			if (allImages && allImages.length > 1) {
+				// Display all images in a grid
+				const imagesContainer = messageContent.createEl('div', { cls: 'ai-chat-message-images-grid' });
+				
+				allImages.forEach((imageData: any, index: number) => {
+					const imageWrapper = imagesContainer.createEl('div', { cls: 'ai-chat-message-image-wrapper' });
+					
+					// Use dataUrl for display in chat, as local paths need special handling in Obsidian
+					let imageSrc = imageData.dataUrl;
+					if (!imageSrc && imageData.localPath) {
+						// If no dataUrl available, try to get vault resource URL
+						imageSrc = this.getVaultResourceUrl(imageData.localPath) || imageData.localPath;
+					}
+					
+					const imageEl = imageWrapper.createEl('img', { 
+						cls: 'ai-chat-message-image',
+						attr: { src: imageSrc, alt: imageData.fileName || 'Image' }
+					});
+					
+					// For modal display, prefer dataUrl, fallback to local path
+					imageEl.addEventListener('click', () => {
+						const modalSrc = imageData.dataUrl || imageSrc;
+						this.showImageModal(modalSrc);
+					});
+					
+					// Add filename label
+					const fileNameEl = imageWrapper.createEl('div', { 
+						cls: 'ai-chat-message-image-filename',
+						text: imageData.fileName || `Image ${index + 1}`
+					});
+				});
+			} else {
+				// Single image - prioritize dataUrl for display
+				const singleImageData = (message as any).imageData;
+				let imageSrc = message.image;
+				
+				// Prefer dataUrl if available in imageData or images array
+				if (singleImageData && singleImageData.dataUrl) {
+					imageSrc = singleImageData.dataUrl;
+				} else if ((message as any).images && (message as any).images[0] && (message as any).images[0].dataUrl) {
+					imageSrc = (message as any).images[0].dataUrl;
+				} else if (message.image && message.image.startsWith('data:')) {
+					imageSrc = message.image;
+				} else {
+					// Try to get vault resource URL for local paths
+					imageSrc = this.getVaultResourceUrl(message.image) || message.image;
+				}
+					
+				const imageEl = messageContent.createEl('img', { 
+					cls: 'ai-chat-message-image',
+					attr: { src: imageSrc, alt: 'Screenshot' }
+				});
+				imageEl.addEventListener('click', () => {
+					// For modal, prefer dataUrl if available, otherwise use current src
+					const modalSrc = singleImageData?.dataUrl || 
+									((message as any).images && (message as any).images[0]?.dataUrl) || 
+									imageSrc;
+					this.showImageModal(modalSrc!);
+				});
+			}
 		}
 
 		// Show text content or typing indicator
@@ -343,15 +496,33 @@ export class AIChatView extends ItemView {
 				const element = node as Element;
 				
 				if (element.tagName === 'IMG') {
-					// Convert image to markdown
+					// Convert image to markdown - use local path if available
 					const src = element.getAttribute('src');
 					const alt = element.getAttribute('alt') || 'image';
 					if (src) {
-						// For data URLs, include them directly
-						if (src.startsWith('data:')) {
-							markdown += `![${alt}](${src})`;
+						// Check if this image has a local path in our message data
+						const allImages = (message as any).images;
+						if (allImages && allImages.length > 0) {
+							// Find matching image data
+							const imageData = allImages.find((img: any) => 
+								img.dataUrl === src || 
+								(img.localPath && this.getVaultResourceUrl(img.localPath) === src)
+							);
+							if (imageData && imageData.localPath) {
+								// Use standard Markdown format with local path
+								markdown += `![${alt}](${imageData.localPath})`;
+							} else {
+								// Fallback to src (might be dataUrl)
+								markdown += `![${alt}](${src})`;
+							}
 						} else {
-							markdown += `![${alt}](${src})`;
+							// Single image case
+							const singleImageData = (message as any).imageData;
+							if (singleImageData && singleImageData.localPath) {
+								markdown += `![${alt}](${singleImageData.localPath})`;
+							} else {
+								markdown += `![${alt}](${src})`;
+							}
 						}
 					}
 				} else if (element.tagName === 'BR') {
@@ -379,10 +550,23 @@ export class AIChatView extends ItemView {
 		// If the selection includes the message's image and no image was processed above
 		if (message.image && !markdown.includes('![')) {
 			const selectedText = selection.toString().trim();
+			// Try to get local path for fallback
+			const singleImageData = (message as any).imageData;
+			const allImages = (message as any).images;
+			
+			let imagePath = message.image; // fallback to base64
+			
+			// Try to get local path
+			if (allImages && allImages.length > 0 && allImages[0].localPath) {
+				imagePath = allImages[0].localPath;
+			} else if (singleImageData && singleImageData.localPath) {
+				imagePath = singleImageData.localPath;
+			}
+				
 			if (selectedText) {
-				markdown = `![Screenshot](${message.image})\n\n${markdown}`;
+				markdown = `![Screenshot](${imagePath})\n\n${markdown}`;
 			} else {
-				markdown = `![Screenshot](${message.image})`;
+				markdown = `![Screenshot](${imagePath})`;
 			}
 		}
 
@@ -418,6 +602,67 @@ export class AIChatView extends ItemView {
 	private createInputArea(container: HTMLElement, conversation: AIConversation | null): void {
 		const inputArea = container.createEl('div', { cls: 'ai-chat-input-area' });
 
+		// Top action bar (above drag zone) with reduced spacing
+		const topActionBar = inputArea.createEl('div', { cls: 'ai-chat-top-action-bar' });
+		
+		// Only right side action buttons (all three buttons right-aligned)
+		const rightActions = topActionBar.createEl('div', { cls: 'ai-chat-right-actions-top' });
+		
+		// Save button with Lucide save icon
+		const saveBtn = rightActions.createEl('button', { 
+			cls: 'ai-chat-action-btn',
+			attr: { 
+				title: 'Save',
+				'data-tooltip': 'Save'
+			}
+		});
+		saveBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>`;
+		
+		// Chat History button with Lucide history icon
+		const historyBtn = rightActions.createEl('button', { 
+			cls: 'ai-chat-action-btn',
+			attr: { 
+				title: 'Chat History',
+				'data-tooltip': 'Chat History'
+			}
+		});
+		historyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`;
+		
+		// New chat button with Lucide plus icon
+		const newChatBtn = rightActions.createEl('button', { 
+			cls: 'ai-chat-action-btn',
+			attr: { 
+				title: 'New Chat',
+				'data-tooltip': 'New Chat'
+			}
+		});
+		newChatBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+		
+		// Menu button with Lucide more-vertical icon
+		const menuBtn = rightActions.createEl('button', { 
+			cls: 'ai-chat-action-btn',
+			attr: { 
+				title: 'Menu',
+				'data-tooltip': 'Menu'
+			}
+		});
+		menuBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>`;
+		
+		// Handle new chat button click
+		newChatBtn.addEventListener('click', async () => {
+			await this.startNewConversation();
+		});
+
+		// Handle save button click
+		saveBtn.addEventListener('click', async () => {
+			await this.saveConversation();
+		});
+
+		// Handle history button click
+		historyBtn.addEventListener('click', async () => {
+			await this.showHistoryModal();
+		});
+
 		// Image preview area (initially hidden)
 		const imagePreviewArea = inputArea.createEl('div', { cls: 'ai-chat-image-preview-area' });
 		imagePreviewArea.style.display = 'none';
@@ -427,17 +672,25 @@ export class AIChatView extends ItemView {
 		const dropZoneContent = dropZone.createEl('div', { cls: 'ai-chat-drop-zone-content' });
 		
 		const dropIcon = dropZoneContent.createEl('span', { cls: 'ai-chat-drop-zone-icon' });
-		dropIcon.innerHTML = '🖼️';
+		dropIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>`;
 		
 		const dropText = dropZoneContent.createEl('span');
-		dropText.innerHTML = 'Drag images here or <span class="file-picker-link">browse files</span>';
+		dropText.innerHTML = 'Drag images here or ';
 		
-		// Click to browse files
-		dropZone.addEventListener('click', () => {
+		// Create clickable "browse files" link
+		const browseLink = dropZoneContent.createEl('span', { 
+			cls: 'file-picker-link',
+			text: 'browse files'
+		});
+		
+		// Only the browse link should be clickable
+		browseLink.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
 			this.showFilePicker();
 		});
 
-		// Main input container with embedded send button (like your reference image)
+		// Main input container (now without embedded send button)
 		const inputContainer = inputArea.createEl('div', { cls: 'ai-chat-input-container' });
 		
 		// Text input 
@@ -449,32 +702,18 @@ export class AIChatView extends ItemView {
 			}
 		});
 
-		// Send button embedded in input
-		const sendButton = inputContainer.createEl('button', { 
-			cls: 'ai-chat-send-button-embedded',
-			attr: { title: 'Send message' }
-		});
-		sendButton.innerHTML = '↗';
-
-		// Bottom row with model selector
+		// Bottom row with model selector and send button
 		const bottomRow = inputArea.createEl('div', { cls: 'ai-chat-bottom-row' });
 		
 		// Model selector with upward popup
 		const modelSelectorContainer = bottomRow.createEl('div', { cls: 'model-selector-container' });
 		this.createModelSelector(modelSelectorContainer);
-		
-		// Right side actions
-		const rightActions = bottomRow.createEl('div', { cls: 'ai-chat-right-actions' });
-		const chatButton = rightActions.createEl('button', { 
-			text: 'chat',
-			cls: 'ai-chat-action-secondary',
-			attr: { title: 'Start new chat' }
-		});
 
-		// Handle chat button click
-		chatButton.addEventListener('click', () => {
-			this.startNewConversation();
+		// Send button (moved to bottom row, no tooltip)
+		const sendButton = bottomRow.createEl('button', { 
+			cls: 'ai-chat-send-button-bottom'
 		});
+		sendButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9 22,2"/></svg>`;
 
 		// Setup drag and drop on the entire input area
 		this.setupDragAndDrop(inputArea);
@@ -499,9 +738,12 @@ export class AIChatView extends ItemView {
 
 			try {
 				if (imageDataList.length > 0) {
-					// Send images with optional text - for now, send first image (can be enhanced for multi-image)
-					const firstImage = imageDataList[0];
-					await this.plugin.sendImageToAI(firstImage.dataUrl, message || 'Please analyze this image', firstImage.fileName);
+					// Send all images with optional text, preserving local paths
+					await this.plugin.sendImagesToAI(imageDataList.map((img: any) => ({
+						dataUrl: img.dataUrl,
+						fileName: img.fileName,
+						localPath: img.localPath
+					})), message || 'Please analyze these images');
 				} else if (conversation && conversation.messages.length > 0) {
 					// Follow-up text message in existing conversation
 					await this.sendFollowUpMessage(conversation, message);
@@ -631,7 +873,16 @@ export class AIChatView extends ItemView {
 			if (file) {
 				try {
 					const dataUrl = await this.fileToDataUrl(file);
-					this.showImagePreview(dataUrl, file.name);
+					
+					// Check if the file is already in the vault
+					const vault = this.plugin.app.vault;
+					let localPath: string | null = null;
+					
+					// Try to check if it's a vault file (this is tricky with file picker)
+					// For now, we'll treat all browse files as external and save them
+					localPath = await this.saveExternalImageToVault(dataUrl, file.name);
+					
+					this.showImagePreview(dataUrl, file.name, localPath);
 				} catch (error) {
 					console.error('Failed to process selected image:', error);
 					new Notice(`Failed to process image: ${error.message}`);
@@ -655,7 +906,14 @@ export class AIChatView extends ItemView {
 		const headerEl = previewContainer.createEl('div', { cls: 'preview-header' });
 		headerEl.createEl('span', { text: `${imageDataList.length} image${imageDataList.length > 1 ? 's' : ''} ready to send`, cls: 'preview-count' });
 		
-		const clearAllBtn = headerEl.createEl('button', { text: 'Clear All', cls: 'clear-all-btn' });
+		const clearAllBtn = headerEl.createEl('button', { 
+			cls: 'ai-chat-action-btn',
+			attr: { 
+				title: 'Clear All',
+				'data-tooltip': 'Clear All'
+			}
+		});
+		clearAllBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c0 1 1 2 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
 		clearAllBtn.addEventListener('click', () => {
 			this.clearImagePreview(inputArea);
 		});
@@ -679,9 +937,12 @@ export class AIChatView extends ItemView {
 			const infoOverlay = imageItem.createEl('div', { cls: 'image-info-overlay' });
 			infoOverlay.createEl('span', { text: imageData.fileName, cls: 'image-filename-overlay' });
 			
-			const removeBtn = infoOverlay.createEl('button', { text: '×', cls: 'remove-single-image-btn' });
+			// Create remove button directly on imageItem, not in infoOverlay
+			const removeBtn = imageItem.createEl('button', { cls: 'remove-single-image-btn' });
+			removeBtn.innerHTML = '✕'; // Use heavy multiplication X (更粗的斜十字)
 			removeBtn.title = 'Remove this image';
 			removeBtn.addEventListener('click', (e) => {
+				e.preventDefault();
 				e.stopPropagation();
 				this.removeImageFromPreview(imageData.id, inputArea);
 			});
@@ -697,15 +958,22 @@ export class AIChatView extends ItemView {
 		this.renderImagePreviews(imagePreviewArea, filteredList, inputArea);
 	}
 
-	private showImagePreview(dataUrl: string, fileName: string): void {
+	private showImagePreview(dataUrl: string, fileName: string, localPath?: string | null): void {
 		const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
 		if (!inputArea) return;
 
 		const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
+		if (!imagePreviewArea) return;
+		
 		const imageDataList = (inputArea as any)._currentImageDataList || [];
 		
-		// Add new image to the list
-		const newImageData = { dataUrl, fileName, id: Date.now().toString() };
+		// Add new image to the list with local path support
+		const newImageData = { 
+			dataUrl, 
+			fileName, 
+			id: Date.now().toString(),
+			localPath: localPath || null  // Store local path if available
+		};
 		imageDataList.push(newImageData);
 		(inputArea as any)._currentImageDataList = imageDataList;
 		
@@ -766,6 +1034,28 @@ export class AIChatView extends ItemView {
 
 			if (!e.dataTransfer) return;
 
+			// First, try to handle Obsidian internal drag (from markdown files, etc.)
+			try {
+				const dragData = e.dataTransfer.getData('text/plain');
+				console.log('Drag data received:', dragData);
+				
+				if (dragData) {
+					// Check if it's a vault file reference
+					const vaultFile = await this.handleVaultFileDrop(dragData);
+					if (vaultFile && vaultFile.type.startsWith('image/')) {
+						console.log('Successfully processed vault file:', vaultFile.name);
+						const dataUrl = await this.fileToDataUrl(vaultFile);
+						// Extract the file path from the vault file processing
+						const filePath = this.extractFilePathFromDragData(dragData);
+						this.showImagePreview(dataUrl, vaultFile.name, filePath);
+						return; // Successfully handled as vault file, exit early
+					}
+				}
+			} catch (error) {
+				console.log('Vault file processing failed, trying external files:', error);
+			}
+
+			// If vault file processing failed, try external files
 			const files = e.dataTransfer.files;
 			if (!files || files.length === 0) return;
 
@@ -778,10 +1068,12 @@ export class AIChatView extends ItemView {
 			}
 
 			try {
-				// Process all image files
+				// Process all external image files and save them to vault
 				for (const file of imageFiles) {
 					const dataUrl = await this.fileToDataUrl(file);
-					this.showImagePreview(dataUrl, file.name);
+					// Save external image to vault to get local path
+					const localPath = await this.saveExternalImageToVault(dataUrl, file.name);
+					this.showImagePreview(dataUrl, file.name, localPath);
 				}
 			} catch (error) {
 				console.error('Failed to process dropped images:', error);
@@ -804,6 +1096,93 @@ export class AIChatView extends ItemView {
 		};
 	}
 
+	private async saveExternalImageToVault(dataUrl: string, fileName: string): Promise<string | null> {
+		try {
+			// Convert dataUrl to binary data
+			const base64Data = dataUrl.replace(/^data:image\/[^;]+;base64,/, "");
+			const binaryData = atob(base64Data);
+			const bytes = new Uint8Array(binaryData.length);
+			for (let i = 0; i < binaryData.length; i++) {
+				bytes[i] = binaryData.charCodeAt(i);
+			}
+			
+			// Save to plugin's configured other source location
+			const vault = this.plugin.app.vault;
+			const adapter = vault.adapter;
+			
+			// Use plugin's other source save location
+			const saveLocation = this.plugin.settings.otherSourceImageLocation || 'screenshots-capture/othersourceimage';
+			
+			// Ensure save directory exists
+			if (!await adapter.exists(saveLocation)) {
+				await vault.createFolder(saveLocation);
+			}
+			
+			// Generate unique filename to avoid conflicts
+			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+			const extension = fileName.split('.').pop() || 'png';
+			const baseName = fileName.replace(/\.[^/.]+$/, ''); // Remove extension
+			const uniqueFileName = `${baseName}-${timestamp}.${extension}`;
+			const savePath = `${saveLocation}/${uniqueFileName}`;
+			
+			// Write file to vault
+			await vault.adapter.writeBinary(savePath, bytes.buffer);
+			
+			console.log('External image saved to vault:', savePath);
+			return savePath;
+			
+		} catch (error: any) {
+			console.error('Failed to save external image to vault:', error);
+			return null;
+		}
+	}
+
+	private extractFilePathFromDragData(dragData: string): string | null {
+		if (!dragData) return null;
+		
+		let filePath = dragData;
+		
+		// Handle obsidian:// protocol URLs
+		if (filePath.startsWith('obsidian://open?')) {
+			const url = new URL(filePath);
+			const fileParam = url.searchParams.get('file');
+			if (fileParam) {
+				filePath = decodeURIComponent(fileParam);
+				console.log('Extracted file path from obsidian URL:', filePath);
+			}
+		}
+		// Remove any other URL encoding or special formatting
+		else if (filePath.startsWith('file://')) {
+			filePath = decodeURIComponent(filePath.replace('file://', ''));
+		}
+		
+		// Remove any markdown link formatting like [[filename]] or ![[filename]]
+		filePath = filePath.replace(/^!?\[\[/, '').replace(/\]\]$/, '');
+		
+		// Clean up the path
+		filePath = filePath.trim();
+		
+		// Try to find the file in the vault to get the correct path
+		const vault = this.plugin.app.vault;
+		const abstractFile = vault.getAbstractFileByPath(filePath);
+		
+		if (abstractFile) {
+			return abstractFile.path;
+		}
+		
+		// Try to find by name if full path didn't work
+		const fileName = filePath.split('/').pop() || filePath;
+		const allFiles = vault.getFiles();
+		const foundFile = allFiles.find(file => 
+			file.name === fileName || 
+			file.name === filePath ||
+			file.path === filePath ||
+			file.path.endsWith(filePath)
+		);
+		
+		return foundFile ? foundFile.path : filePath;
+	}
+
 	private async handleVaultFileDrop(data: string): Promise<File | null> {
 		try {
 			console.log('Attempting to resolve vault file from data:', data);
@@ -811,8 +1190,17 @@ export class AIChatView extends ItemView {
 			// Try different ways to parse the file path
 			let filePath = data;
 			
-			// Remove any URL encoding or special formatting
-			if (filePath.startsWith('file://')) {
+			// Handle obsidian:// protocol URLs
+			if (filePath.startsWith('obsidian://open?')) {
+				const url = new URL(filePath);
+				const fileParam = url.searchParams.get('file');
+				if (fileParam) {
+					filePath = decodeURIComponent(fileParam);
+					console.log('Extracted file path from obsidian URL:', filePath);
+				}
+			}
+			// Remove any other URL encoding or special formatting
+			else if (filePath.startsWith('file://')) {
 				filePath = decodeURIComponent(filePath.replace('file://', ''));
 			}
 			
@@ -1366,6 +1754,46 @@ export class AIChatView extends ItemView {
 					object-fit: contain;
 				}
 
+				.ai-chat-message-images-grid {
+					display: grid;
+					grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+					gap: 12px;
+					margin-bottom: 8px;
+				}
+
+				.ai-chat-message-image-wrapper {
+					display: flex;
+					flex-direction: column;
+					align-items: center;
+					gap: 4px;
+				}
+
+				.ai-chat-message-image-wrapper .ai-chat-message-image {
+					width: 100%;
+					max-width: 180px;
+					max-height: 180px;
+					margin-bottom: 0;
+				}
+
+				.ai-chat-message-image-filename {
+					font-size: 10px;
+					color: var(--text-muted);
+					text-align: center;
+					word-break: break-all;
+					max-width: 180px;
+				}
+
+				.ai-chat-image-count-indicator {
+					font-size: 11px;
+					color: var(--text-muted);
+					background: var(--background-modifier-border);
+					padding: 2px 6px;
+					border-radius: 10px;
+					margin-top: 4px;
+					display: inline-block;
+					font-weight: 500;
+				}
+
 				.ai-chat-message-text {
 					line-height: 1.4;
 				}
@@ -1438,27 +1866,104 @@ export class AIChatView extends ItemView {
 
 				.ai-chat-input-area {
 					border-top: 1px solid var(--background-modifier-border);
-					padding: 16px;
+					padding: 2px 4px 4px 4px;
 				}
 
-				/* Drag and drop zone (restored original design) */
-				.ai-chat-drop-zone {
-					border: 2px dashed var(--background-modifier-border);
-					border-radius: 8px;
-					padding: 16px;
-					margin-bottom: 12px;
-					text-align: center;
-					transition: all 0.2s ease;
+				/* Top action bar */
+				.ai-chat-top-action-bar {
+					display: flex;
+					justify-content: flex-end;
+					align-items: center;
+					margin-bottom: 2px;
+					padding: 0;
+				}
+
+				.ai-chat-right-actions-top {
+					display: flex;
+					gap: 4px;
+				}
+
+				.ai-chat-action-btn {
+					background: transparent !important;
+					border: none !important;
+					outline: none !important;
+					box-shadow: none !important;
+					font-size: 16px;
+					padding: 8px;
+					border-radius: 0;
 					cursor: pointer;
+					transition: color 0.2s ease;
+					color: #9CA3AF !important; /* Ensure gray color is applied with !important */
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					min-width: 32px;
+					height: 32px;
+					position: relative;
+				}
+
+				.ai-chat-action-btn:hover {
+					color: #1F2937 !important; /* Darker black on hover */
+					background: transparent !important;
+					border: none !important;
+					box-shadow: none !important;
+				}
+
+				.ai-chat-action-btn:focus {
+					outline: none !important;
+					border: none !important;
+					box-shadow: none !important;
+				}
+
+				.theme-dark .ai-chat-action-btn {
+					color: #6B7280 !important; /* Lighter gray for dark theme with !important */
+				}
+
+				.theme-dark .ai-chat-action-btn:hover {
+					color: #F9FAFB !important; /* Light color on hover in dark theme */
+				}
+
+				/* Tooltip styles */
+				.ai-chat-action-btn::after {
+					content: attr(data-tooltip);
+					position: absolute;
+					bottom: 100%;
+					left: 50%;
+					transform: translateX(-50%);
+					background: #374151;
+					color: white;
+					padding: 6px 8px;
+					border-radius: 4px;
+					font-size: 12px;
+					white-space: nowrap;
+					opacity: 0;
+					pointer-events: none;
+					transition: opacity 0.2s ease;
+					margin-bottom: 8px;
+					z-index: 1000;
+				}
+
+				.ai-chat-action-btn:hover::after {
+					opacity: 1;
+				}
+
+				/* Drag and drop zone - ultra minimalist */
+				.ai-chat-drop-zone {
+					border: 2px dashed #E5E7EB;
+					border-radius: 4px;
+					padding: 6px;
+					margin-bottom: 2px;
+					text-align: center;
+					transition: border-color 0.2s ease;
+					background: transparent;
 				}
 
 				.ai-chat-drop-zone:hover {
-					border-color: var(--interactive-accent);
-					background: var(--background-modifier-hover);
+					border-color: #9CA3AF;
 				}
 
 				.ai-chat-drop-zone-active {
-					border-color: var(--interactive-accent) !important;
+					border: 2px dashed var(--interactive-accent) !important;
 					background: var(--background-modifier-border) !important;
 					transform: scale(1.02);
 				}
@@ -1486,21 +1991,26 @@ export class AIChatView extends ItemView {
 					text-decoration: underline;
 				}
 
-				/* Input container with embedded send button */
+				/* Input container - completely borderless */
 				.ai-chat-input-container {
 					position: relative;
 					display: flex;
 					align-items: flex-end;
-					background: var(--background-primary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 8px;
-					padding: 12px;
-					margin-bottom: 12px;
+					background: transparent;
+					border: none !important;
+					outline: none !important;
+					border-radius: 0;
+					padding: 8px 4px;
+					margin-bottom: 2px;
+					transition: none;
+					box-shadow: none !important;
+					min-height: 60px;
 				}
 
 				.ai-chat-input-container:focus-within {
-					border-color: var(--interactive-accent);
-					box-shadow: 0 0 0 1px var(--interactive-accent);
+					border: none !important;
+					outline: none !important;
+					box-shadow: none !important;
 				}
 
 				.ai-chat-input {
@@ -1510,32 +2020,38 @@ export class AIChatView extends ItemView {
 					background: transparent;
 					color: var(--text-normal);
 					font-family: inherit;
-					font-size: 14px;
-					line-height: 1.4;
+					font-size: 16px;
+					line-height: 1.6;
 					resize: none;
-					min-height: 20px;
-					max-height: 120px;
+					min-height: 80px;
+					max-height: 200px;
 					overflow-y: auto;
-					padding-right: 40px; /* Space for send button */
+					padding-right: 8px; /* Reduced padding since send button moved */
 				}
 
 				.ai-chat-input::placeholder {
-					color: var(--text-muted);
+					color: #D1D5DB; /* Lighter gray for placeholder text */
 				}
 
-				/* Embedded send button */
+				.theme-dark .ai-chat-input::placeholder {
+					color: #6B7280; /* Appropriate gray for dark theme */
+				}
+
+				/* Send button - completely borderless */
 				.ai-chat-send-button-embedded {
 					position: absolute;
 					right: 8px;
 					bottom: 8px;
-					background: var(--interactive-accent);
-					border: none;
-					color: var(--text-on-accent);
+					background: transparent !important;
+					border: none !important;
+					outline: none !important;
+					box-shadow: none !important;
+					color: #D1D5DB; /* Lighter gray default */
 					font-size: 16px;
 					padding: 6px;
-					border-radius: 4px;
+					border-radius: 0;
 					cursor: pointer;
-					transition: all 0.2s ease;
+					transition: color 0.2s ease;
 					display: flex;
 					align-items: center;
 					justify-content: center;
@@ -1544,19 +2060,104 @@ export class AIChatView extends ItemView {
 				}
 
 				.ai-chat-send-button-embedded:hover:not(:disabled) {
-					background: var(--interactive-accent-hover);
+					color: #1F2937 !important; /* Darker black on hover */
+					background: transparent !important;
+					border: none !important;
+					outline: none !important;
+					box-shadow: none !important;
+				}
+
+				.ai-chat-send-button-embedded:focus {
+					outline: none !important;
+					border: none !important;
+					box-shadow: none !important;
+				}
+
+				.theme-dark .ai-chat-send-button-embedded {
+					color: #6B7280; /* Lighter gray for dark theme */
+				}
+
+				.theme-dark .ai-chat-send-button-embedded:hover:not(:disabled) {
+					color: #F9FAFB; /* Light color on hover in dark theme */
 				}
 
 				.ai-chat-send-button-embedded:disabled {
-					background: var(--text-muted);
+					color: #9CA3AF; /* Slightly darker when disabled */
 					cursor: not-allowed;
 				}
 
-				/* Bottom row */
+				/* Send button tooltip */
+				.ai-chat-send-button-embedded::after {
+					content: "Send message (Enter)";
+					position: absolute;
+					bottom: 100%;
+					right: 0;
+					background: #374151;
+					color: white;
+					padding: 6px 8px;
+					border-radius: 4px;
+					font-size: 12px;
+					white-space: nowrap;
+					opacity: 0;
+					pointer-events: none;
+					transition: opacity 0.2s ease;
+					margin-bottom: 8px;
+					z-index: 1000;
+				}
+
+				.ai-chat-send-button-embedded:hover::after {
+					opacity: 1;
+				}
+
+				/* Bottom row - revised layout */
 				.ai-chat-bottom-row {
 					display: flex;
-					justify-content: space-between;
 					align-items: center;
+					justify-content: space-between;
+					padding: 0 1px;
+					margin-top: 1px;
+				}
+
+				.model-selector-container {
+					flex: 1;
+				}
+
+				/* Send button in bottom row */
+				.ai-chat-send-button-bottom {
+					background: transparent !important;
+					border: none !important;
+					outline: none !important;
+					box-shadow: none !important;
+					color: #D1D5DB; /* Lighter gray default */
+					font-size: 16px;
+					padding: 6px;
+					border-radius: 4px;
+					cursor: pointer;
+					transition: color 0.2s ease;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					width: 32px;
+					height: 32px;
+					margin-left: 8px;
+				}
+
+				.ai-chat-send-button-bottom:hover:not(:disabled) {
+					color: #1F2937 !important; /* Darker black on hover */
+					background: transparent !important;
+				}
+
+				.theme-dark .ai-chat-send-button-bottom {
+					color: #6B7280; /* Lighter gray for dark theme */
+				}
+
+				.theme-dark .ai-chat-send-button-bottom:hover:not(:disabled) {
+					color: #F9FAFB !important; /* Light color on hover in dark theme */
+				}
+
+				.ai-chat-send-button-bottom:disabled {
+					color: #D1D5DB;
+					cursor: not-allowed;
 				}
 
 				.ai-chat-right-actions {
@@ -1588,20 +2189,33 @@ export class AIChatView extends ItemView {
 				.model-selector-button {
 					display: flex;
 					align-items: center;
-					gap: 6px;
-					padding: 6px 12px;
-					background: var(--background-secondary);
-					border: 1px solid var(--background-modifier-border);
+					gap: 4px;
+					padding: 4px 8px;
+					background: transparent !important;
+					border: none !important;
 					border-radius: 4px;
-					color: var(--text-muted);
+					color: #9CA3AF !important; /* Gray default with !important */
 					cursor: pointer;
-					font-size: 13px;
-					transition: all 0.2s ease;
+					font-size: 11px;
+					transition: color 0.2s ease;
+					outline: none !important;
+					box-shadow: none !important;
 				}
 
 				.model-selector-button:hover {
-					background: var(--background-modifier-hover);
-					border-color: var(--background-modifier-border-hover);
+					color: #1F2937 !important; /* Darker black on hover */
+					background: transparent !important;
+					border: none !important;
+					outline: none !important;
+					box-shadow: none !important;
+				}
+
+				.theme-dark .model-selector-button {
+					color: #6B7280 !important; /* Lighter gray for dark theme with !important */
+				}
+
+				.theme-dark .model-selector-button:hover {
+					color: #F9FAFB !important; /* Light color on hover in dark theme */
 				}
 
 				.model-dropdown-arrow {
@@ -1653,8 +2267,11 @@ export class AIChatView extends ItemView {
 					font-size: 13px;
 					color: var(--text-warning);
 					padding: 6px 12px;
-					background: var(--background-secondary);
+					background: transparent !important;
+					border: none !important;
 					border-radius: 4px;
+					outline: none !important;
+					box-shadow: none !important;
 				}
 
 				.ai-chat-input-drag-active .ai-chat-drop-zone {
@@ -1664,8 +2281,8 @@ export class AIChatView extends ItemView {
 				}
 
 				.ai-chat-image-preview-area {
-					margin-bottom: 12px;
-					padding: 12px;
+					margin-bottom: 8px;
+					padding: 8px;
 					background: var(--background-secondary);
 					border-radius: 6px;
 					border: 1px solid var(--background-modifier-border);
@@ -1674,14 +2291,14 @@ export class AIChatView extends ItemView {
 				.images-preview-container {
 					display: flex;
 					flex-direction: column;
-					gap: 12px;
+					gap: 8px;
 				}
 
 				.preview-header {
 					display: flex;
 					justify-content: space-between;
 					align-items: center;
-					padding-bottom: 8px;
+					padding-bottom: 6px;
 					border-bottom: 1px solid var(--background-modifier-border);
 				}
 
@@ -1689,21 +2306,6 @@ export class AIChatView extends ItemView {
 					font-size: 12px;
 					color: var(--text-normal);
 					font-weight: 500;
-				}
-
-				.clear-all-btn {
-					padding: 4px 8px;
-					border: 1px solid var(--interactive-critical);
-					border-radius: 3px;
-					background: var(--background-primary);
-					color: var(--interactive-critical);
-					font-size: 11px;
-					cursor: pointer;
-				}
-
-				.clear-all-btn:hover {
-					background: var(--interactive-critical);
-					color: white;
 				}
 
 				.images-grid {
@@ -1763,27 +2365,42 @@ export class AIChatView extends ItemView {
 				}
 
 				.remove-single-image-btn {
-					width: 18px;
-					height: 18px;
-					border-radius: 9px; /* Fixed radius instead of 50% to maintain perfect circle */
-					border: none;
-					background: var(--interactive-critical);
-					color: white;
+					width: 24px;
+					height: 24px;
+					border-radius: 50%;
+					border: 1px solid #9CA3AF; /* Gray border to match other buttons */
+					background: transparent !important;
+					color: #9CA3AF !important; /* Gray color to match border */
 					cursor: pointer;
-					font-size: 12px;
 					display: flex;
 					align-items: center;
 					justify-content: center;
-					line-height: 1;
-					margin-left: 4px;
-					flex-shrink: 0;
 					position: absolute;
-					top: 2px;
-					right: 2px;
+					top: 4px;
+					right: 4px;
+					z-index: 10;
+					transition: all 0.2s ease;
+					outline: none;
+					box-shadow: none;
+					font-size: 16px; /* Larger size for better visibility */
+					font-weight: normal; /* Let the symbol speak for itself */
+					line-height: 1;
+					font-family: Arial, sans-serif;
+					padding: 0;
+					margin: 0;
+					text-align: center;
+					vertical-align: middle;
 				}
 
 				.remove-single-image-btn:hover {
-					background: var(--interactive-critical-hover);
+					background: transparent !important;
+					color: #1F2937 !important; /* Dark color on hover to match other buttons */
+					border-color: #1F2937 !important; /* Dark border on hover to match text */
+				}
+
+				.remove-single-image-btn:focus {
+					outline: none !important;
+					box-shadow: none !important;
 				}
 
 				.image-preview-container {
@@ -1901,10 +2518,454 @@ export class AIChatView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		// Final auto-save before closing
+		await this.performFinalAutoSave();
+		
+		// Clear auto-save timer and reset content tracking
+		this.clearAutoSaveTimer();
+		this.lastAutoSaveContent = null;
+		
 		// Cleanup drag and drop listeners
 		const dropZone = this.containerEl.querySelector('.ai-chat-drop-zone') as HTMLElement;
 		if (dropZone && (dropZone as any)._dragCleanup) {
 			(dropZone as any)._dragCleanup();
+		}
+	}
+
+	private startAutoSaveTimer(): void {
+		// Clear existing timer
+		this.clearAutoSaveTimer();
+		
+		// Only start timer if auto-save is enabled and there's an active conversation
+		if (!this.plugin.settings.autoSaveConversations) {
+			return;
+		}
+		
+		const conversation = this.aiManager.getCurrentConversationData();
+		if (!conversation || conversation.messages.length === 0) {
+			return;
+		}
+		
+		// Set up periodic auto-save using the configured interval
+		this.autoSaveTimer = setInterval(() => {
+			this.performPeriodicAutoSave();
+		}, this.autoSaveInterval);
+		
+		console.log('Auto-save timer started for conversation:', conversation.id, 'with interval:', this.autoSaveInterval);
+	}
+	
+	private clearAutoSaveTimer(): void {
+		if (this.autoSaveTimer) {
+			clearInterval(this.autoSaveTimer);
+			this.autoSaveTimer = null;
+		}
+	}
+	
+	private async performPeriodicAutoSave(): Promise<void> {
+		try {
+			const conversation = this.aiManager.getCurrentConversationData();
+			if (!conversation || conversation.messages.length === 0) {
+				this.clearAutoSaveTimer();
+				return;
+			}
+			
+			// Check if conversation has changed since last save
+			if (conversation.id !== this.currentConversationId) {
+				// New conversation - perform final save for old one and start fresh
+				await this.performFinalAutoSave();
+				this.currentConversationId = conversation.id;
+				this.lastAutoSaveTime = 0;
+			}
+			
+			// Check if enough time has passed since last save
+			const now = Date.now();
+			if (now - this.lastAutoSaveTime < this.autoSaveInterval) {
+				return;
+			}
+			
+			// Perform auto-save with timestamp-based filename to avoid duplicates
+			await this.autoSaveConversationWithTimestamp();
+			this.lastAutoSaveTime = now;
+			
+		} catch (error) {
+			console.error('Periodic auto-save failed:', error);
+		}
+	}
+	
+	private async performFinalAutoSave(): Promise<void> {
+		try {
+			const conversation = this.aiManager.getCurrentConversationData();
+			if (!conversation || conversation.messages.length === 0) {
+				return;
+			}
+			
+			// Perform final auto-save
+			await this.autoSaveConversationWithTimestamp();
+			console.log('Final auto-save completed for conversation:', conversation.id);
+			
+		} catch (error) {
+			console.error('Final auto-save failed:', error);
+		}
+	}
+	
+	private async autoSaveConversationWithTimestamp(): Promise<void> {
+		if (!this.plugin.settings.autoSaveConversations) {
+			return;
+		}
+
+		try {
+			const conversation = this.aiManager.getCurrentConversationData();
+			if (!conversation || conversation.messages.length === 0) {
+				return;
+			}
+
+			// Use conversation ID for consistent filename - this will overwrite the same file
+			const conversationIdShort = conversation.id.slice(-8); // Last 8 chars of conversation ID
+			const fileName = `auto-saved-${conversationIdShort}.md`;
+
+			// Generate markdown content first to check for changes
+			const markdownContent = this.generateConversationMarkdown(conversation);
+			
+			// Check if content has changed since last save
+			if (this.lastAutoSaveContent && this.lastAutoSaveContent === markdownContent) {
+				console.log('Auto-save skipped: No content changes detected');
+				return;
+			}
+
+			// Get auto-save location from settings
+			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
+
+			// Ensure the directory exists
+			const vault = this.plugin.app.vault;
+			const adapter = vault.adapter;
+
+			if (!await adapter.exists(autoSaveLocation)) {
+				await vault.createFolder(autoSaveLocation);
+			}
+
+			// Construct full path
+			const fullPath = `${autoSaveLocation}/${fileName}`;
+
+			// Use modify instead of delete+create to avoid closing open files
+			const existingFile = vault.getAbstractFileByPath(fullPath);
+			if (existingFile) {
+				// File exists, modify it to avoid closing it if it's open
+				await vault.modify(existingFile as any, markdownContent);
+			} else {
+				// File doesn't exist, create it
+				await vault.create(fullPath, markdownContent);
+			}
+
+			// Update the last saved content after successful save
+			this.lastAutoSaveContent = markdownContent;
+
+			// Only clean up old auto-saved conversations periodically (every 10th save)
+			// to avoid excessive file system operations
+			if (Math.random() < 0.1) { // 10% chance
+				await this.cleanupOldAutoSavedConversations();
+			}
+
+			console.log('Auto-saved conversation to:', fullPath);
+
+		} catch (error: any) {
+			console.error('Failed to auto-save conversation with timestamp:', error);
+		}
+	}
+
+	private async saveConversation(): Promise<void> {
+		try {
+			const conversation = this.aiManager.getCurrentConversationData();
+			if (!conversation || conversation.messages.length === 0) {
+				new Notice('❌ No conversation to save');
+				return;
+			}
+
+			// Generate filename with timestamp
+			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+			const fileName = `ai-conversation-${timestamp}.md`;
+
+			// Generate markdown content
+			const markdownContent = this.generateConversationMarkdown(conversation);
+
+			// Get save location from settings
+			const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
+
+			// Ensure the directory exists
+			const vault = this.plugin.app.vault;
+			const adapter = vault.adapter;
+
+			if (saveLocation && !await adapter.exists(saveLocation)) {
+				await vault.createFolder(saveLocation);
+			}
+
+			// Construct full path
+			const fullPath = saveLocation ? `${saveLocation}/${fileName}` : fileName;
+
+			// Save the file
+			await vault.create(fullPath, markdownContent);
+
+			new Notice(`✅ Conversation saved as ${fileName}`);
+			console.log('Conversation saved to:', fullPath);
+
+		} catch (error: any) {
+			console.error('Failed to save conversation:', error);
+			new Notice(`❌ Failed to save conversation: ${error.message}`);
+		}
+	}
+
+	private async cleanupOldAutoSavedConversations(): Promise<void> {
+		try {
+			const vault = this.plugin.app.vault;
+			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
+			const maxConversations = this.plugin.settings.maxAutoSavedConversations || 10;
+
+			// Get all auto-saved conversation files
+			const autoSaveFolder = vault.getAbstractFileByPath(autoSaveLocation);
+			if (!autoSaveFolder) return;
+
+			const files = vault.getMarkdownFiles().filter(file => 
+				file.path.startsWith(autoSaveLocation) && 
+				file.name.startsWith('auto-saved-')
+			);
+
+			// Sort by creation time (newest first)
+			files.sort((a, b) => b.stat.ctime - a.stat.ctime);
+
+			// Delete excess files
+			if (files.length > maxConversations) {
+				const filesToDelete = files.slice(maxConversations);
+				for (const file of filesToDelete) {
+					await vault.delete(file);
+					console.log('Deleted old auto-saved conversation:', file.path);
+				}
+			}
+		} catch (error: any) {
+			console.error('Failed to cleanup old auto-saved conversations:', error);
+		}
+	}
+
+	private generateConversationMarkdown(conversation: AIConversation): string {
+		const timestamp = new Date().toLocaleString();
+		let markdown = `# AI Conversation\n\n`;
+		markdown += `**Created:** ${timestamp}\n`;
+		markdown += `**Title:** ${conversation.title}\n\n`;
+		markdown += `---\n\n`;
+
+		conversation.messages.forEach((message, index) => {
+			const sender = message.type === 'user' ? '👤 **User**' : '🤖 **AI Assistant**';
+			const messageTime = message.timestamp.toLocaleTimeString();
+			
+			markdown += `## ${sender} (${messageTime})\n\n`;
+
+			// Add image if present
+			if (message.image) {
+				const allImages = (message as any).images;
+				if (allImages && allImages.length > 1) {
+					// Multiple images - display all of them
+					markdown += `*[Sent ${allImages.length} images]*\n\n`;
+					allImages.forEach((imageData: any, index: number) => {
+						// Prioritize local path over dataUrl
+						let imagePath = imageData.dataUrl; // fallback
+						if (imageData.localPath) {
+							const formattedPath = this.formatImagePath(imageData.localPath);
+							if (formattedPath) {
+								imagePath = formattedPath;
+								console.log(`Using local path for image ${index + 1}:`, formattedPath);
+							}
+						}
+						
+						const fileName = imageData.fileName || `image-${index + 1}`;
+						markdown += `![${fileName}](${imagePath})\n`;
+						if (imageData.fileName) {
+							markdown += `*${imageData.fileName}*\n\n`;
+						}
+					});
+				} else {
+					// Single image - check for local path in multiple places
+					const singleImageData = (message as any).imageData;
+					const firstImageFromArray = allImages && allImages.length > 0 ? allImages[0] : null;
+					
+					let imagePath = message.image; // fallback to base64
+					let hasLocalPath = false;
+					
+					// Priority 1: Check images array first
+					if (firstImageFromArray && firstImageFromArray.localPath) {
+						const formattedPath = this.formatImagePath(firstImageFromArray.localPath);
+						if (formattedPath) {
+							imagePath = formattedPath;
+							hasLocalPath = true;
+							console.log('✅ Using local path from images array:', formattedPath);
+						}
+					}
+					// Priority 2: Check imageData property
+					else if (singleImageData && singleImageData.localPath) {
+						const formattedPath = this.formatImagePath(singleImageData.localPath);
+						if (formattedPath) {
+							imagePath = formattedPath;
+							hasLocalPath = true;
+							console.log('✅ Using local path from imageData:', formattedPath);
+						}
+					}
+					// Priority 3: Check if the message itself has localPath metadata
+					else if ((message as any).localPath) {
+						const formattedPath = this.formatImagePath((message as any).localPath);
+						if (formattedPath) {
+							imagePath = formattedPath;
+							hasLocalPath = true;
+							console.log('✅ Using local path from message:', formattedPath);
+						}
+					}
+					
+					if (!hasLocalPath && imagePath.startsWith('data:')) {
+						console.warn('⚠️ Still using base64 for image, local path not found. Message data:', {
+							hasImages: !!allImages,
+							hasImageData: !!singleImageData,
+							hasDirectLocalPath: !!(message as any).localPath,
+							messageKeys: Object.keys(message)
+						});
+					}
+					
+					markdown += `![Screenshot](${imagePath})\n\n`;
+				}
+			}
+
+			// Add text content
+			if (message.content) {
+				markdown += `${message.content}\n\n`;
+			}
+
+			markdown += `---\n\n`;
+		});
+
+		markdown += `\n*Generated by Obsidian Screenshot Capture Plugin*\n`;
+		return markdown;
+	}
+
+	private async showHistoryModal(): Promise<void> {
+		try {
+			const modal = new ChatHistoryModal(this.plugin, async (conversation: AIConversation) => {
+				await this.loadConversationIntoChat(conversation);
+			});
+			modal.open();
+		} catch (error: any) {
+			console.error('Failed to show history modal:', error);
+			new Notice(`❌ Failed to open history: ${error.message}`);
+		}
+	}
+
+	private async loadImageDataFromPath(localPath: string): Promise<string | null> {
+		try {
+			const vault = this.plugin.app.vault;
+			const file = vault.getAbstractFileByPath(localPath);
+			
+			if (!file) {
+				console.warn(`Image file not found: ${localPath}`);
+				return null;
+			}
+			
+			const buffer = await vault.readBinary(file as any);
+			const extension = localPath.split('.').pop() || 'png';
+			const mimeType = this.getMimeType(extension);
+			const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+			return `data:${mimeType};base64,${base64}`;
+			
+		} catch (error) {
+			console.error(`Failed to load image data from path ${localPath}:`, error);
+			return null;
+		}
+	}
+
+	private async restoreImageDataForMessage(message: any): Promise<void> {
+		// Process images array if present
+		if (message.images && Array.isArray(message.images)) {
+			for (const imageData of message.images) {
+				if (imageData.localPath && !imageData.dataUrl) {
+					const dataUrl = await this.loadImageDataFromPath(imageData.localPath);
+					if (dataUrl) {
+						imageData.dataUrl = dataUrl;
+						console.log(`✅ Restored dataUrl for image: ${imageData.localPath}`);
+					} else {
+						console.warn(`⚠️ Could not restore dataUrl for image: ${imageData.localPath}`);
+					}
+				}
+			}
+		}
+		
+		// Process single image data if present
+		if (message.imageData && message.imageData.localPath && !message.imageData.dataUrl) {
+			const dataUrl = await this.loadImageDataFromPath(message.imageData.localPath);
+			if (dataUrl) {
+				message.imageData.dataUrl = dataUrl;
+				console.log(`✅ Restored dataUrl for single image: ${message.imageData.localPath}`);
+			} else {
+				console.warn(`⚠️ Could not restore dataUrl for single image: ${message.imageData.localPath}`);
+			}
+		}
+		
+		// If message.image is a local path, try to restore it
+		if (message.image && !message.image.startsWith('data:') && !message.image.startsWith('http')) {
+			const dataUrl = await this.loadImageDataFromPath(message.image);
+			if (dataUrl) {
+				// Keep the original path info and add the dataUrl
+				if (!message.images) {
+					message.images = [{
+						localPath: message.image,
+						dataUrl: dataUrl,
+						fileName: message.image.split('/').pop() || 'image'
+					}];
+				}
+				// Also update the main image field for compatibility
+				message.image = dataUrl;
+				console.log(`✅ Restored dataUrl for message image: ${message.image}`);
+			} else {
+				console.warn(`⚠️ Could not restore dataUrl for message image: ${message.image}`);
+			}
+		}
+	}
+
+	private async loadConversationIntoChat(conversation: AIConversation): Promise<void> {
+		try {
+			// Create a new conversation in the AI manager based on the loaded one
+			const newConversation = this.aiManager.createNewConversation(conversation.title);
+			
+			// Copy all messages from the loaded conversation and restore image data
+			for (const message of conversation.messages) {
+				const newMessage: AIMessage = {
+					id: 'loaded_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+					type: message.type,
+					content: message.content,
+					timestamp: new Date(), // Use current time for loaded messages
+					...(message.image && { image: message.image })
+				};
+				
+				// Preserve any additional image data if present
+				if ((message as any).images) {
+					(newMessage as any).images = (message as any).images;
+				}
+				if ((message as any).imageData) {
+					(newMessage as any).imageData = (message as any).imageData;
+				}
+				// Also preserve any other image-related metadata
+				if ((message as any).localPath) {
+					(newMessage as any).localPath = (message as any).localPath;
+				}
+				
+				// Restore image dataUrl from local paths
+				await this.restoreImageDataForMessage(newMessage);
+				
+				newConversation.messages.push(newMessage);
+			}
+
+			// Update the chat view to show the loaded conversation
+			this.updateContent();
+			
+			// Reset last saved content for loaded conversation to allow initial auto-save
+			this.lastAutoSaveContent = null;
+			
+			new Notice(`✅ Loaded conversation: ${conversation.title}`);
+		} catch (error: any) {
+			console.error('Failed to load conversation:', error);
+			new Notice(`❌ Failed to load conversation: ${error.message}`);
 		}
 	}
 }
