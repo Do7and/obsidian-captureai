@@ -1,6 +1,7 @@
 import { Modal, Setting, Notice, ButtonComponent } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { ModelConfig, ModelSettings, LLM_PROVIDERS, DEFAULT_MODEL_SETTINGS } from '../types';
+import { t } from '../i18n';
 
 export class ManageModelsModal extends Modal {
 	private plugin: ImageCapturePlugin;
@@ -17,9 +18,9 @@ export class ManageModelsModal extends Modal {
 
 		// Modal header
 		const headerEl = contentEl.createEl('div', { cls: 'modal-header' });
-		headerEl.createEl('h2', { text: 'Manage Models' });
+		headerEl.createEl('h2', { text: t('ui.manageModels') });
 		headerEl.createEl('p', { 
-			text: 'Configure and manage your AI model configurations.',
+			text: t('manageModels.description'),
 			cls: 'modal-description'
 		});
 
@@ -27,12 +28,19 @@ export class ManageModelsModal extends Modal {
 		const modelsEl = contentEl.createEl('div', { cls: 'models-container' });
 
 		if (this.plugin.settings.modelConfigs.length === 0) {
-			// Empty state
+			// Simplified empty state
 			const emptyEl = modelsEl.createEl('div', { cls: 'empty-state' });
-			emptyEl.createEl('div', { text: '🤖', cls: 'empty-icon' });
-			emptyEl.createEl('h3', { text: 'No Models Configured' });
-			emptyEl.createEl('p', { text: 'Use "Set Keys" to add API keys and configure models.' });
+			
+			// Icon container
+			const iconEl = emptyEl.createEl('div', { cls: 'empty-icon' });
+			iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+			
+			// Title and description
+			emptyEl.createEl('h3', { text: t('ui.noModelsConfigured') });
+			emptyEl.createEl('p', { text: t('ui.useSetKeysToAdd') });
 		} else {
+			// Add class for styling when there are models
+			modelsEl.addClass('has-models');
 			// Render model configs
 			this.plugin.settings.modelConfigs.forEach((modelConfig, index) => {
 				this.createModelConfigItem(modelsEl, modelConfig, index);
@@ -55,37 +63,49 @@ export class ManageModelsModal extends Modal {
 		const metaEl = infoEl.createEl('div', { cls: 'model-meta' });
 		const provider = LLM_PROVIDERS.find(p => p.id === modelConfig.providerId);
 		if (provider) {
-			metaEl.createEl('span', { text: provider.displayName, cls: 'provider-badge' });
+			let providerDisplayName = provider.displayName;
+			
+			// Use custom name for custom provider if available
+			if (provider.id === 'custom') {
+				const customName = this.plugin.settings.providerCredentials[provider.id]?.customName;
+				if (customName && customName.trim()) {
+					providerDisplayName = customName.trim();
+				}
+			}
+			
+			metaEl.createEl('span', { text: t('manageModels.providerBadge', { providerName: providerDisplayName }), cls: 'provider-badge' });
 		}
 		if (modelConfig.isVisionCapable) {
-			metaEl.createEl('span', { text: 'Vision', cls: 'vision-badge' });
+			const visionIcon = metaEl.createEl('span', { cls: 'vision-badge vision-icon' });
+			// Using Lucide Eye icon with purple color
+			visionIcon.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
 		}
 		if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
-			metaEl.createEl('span', { text: 'Default', cls: 'default-badge' });
+			metaEl.createEl('span', { text: t('manageModels.defaultBadge'), cls: 'default-badge' });
 		}
 
 		// Action buttons
 		const actionsEl = headerEl.createEl('div', { cls: 'model-actions' });
 		
 		// Set as default button
-		if (modelConfig.id !== this.plugin.settings.defaultModelConfigId && modelConfig.isVisionCapable) {
-			const defaultBtn = actionsEl.createEl('button', { text: 'Set Default', cls: 'default-btn' });
+		if (modelConfig.id !== this.plugin.settings.defaultModelConfigId) {
+			const defaultBtn = actionsEl.createEl('button', { text: t('manageModels.setDefaultButton'), cls: 'default-btn' });
 			defaultBtn.addEventListener('click', async () => {
 				this.plugin.settings.defaultModelConfigId = modelConfig.id;
 				await this.plugin.saveSettings();
-				new Notice(`✅ Set ${modelConfig.name} as default model`);
+				new Notice(t('manageModels.setAsDefaultSuccess', { modelName: modelConfig.name }));
 				this.refresh();
 			});
 		}
 
 		// Delete button
-		const deleteBtn = actionsEl.createEl('button', { text: '🗑️', cls: 'delete-btn' });
-		deleteBtn.title = 'Delete this model configuration';
+		const deleteBtn = actionsEl.createEl('button', { text: t('manageModels.deleteButton'), cls: 'delete-btn' });
+		deleteBtn.title = t('manageModels.deleteButtonTitle');
 		deleteBtn.addEventListener('click', () => this.confirmDelete(modelConfig, index));
 
 		// Settings toggle button
-		const toggleBtn = actionsEl.createEl('button', { text: '⚙️', cls: 'toggle-settings-btn' });
-		toggleBtn.title = 'Configure model settings';
+		const toggleBtn = actionsEl.createEl('button', { text: t('manageModels.configureButton'), cls: 'toggle-settings-btn' });
+		toggleBtn.title = t('manageModels.configureButtonTitle');
 
 		// Expandable settings section
 		const settingsEl = itemEl.createEl('div', { cls: 'model-settings' });
@@ -115,10 +135,10 @@ export class ManageModelsModal extends Modal {
 
 		// Max Tokens
 		new Setting(settingsForm)
-			.setName('Max Tokens')
-			.setDesc('Maximum number of tokens for responses')
+			.setName(t('manageModels.maxTokensLabel'))
+			.setDesc(t('manageModels.maxTokensDescription'))
 			.addText(text => text
-				.setPlaceholder('4000')
+				.setPlaceholder(t('manageModels.maxTokensPlaceholder'))
 				.setValue(modelConfig.settings.maxTokens.toString())
 				.onChange(async (value) => {
 					const numValue = parseInt(value);
@@ -130,8 +150,8 @@ export class ManageModelsModal extends Modal {
 
 		// Temperature
 		new Setting(settingsForm)
-			.setName('Temperature')
-			.setDesc('Controls randomness (0.0 = deterministic, 1.0 = very creative)')
+			.setName(t('manageModels.temperatureLabel'))
+			.setDesc(t('manageModels.temperatureDescription'))
 			.addSlider(slider => slider
 				.setLimits(0, 1, 0.1)
 				.setValue(modelConfig.settings.temperature)
@@ -144,8 +164,8 @@ export class ManageModelsModal extends Modal {
 		// Top P
 		if (modelConfig.settings.topP !== undefined) {
 			new Setting(settingsForm)
-				.setName('Top P')
-				.setDesc('Nucleus sampling parameter')
+				.setName(t('manageModels.topPLabel'))
+				.setDesc(t('manageModels.topPDescription'))
 				.addSlider(slider => slider
 					.setLimits(0, 1, 0.1)
 					.setValue(modelConfig.settings.topP || 1)
@@ -159,8 +179,8 @@ export class ManageModelsModal extends Modal {
 		// Frequency Penalty
 		if (modelConfig.settings.frequencyPenalty !== undefined) {
 			new Setting(settingsForm)
-				.setName('Frequency Penalty')
-				.setDesc('Reduces repetition of tokens')
+				.setName(t('manageModels.frequencyPenaltyLabel'))
+				.setDesc(t('manageModels.frequencyPenaltyDescription'))
 				.addSlider(slider => slider
 					.setLimits(-2, 2, 0.1)
 					.setValue(modelConfig.settings.frequencyPenalty || 0)
@@ -174,8 +194,8 @@ export class ManageModelsModal extends Modal {
 		// Presence Penalty
 		if (modelConfig.settings.presencePenalty !== undefined) {
 			new Setting(settingsForm)
-				.setName('Presence Penalty')
-				.setDesc('Reduces repetition of topics')
+				.setName(t('manageModels.presencePenaltyLabel'))
+				.setDesc(t('manageModels.presencePenaltyDescription'))
 				.addSlider(slider => slider
 					.setLimits(-2, 2, 0.1)
 					.setValue(modelConfig.settings.presencePenalty || 0)
@@ -188,10 +208,10 @@ export class ManageModelsModal extends Modal {
 
 		// Max Response Time
 		new Setting(settingsForm)
-			.setName('Max Response Time')
-			.setDesc('Maximum time to wait for response (seconds)')
+			.setName(t('manageModels.maxResponseTimeLabel'))
+			.setDesc(t('manageModels.maxResponseTimeDescription'))
 			.addText(text => text
-				.setPlaceholder('30')
+				.setPlaceholder(t('manageModels.maxResponseTimePlaceholder'))
 				.setValue(modelConfig.settings.maxResponseTime.toString())
 				.onChange(async (value) => {
 					const numValue = parseInt(value);
@@ -203,10 +223,10 @@ export class ManageModelsModal extends Modal {
 
 		// System Prompt
 		new Setting(settingsForm)
-			.setName('System Prompt')
-			.setDesc('Custom system prompt for this model (optional)')
+			.setName(t('manageModels.systemPromptLabel'))
+			.setDesc(t('manageModels.systemPromptDescription'))
 			.addTextArea(text => text
-				.setPlaceholder('Enter custom system prompt...')
+				.setPlaceholder(t('manageModels.systemPromptPlaceholder'))
 				.setValue(modelConfig.settings.systemPrompt || '')
 				.onChange(async (value) => {
 					modelConfig.settings.systemPrompt = value;
@@ -215,13 +235,13 @@ export class ManageModelsModal extends Modal {
 
 		// Reset to defaults button
 		const resetBtn = settingsForm.createEl('button', { 
-			text: 'Reset to Defaults',
+			text: t('manageModels.resetToDefaultsButton'),
 			cls: 'reset-btn'
 		});
 		resetBtn.addEventListener('click', async () => {
 			modelConfig.settings = { ...DEFAULT_MODEL_SETTINGS };
 			await this.plugin.saveSettings();
-			new Notice('✅ Settings reset to defaults');
+			new Notice(t('manageModels.settingsResetSuccess'));
 			this.renderModelSettings(container, modelConfig);
 		});
 	}
@@ -231,26 +251,59 @@ export class ManageModelsModal extends Modal {
 			// Remove from settings
 			this.plugin.settings.modelConfigs.splice(index, 1);
 			
-			// If this was the default model, clear the default
+			// If this was the default model, clear the default or set to first available model
 			if (this.plugin.settings.defaultModelConfigId === modelConfig.id) {
-				// Find another vision-capable model to set as default
-				const nextDefault = this.plugin.settings.modelConfigs.find(mc => mc.isVisionCapable);
-				this.plugin.settings.defaultModelConfigId = nextDefault?.id || '';
+				// Find another model to set as default (prefer vision-capable, but any will do)
+				const visionModel = this.plugin.settings.modelConfigs.find(mc => mc.isVisionCapable);
+				const anyModel = this.plugin.settings.modelConfigs[0];
+				this.plugin.settings.defaultModelConfigId = visionModel?.id || anyModel?.id || '';
 			}
 			
 			this.plugin.saveSettings();
-			new Notice(`✅ Deleted ${modelConfig.name}`);
+			new Notice(t('manageModels.deletedSuccessfully', { modelName: modelConfig.name }));
 			this.refresh();
 		});
 		modal.open();
 	}
 
 	private refresh() {
+		// Refresh other components first
+		this.refreshModelDependentComponents();
+		
+		// Then refresh this modal
 		this.close();
 		setTimeout(() => {
 			const newModal = new ManageModelsModal(this.plugin);
 			newModal.open();
 		}, 100);
+	}
+
+	private refreshModelDependentComponents() {
+		// Refresh settings tab by finding the settings tab instance and calling display()
+		const app = this.plugin.app as any;
+		if (app.setting && app.setting.pluginTabs) {
+			const pluginTab = app.setting.pluginTabs.find((tab: any) => 
+				tab.id === this.plugin.manifest.id
+			);
+			if (pluginTab && typeof pluginTab.display === 'function') {
+				// Refresh the settings tab if it's currently active
+				pluginTab.display();
+			}
+		}
+
+		// Refresh AI chat views - force full update to ensure send button state is correct
+		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
+		aiChatLeaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && typeof view.updateContent === 'function') {
+				// Force full update by clearing existing structure first
+				const container = view.containerEl.children[1] as HTMLElement;
+				if (container) {
+					container.empty();
+				}
+				view.updateContent();
+			}
+		});
 	}
 
 	private addStyles() {
@@ -259,8 +312,15 @@ export class ManageModelsModal extends Modal {
 			style.id = 'manage-models-styles';
 			style.textContent = `
 				.manage-models-modal {
-					width: 800px;
+					width: 700px;
 					max-width: 90vw;
+					min-height: 300px;
+					max-height: 80vh;
+				}
+
+				.manage-models-modal .modal-content {
+					padding: 24px;
+					position: relative;
 				}
 
 				.modal-header {
@@ -281,24 +341,47 @@ export class ManageModelsModal extends Modal {
 
 				.models-container {
 					max-height: 600px;
+				}
+
+				.models-container.has-models {
 					overflow-y: auto;
 					padding-right: 8px;
 				}
 
 				.empty-state {
 					text-align: center;
-					padding: 40px 20px;
+					padding: 60px 20px;
 					color: var(--text-muted);
+					margin: 40px 0;
 				}
 
 				.empty-icon {
-					font-size: 48px;
-					margin-bottom: 16px;
+					display: flex;
+					justify-content: center;
+					align-items: center;
+					margin-bottom: 20px;
+					color: var(--text-muted);
+					opacity: 0.6;
+				}
+
+				.empty-icon svg {
+					width: 48px;
+					height: 48px;
+					stroke: var(--text-muted);
 				}
 
 				.empty-state h3 {
-					margin: 0 0 8px 0;
+					margin: 0 0 12px 0;
 					color: var(--text-normal);
+					font-size: 18px;
+					font-weight: 600;
+				}
+
+				.empty-state p {
+					margin: 0;
+					font-size: 14px;
+					line-height: 1.4;
+					color: var(--text-muted);
 				}
 
 				.model-config-item {
@@ -341,8 +424,18 @@ export class ManageModelsModal extends Modal {
 				}
 
 				.vision-badge {
-					background: var(--interactive-success);
-					color: white;
+					background: transparent;
+					color: #8b5cf6;
+					border: none;
+					padding: 2px;
+					display: inline-flex;
+					align-items: center;
+				}
+
+				.vision-badge.vision-icon svg {
+					width: 14px;
+					height: 14px;
+					stroke: #8b5cf6;
 				}
 
 				.default-badge {
@@ -355,7 +448,7 @@ export class ManageModelsModal extends Modal {
 					gap: 8px;
 				}
 
-				.default-btn, .delete-btn {
+				.manage-models-modal .default-btn, .manage-models-modal .delete-btn {
 					padding: 6px 12px;
 					border: 1px solid var(--background-modifier-border);
 					border-radius: 4px;
@@ -365,12 +458,12 @@ export class ManageModelsModal extends Modal {
 					font-size: 12px;
 				}
 
-				.default-btn:hover {
+				.manage-models-modal .default-btn:hover {
 					background: var(--interactive-accent);
 					color: var(--text-on-accent);
 				}
 
-				.delete-btn:hover {
+				.manage-models-modal .delete-btn:hover {
 					background: var(--interactive-critical);
 					color: white;
 				}
@@ -426,6 +519,15 @@ export class ManageModelsModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
+		
+		// Refresh AI chat views when modal closes
+		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
+		aiChatLeaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && typeof view.updateContent === 'function') {
+				view.updateContent();
+			}
+		});
 	}
 }
 
@@ -446,17 +548,17 @@ class ConfirmDeleteModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h3', { text: 'Delete Model Configuration' });
+		contentEl.createEl('h3', { text: t('manageModels.confirmDeleteTitle') });
 		contentEl.createEl('p', { 
-			text: `Are you sure you want to delete "${this.modelConfig.name}"? This action cannot be undone.`
+			text: t('manageModels.confirmDeleteMessage', { modelName: this.modelConfig.name })
 		});
 
 		const buttonsEl = contentEl.createEl('div', { cls: 'button-group' });
 		
-		const cancelBtn = buttonsEl.createEl('button', { text: 'Cancel', cls: 'cancel-btn' });
+		const cancelBtn = buttonsEl.createEl('button', { text: t('manageModels.confirmDeleteCancel'), cls: 'cancel-btn' });
 		cancelBtn.addEventListener('click', () => this.close());
 
-		const deleteBtn = buttonsEl.createEl('button', { text: 'Delete', cls: 'delete-btn' });
+		const deleteBtn = buttonsEl.createEl('button', { text: t('manageModels.confirmDeleteConfirm'), cls: 'delete-btn' });
 		deleteBtn.addEventListener('click', () => {
 			this.onConfirm();
 			this.close();
@@ -478,7 +580,7 @@ class ConfirmDeleteModal extends Modal {
 					margin-top: 20px;
 				}
 
-				.cancel-btn, .delete-btn {
+				.confirm-delete-modal .cancel-btn, .confirm-delete-modal .delete-btn {
 					padding: 8px 16px;
 					border: 1px solid var(--background-modifier-border);
 					border-radius: 4px;
@@ -486,23 +588,38 @@ class ConfirmDeleteModal extends Modal {
 					font-size: 13px;
 				}
 
-				.cancel-btn {
+				.confirm-delete-modal .cancel-btn {
 					background: var(--background-primary);
 					color: var(--text-normal);
 				}
 
-				.cancel-btn:hover {
+				.confirm-delete-modal .cancel-btn:hover {
 					background: var(--background-modifier-hover);
 				}
 
-				.delete-btn {
-					background: var(--interactive-critical);
-					color: white;
-					border-color: var(--interactive-critical);
+				.confirm-delete-modal .delete-btn {
+					background: #dc3545;
+					color: #ffffff;
+					border: 1px solid #dc3545;
 				}
 
-				.delete-btn:hover {
-					background: var(--interactive-critical-hover);
+				.confirm-delete-modal .delete-btn:hover {
+					background: #c82333;
+					border-color: #c82333;
+					color: #ffffff;
+				}
+
+				/* Dark theme specific overrides */
+				.theme-dark .confirm-delete-modal .delete-btn {
+					background: #e74c3c;
+					color: #ffffff;
+					border-color: #e74c3c;
+				}
+
+				.theme-dark .confirm-delete-modal .delete-btn:hover {
+					background: #c0392b;
+					border-color: #c0392b;
+					color: #ffffff;
 				}
 			`;
 			document.head.appendChild(style);

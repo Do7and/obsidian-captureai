@@ -15,7 +15,8 @@
       "Bash(sed:*)",
       "Bash(ls -la /mnt/c/Do7and/DEnv/Study/MyNotes/Do7and/)",
       "Bash(ls -la /mnt/c/Do7and/DEnv/Study/MyNotes/Do7and/.obsidian/plugins/obsidian-screenshot-capture/)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(grep -n \"refreshModelDependentComponents\" /mnt/c/Do7and/DEnv/Study/MyNotes/Do7and/.obsidian/plugins/obsidian-screenshot-capture/src/ui/set-keys-modal.ts)"
     ],
     "deny": []
   }

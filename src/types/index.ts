@@ -44,6 +44,7 @@ export interface ProviderCredentials {
 	[providerId: string]: {
 		apiKey: string;
 		baseUrl?: string;
+		customName?: string; // For custom providers to have user-friendly names
 		verified: boolean;
 		verifiedAt?: Date;
 		lastError?: string;
@@ -51,6 +52,7 @@ export interface ProviderCredentials {
 }
 
 export interface ImageCaptureSettings {
+	language: string;
 	defaultSaveLocation: string;
 	otherSourceImageLocation: string; // 其他来源图片保存位置
 	conversationSaveLocation: string;
@@ -181,6 +183,7 @@ export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
 };
 
 export const DEFAULT_SETTINGS: ImageCaptureSettings = {
+	language: 'en',
 	defaultSaveLocation: 'screenshots-capture/savedscreenshots',
 	otherSourceImageLocation: 'screenshots-capture/othersourceimage',
 	conversationSaveLocation: 'screenshots-capture/conversations',

@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIManager, AIMessage, AIConversation } from './ai-manager';
 import { ChatHistoryModal } from '../ui/chat-history-modal';
+import { t } from '../i18n';
 
 export const AI_CHAT_VIEW_TYPE = 'ai-chat';
 
@@ -11,9 +12,8 @@ export class AIChatView extends ItemView {
 	
 	// Auto-save management
 	private autoSaveTimer: NodeJS.Timeout | null = null;
-	// 使用设置中的间隔时间，默认30秒
-	private autoSaveInterval = 30000; // 将在onOpen中更新
-	private lastAutoSaveContent: string | null = null;
+	private autoSaveInterval = 30000; // 30 seconds
+	private lastAutoSaveContent: string | null = null; // 存储上次自动保存的内容
 	private lastAutoSaveTime = 0;
 	private currentConversationId: string | null = null;
 
@@ -36,14 +36,27 @@ export class AIChatView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		// 使用设置中的自动保存间隔，如果未设置则默认为30秒
-		this.autoSaveInterval = (this.plugin.settings.autoSaveInterval || 30) * 1000;
 		this.updateContent();
 	}
 
 	updateContent(): void {
 		const container = this.containerEl.children[1] as HTMLElement;
 		
+		// Check if this is the first time rendering or if the structure doesn't exist
+		const existingInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
+		const existingChatArea = container.querySelector('.ai-chat-area') as HTMLElement;
+		const hasExistingStructure = existingInputArea && existingChatArea;
+		
+		if (!hasExistingStructure) {
+			// First time setup - need to create full structure
+			this.fullRender(container);
+		} else {
+			// Partial update - only update model selector and chat area
+			this.partialUpdate(container);
+		}
+	}
+
+	private fullRender(container: HTMLElement): void {
 		// Save current image queue before clearing container
 		let savedImageQueue: any[] = [];
 		const oldInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
@@ -60,7 +73,7 @@ export class AIChatView extends ItemView {
 
 		// Header with title (remove model selector from header)
 		const header = container.createEl('div', { cls: 'ai-chat-header' });
-		header.createEl('h3', { text: 'AI Chat - from ScreenshotCapture', cls: 'ai-chat-title' });
+		header.createEl('h3', { text: t('aiChat.title'), cls: 'ai-chat-title' });
 
 		// Chat area
 		const chatArea = container.createEl('div', { cls: 'ai-chat-area' });
@@ -102,6 +115,144 @@ export class AIChatView extends ItemView {
 		}
 	}
 
+	private partialUpdate(container: HTMLElement): void {
+		// Update the model selector in-place to maintain consistent styling
+		const modelSelectorContainer = container.querySelector('.model-selector-container');
+		if (modelSelectorContainer) {
+			this.updateModelSelectorInPlace(modelSelectorContainer as HTMLElement);
+		}
+
+		// Update send button state after model configuration changes
+		const updateSendButtonState = (this as any)._updateSendButtonState;
+		if (updateSendButtonState) {
+			updateSendButtonState();
+		}
+
+		// Update chat area if needed
+		const chatArea = container.querySelector('.ai-chat-area') as HTMLElement;
+		const conversation = this.aiManager.getCurrentConversationData();
+		
+		if (chatArea) {
+			chatArea.empty();
+			if (!conversation || conversation.messages.length === 0) {
+				this.renderEmptyState(chatArea);
+				this.clearAutoSaveTimer();
+			} else {
+				this.renderConversation(chatArea, conversation);
+				this.startAutoSaveTimer();
+				this.currentConversationId = conversation.id;
+			}
+		}
+	}
+
+	private updateModelSelectorInPlace(container: HTMLElement): void {
+		const allModels = this.plugin.settings.modelConfigs;
+		
+		// If no models, completely rebuild as we need different structure
+		if (allModels.length === 0) {
+			container.empty();
+			this.createModelSelector(container);
+			return;
+		}
+
+		// Find existing selector wrapper
+		const existingSelectorWrapper = container.querySelector('.model-selector-wrapper') as HTMLElement;
+		if (!existingSelectorWrapper) {
+			// No existing selector, create new one
+			container.empty();
+			this.createModelSelector(container);
+			return;
+		}
+
+		// Update existing selector button content
+		const selectorButton = existingSelectorWrapper.querySelector('.model-selector-button') as HTMLButtonElement;
+		const dropdown = existingSelectorWrapper.querySelector('.model-dropdown-menu') as HTMLElement;
+		
+		if (!selectorButton || !dropdown) {
+			// Structure is broken, rebuild
+			container.empty();
+			this.createModelSelector(container);
+			return;
+		}
+
+		// Update button content with current model
+		const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+		this.updateSelectorButtonContent(selectorButton, currentModel);
+
+		// Update dropdown options
+		dropdown.empty();
+		allModels.forEach(modelConfig => {
+			const option = dropdown.createEl('div', { 
+				cls: 'model-dropdown-option',
+				attr: { 'data-model-id': modelConfig.id }
+			});
+			
+			// Create option content with vision icon
+			const optionContent = option.createEl('span', { cls: 'model-option-content' });
+			optionContent.createEl('span', { text: modelConfig.name, cls: 'model-name' });
+			
+			if (modelConfig.isVisionCapable) {
+				const visionIcon = optionContent.createEl('span', { cls: 'vision-icon' });
+				// Using Lucide Eye icon with consistent size for dropdown
+				visionIcon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+			}
+			
+			if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
+				option.addClass('selected');
+			}
+			
+			// Handle option click - reuse the same logic from createModelSelector
+			option.addEventListener('click', async () => {
+				// Update selection
+				dropdown.querySelectorAll('.model-dropdown-option').forEach(opt => opt.removeClass('selected'));
+				option.addClass('selected');
+				
+				// Update button content
+				this.updateSelectorButtonContent(selectorButton, modelConfig);
+				
+				// Save settings
+				this.plugin.settings.defaultModelConfigId = modelConfig.id;
+				await this.plugin.saveSettings();
+				
+				// Update last used timestamp
+				modelConfig.lastUsed = new Date();
+				await this.plugin.saveSettings();
+				
+				// Update image preview if there are images to reflect model capability change
+				const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
+				if (inputArea) {
+					const imageDataList = (inputArea as any)._currentImageDataList || [];
+					if (imageDataList.length > 0) {
+						const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
+						if (imagePreviewArea) {
+							// Re-render image preview with updated model capability
+							this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+						}
+					}
+				}
+				
+				// Update send button state
+				const updateSendButtonState = (this as any)._updateSendButtonState;
+				if (updateSendButtonState) {
+					updateSendButtonState();
+				}
+				
+				// Refresh other model-dependent components (settings page, other AI chat views)
+				this.refreshModelDependentComponents();
+				
+				// Hide dropdown
+				dropdown.style.display = 'none';
+				const dropdownIcon = selectorButton.querySelector('.model-dropdown-arrow') as HTMLElement;
+				if (dropdownIcon) {
+					dropdownIcon.innerHTML = '▲';
+				}
+			});
+		});
+
+		// The existing event listeners for button click and document click should still work
+		// since we're not removing the wrapper element
+	}
+
 	// Method to add image to queue from external sources (like image editor)
 	addImageToQueue(imageDataUrl: string, fileName: string, localPath?: string | null): void {
 		const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
@@ -124,38 +275,23 @@ export class AIChatView extends ItemView {
 		const emptyState = chatArea.createEl('div', { cls: 'ai-chat-empty' });
 		
 		// Simple title
-		const titleSection = emptyState.createEl('div', { cls: 'ai-chat-title-section' });
-		titleSection.createEl('h2', { text: 'AI Assistant', cls: 'ai-chat-main-title' });
+		// const titleSection = emptyState.createEl('div', { cls: 'ai-chat-title-section' });
+		// titleSection.createEl('h2', { text: t('aiChat.assistantTitle'), cls: 'ai-chat-main-title' });
 		
-		// Instructions section
-		const instructionsSection = emptyState.createEl('div', { cls: 'ai-chat-instructions-section' });
-		instructionsSection.createEl('h3', { text: 'How to Use', cls: 'ai-chat-section-title' });
 		
-		const instructionsList = instructionsSection.createEl('div', { cls: 'ai-chat-instructions-list' });
-		const instructions = [
-			{ icon: '📷', text: 'Take a screenshot and it will be automatically analyzed' },
-			{ icon: '🖼️', text: 'Drag and drop images into the chat area' },
-			{ icon: '💬', text: 'Type your questions and press Enter to send' },
-			{ icon: '⚙️', text: 'Configure API keys in Settings if needed' }
-		];
 
-		instructions.forEach(instruction => {
-			const instructionEl = instructionsList.createEl('div', { cls: 'ai-chat-instruction-item' });
-			instructionEl.createEl('span', { text: instruction.icon, cls: 'ai-chat-instruction-icon' });
-			instructionEl.createEl('span', { text: instruction.text, cls: 'ai-chat-instruction-text' });
-		});
-
-		// Model status
-		const visionModels = this.plugin.settings.modelConfigs.filter(mc => mc.isVisionCapable);
+		// Model status - now includes all models, not just vision models
+		const allModels = this.plugin.settings.modelConfigs;
+		const visionModels = allModels.filter(mc => mc.isVisionCapable);
 		const statusEl = emptyState.createEl('div', { cls: 'ai-status' });
 		
-		if (visionModels.length === 0) {
+		if (allModels.length === 0) {
 			statusEl.innerHTML = `
 				<div class="ai-status-warning">
-					⚠️ No AI models configured
+					${t('aiChat.noModelsConfigured')}
 				</div>
 				<div class="ai-status-desc">
-					Go to Settings → Set Keys to configure AI providers
+					${t('aiChat.noModelsDescription')}
 				</div>
 			`;
 			statusEl.addEventListener('click', () => {
@@ -164,16 +300,63 @@ export class AIChatView extends ItemView {
 				(this.plugin.app as any).setting.openTabById(this.plugin.manifest.id);
 			});
 		} else {
-			const defaultModel = visionModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || visionModels[0];
-			statusEl.innerHTML = `
-				<div class="ai-status-ready">
-					✅ Ready with ${defaultModel.name}
-				</div>
-				<div class="ai-status-desc">
-					${visionModels.length} vision model${visionModels.length > 1 ? 's' : ''} configured
-				</div>
-			`;
+			const defaultModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+			const isDefaultVisionCapable = defaultModel.isVisionCapable;
+			
+			if (isDefaultVisionCapable) {
+				// Vision-capable model - normal green status
+				const totalPlural = allModels.length > 1 ? 's' : '';
+				statusEl.innerHTML = `
+					<div class="ai-status-ready">
+						${t('aiChat.readyWithModel', { modelName: defaultModel.name })}
+					</div>
+					<div class="ai-status-desc">
+						${t('aiChat.allModelsConfigured', { 
+							total: allModels.length, 
+							totalPlural: totalPlural,
+							vision: visionModels.length 
+						})}
+					</div>
+				`;
+			} else {
+				// Text-only model - gray status with notice
+				statusEl.classList.add('ai-status-text-only');
+				const totalPlural = allModels.length > 1 ? 's' : '';
+				statusEl.innerHTML = `
+					<div class="ai-status-text-only-ready">
+						${t('aiChat.readyWithModelTextOnly', { modelName: defaultModel.name })}
+					</div>
+					<div class="ai-status-desc">
+						${visionModels.length > 0 
+							? t('aiChat.allModelsConfigured', { 
+								total: allModels.length, 
+								totalPlural: totalPlural,
+								vision: visionModels.length 
+							})
+							: t('aiChat.textOnlyModelNotice')
+						}
+					</div>
+				`;
+			}
 		}
+
+		// Instructions section
+		const instructionsSection = emptyState.createEl('div', { cls: 'ai-chat-instructions-section' });
+		instructionsSection.createEl('h3', { text: t('aiChat.howToUseTitle'), cls: 'ai-chat-section-title' });
+		
+		const instructionsList = instructionsSection.createEl('div', { cls: 'ai-chat-instructions-list' });
+		const instructions = [
+			{ icon: '⚙️', text: t('aiChat.instruction.configureKeys') },
+			{ icon: '📷', text: t('aiChat.instruction.screenshot') },
+			{ icon: '🖼️', text: t('aiChat.instruction.dragDrop') },
+			{ icon: '💬', text: t('aiChat.instruction.typeQuestions') }
+		];
+
+		instructions.forEach(instruction => {
+			const instructionEl = instructionsList.createEl('div', { cls: 'ai-chat-instruction-item' });
+			instructionEl.createEl('span', { text: instruction.icon, cls: 'ai-chat-instruction-icon' });
+			instructionEl.createEl('span', { text: instruction.text, cls: 'ai-chat-instruction-text' });
+		});
 	}
 
 	private async startNewConversation(): Promise<void> {
@@ -431,11 +614,11 @@ export class AIChatView extends ItemView {
 			} else if (message.content) {
 				// Copy only text
 				await navigator.clipboard.writeText(message.content);
-				new Notice('Text copied to clipboard');
+				new Notice(t('aiChat.textCopied'));
 			}
 		} catch (error) {
 			console.error('Failed to copy message:', error);
-			new Notice('Failed to copy message');
+			new Notice(t('aiChat.copyFailed'));
 		}
 	}
 
@@ -449,10 +632,10 @@ export class AIChatView extends ItemView {
 			await navigator.clipboard.write([
 				new ClipboardItem({ [blob.type]: blob })
 			]);
-			new Notice('Image copied to clipboard');
+			new Notice(t('aiChat.imageCopied'));
 		} catch (error) {
 			console.error('Failed to copy image:', error);
-			new Notice('Failed to copy image');
+			new Notice(t('aiChat.copyImageFailed'));
 		}
 	}
 
@@ -468,10 +651,10 @@ export class AIChatView extends ItemView {
 		try {
 			const selectedContent = this.getSelectionAsMarkdown(message, selection);
 			await navigator.clipboard.writeText(selectedContent);
-			new Notice('Selection copied as Markdown');
+			new Notice(t('aiChat.selectionCopied'));
 		} catch (error) {
 			console.error('Failed to copy selection:', error);
-			new Notice('Failed to copy selection');
+			new Notice(t('aiChat.copySelectionFailed'));
 		}
 	}
 
@@ -612,8 +795,8 @@ export class AIChatView extends ItemView {
 		const saveBtn = rightActions.createEl('button', { 
 			cls: 'ai-chat-action-btn',
 			attr: { 
-				title: 'Save',
-				'data-tooltip': 'Save'
+				title: t('aiChat.saveConversationButton'),
+				'data-tooltip': t('aiChat.saveConversationButton')
 			}
 		});
 		saveBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>`;
@@ -622,8 +805,8 @@ export class AIChatView extends ItemView {
 		const historyBtn = rightActions.createEl('button', { 
 			cls: 'ai-chat-action-btn',
 			attr: { 
-				title: 'Chat History',
-				'data-tooltip': 'Chat History'
+				title: t('aiChat.loadHistoryButton'),
+				'data-tooltip': t('aiChat.loadHistoryButton')
 			}
 		});
 		historyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`;
@@ -632,8 +815,8 @@ export class AIChatView extends ItemView {
 		const newChatBtn = rightActions.createEl('button', { 
 			cls: 'ai-chat-action-btn',
 			attr: { 
-				title: 'New Chat',
-				'data-tooltip': 'New Chat'
+				title: t('aiChat.newConversationButton'),
+				'data-tooltip': t('aiChat.newConversationButton')
 			}
 		});
 		newChatBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
@@ -642,8 +825,8 @@ export class AIChatView extends ItemView {
 		const menuBtn = rightActions.createEl('button', { 
 			cls: 'ai-chat-action-btn',
 			attr: { 
-				title: 'Menu',
-				'data-tooltip': 'Menu'
+				title: t('aiChat.menuButton'),
+				'data-tooltip': t('aiChat.menuButton')
 			}
 		});
 		menuBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>`;
@@ -675,12 +858,12 @@ export class AIChatView extends ItemView {
 		dropIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>`;
 		
 		const dropText = dropZoneContent.createEl('span');
-		dropText.innerHTML = 'Drag images here or ';
+		dropText.innerHTML = t('aiChat.dragImageHere') + ' ';
 		
 		// Create clickable "browse files" link
 		const browseLink = dropZoneContent.createEl('span', { 
 			cls: 'file-picker-link',
-			text: 'browse files'
+			text: t('aiChat.browseFiles')
 		});
 		
 		// Only the browse link should be clickable
@@ -697,7 +880,7 @@ export class AIChatView extends ItemView {
 		const textInput = inputContainer.createEl('textarea', { 
 			cls: 'ai-chat-input',
 			attr: { 
-				placeholder: 'What do you want to know, or with pic?.',
+				placeholder: t('aiChat.inputPlaceholder'),
 				rows: '1'
 			}
 		});
@@ -709,9 +892,10 @@ export class AIChatView extends ItemView {
 		const modelSelectorContainer = bottomRow.createEl('div', { cls: 'model-selector-container' });
 		this.createModelSelector(modelSelectorContainer);
 
-		// Send button (moved to bottom row, no tooltip)
+		// Send button (moved to bottom row, with tooltip)
 		const sendButton = bottomRow.createEl('button', { 
-			cls: 'ai-chat-send-button-bottom'
+			cls: 'ai-chat-send-button-bottom',
+			attr: { title: t('aiChat.sendMessageTooltip') }
 		});
 		sendButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9 22,2"/></svg>`;
 
@@ -725,25 +909,69 @@ export class AIChatView extends ItemView {
 		(inputArea as any)._currentImageDataList = [];
 
 		// Handle sending messages
+		const checkModelConfigured = () => {
+			const allModels = this.plugin.settings.modelConfigs;
+			return allModels.length > 0;
+		};
+
+		const updateSendButtonState = () => {
+			const hasModels = checkModelConfigured();
+			sendButton.disabled = !hasModels;
+			if (!hasModels) {
+				sendButton.classList.add('no-models-disabled');
+				sendButton.setAttribute('title', 'Please configure at least one AI model in Settings > Set Keys');
+			} else {
+				sendButton.classList.remove('no-models-disabled');
+				sendButton.setAttribute('title', t('aiChat.sendMessageTooltip'));
+			}
+		};
+
 		const sendMessage = async () => {
 			const message = textInput.value.trim();
 			const imageDataList = (inputArea as any)._currentImageDataList || [];
 			
 			if (!message && imageDataList.length === 0) return;
 
+			// Check if any models are configured
+			if (!checkModelConfigured()) {
+				new Notice('Please configure at least one AI model in Settings > Set Keys');
+				return;
+			}
+
+			// Get current model to check vision capability
+			const allModels = this.plugin.settings.modelConfigs;
+			const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+			const isVisionCapable = currentModel?.isVisionCapable || false;
+
+			// Clear text input
 			textInput.value = '';
-			this.clearImagePreview(inputArea);
 			sendButton.disabled = true;
 			sendButton.innerHTML = '⏳';
 
 			try {
-				if (imageDataList.length > 0) {
-					// Send all images with optional text, preserving local paths
+				if (imageDataList.length > 0 && isVisionCapable) {
+					// Send all images with optional text for vision-capable models
+					this.clearImagePreview(inputArea);
 					await this.plugin.sendImagesToAI(imageDataList.map((img: any) => ({
 						dataUrl: img.dataUrl,
 						fileName: img.fileName,
 						localPath: img.localPath
 					})), message || 'Please analyze these images');
+				} else if (imageDataList.length > 0 && !isVisionCapable) {
+					// For non-vision models, keep images in preview and only send text
+					if (message) {
+						if (conversation && conversation.messages.length > 0) {
+							await this.sendFollowUpMessage(conversation, message);
+						} else {
+							await this.sendTextMessage(message);
+						}
+						// Keep images in preview but update warning message
+						this.updateImagePreviewForNonVisionModel(inputArea, imageDataList);
+					} else {
+						// If no text message, just show a notice and keep images
+						new Notice(t('aiChat.nonVisionModelCannotSendImages'));
+						this.updateImagePreviewForNonVisionModel(inputArea, imageDataList);
+					}
 				} else if (conversation && conversation.messages.length > 0) {
 					// Follow-up text message in existing conversation
 					await this.sendFollowUpMessage(conversation, message);
@@ -753,19 +981,25 @@ export class AIChatView extends ItemView {
 				}
 			} catch (error) {
 				console.error('Failed to send message:', error);
+				// Restore text input on error
+				textInput.value = message;
 			} finally {
 				sendButton.disabled = false;
-				sendButton.innerHTML = '↗';
+				sendButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9 22,2"/></svg>`;
 			}
 		};
 
 		sendButton.addEventListener('click', sendMessage);
 
-		// Send on Enter (not Shift+Enter)
+		// Send on Enter (not Shift+Enter) - only if models are configured
 		textInput.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault();
-				sendMessage();
+				if (checkModelConfigured()) {
+					sendMessage();
+				} else {
+					new Notice('Please configure at least one AI model in Settings > Set Keys');
+				}
 			}
 		});
 
@@ -774,12 +1008,18 @@ export class AIChatView extends ItemView {
 			textInput.style.height = 'auto';
 			textInput.style.height = Math.min(textInput.scrollHeight, 120) + 'px';
 		});
+
+		// Store update function for later use
+		(this as any)._updateSendButtonState = updateSendButtonState;
+		
+		// Initialize button state
+		updateSendButtonState();
 	}
 
 	private createModelSelector(container: HTMLElement): void {
-		const visionModels = this.plugin.settings.modelConfigs.filter(mc => mc.isVisionCapable);
+		const allModels = this.plugin.settings.modelConfigs;
 		
-		if (visionModels.length === 0) {
+		if (allModels.length === 0) {
 			const noModelsEl = container.createEl('div', { 
 				text: 'No models configured',
 				cls: 'no-models-indicator'
@@ -791,11 +1031,13 @@ export class AIChatView extends ItemView {
 		const selectorWrapper = container.createEl('div', { cls: 'model-selector-wrapper' });
 		
 		// Current model display button
-		const currentModel = visionModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || visionModels[0];
+		const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
 		const selectorButton = selectorWrapper.createEl('button', { 
-			cls: 'model-selector-button',
-			text: currentModel.name
+			cls: 'model-selector-button'
 		});
+		
+		// Update selector button content with vision icon if applicable
+		this.updateSelectorButtonContent(selectorButton, currentModel);
 		
 		// Dropdown arrow
 		const dropdownIcon = selectorButton.createEl('span', { cls: 'model-dropdown-arrow' });
@@ -806,12 +1048,21 @@ export class AIChatView extends ItemView {
 		dropdown.style.display = 'none';
 		
 		// Add model options
-		visionModels.forEach(modelConfig => {
+		allModels.forEach(modelConfig => {
 			const option = dropdown.createEl('div', { 
 				cls: 'model-dropdown-option',
-				text: modelConfig.name,
 				attr: { 'data-model-id': modelConfig.id }
 			});
+			
+			// Create option content with vision icon
+			const optionContent = option.createEl('span', { cls: 'model-option-content' });
+			optionContent.createEl('span', { text: modelConfig.name, cls: 'model-name' });
+			
+			if (modelConfig.isVisionCapable) {
+				const visionIcon = optionContent.createEl('span', { cls: 'vision-icon' });
+				// Using Lucide Eye icon with consistent size for dropdown
+				visionIcon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+			}
 			
 			if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
 				option.addClass('selected');
@@ -823,8 +1074,8 @@ export class AIChatView extends ItemView {
 				dropdown.querySelectorAll('.model-dropdown-option').forEach(opt => opt.removeClass('selected'));
 				option.addClass('selected');
 				
-				// Update button text
-				selectorButton.firstChild!.textContent = modelConfig.name;
+				// Update button content
+				this.updateSelectorButtonContent(selectorButton, modelConfig);
 				
 				// Save settings
 				this.plugin.settings.defaultModelConfigId = modelConfig.id;
@@ -833,6 +1084,35 @@ export class AIChatView extends ItemView {
 				// Update last used timestamp
 				modelConfig.lastUsed = new Date();
 				await this.plugin.saveSettings();
+				
+				// Update image preview if there are images to reflect model capability change
+				const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
+				if (inputArea) {
+					const imageDataList = (inputArea as any)._currentImageDataList || [];
+					if (imageDataList.length > 0) {
+						const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
+						if (imagePreviewArea) {
+							// Re-render image preview with updated model capability
+							this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+						}
+					}
+				}
+				
+				// Update model selector content and send button state
+				const modelSelectorContainer = this.containerEl.querySelector('.model-selector-container');
+				if (modelSelectorContainer) {
+					modelSelectorContainer.empty();
+					this.createModelSelector(modelSelectorContainer as HTMLElement);
+				}
+				
+				// Update send button state
+				const updateSendButtonState = (this as any)._updateSendButtonState;
+				if (updateSendButtonState) {
+					updateSendButtonState();
+				}
+				
+				// Refresh other model-dependent components (settings page, other AI chat views)
+				this.refreshModelDependentComponents();
 				
 				// Hide dropdown
 				dropdown.style.display = 'none';
@@ -855,13 +1135,26 @@ export class AIChatView extends ItemView {
 			}
 		});
 		
-		// Close dropdown when clicking outside
-		document.addEventListener('click', (e) => {
+		// Create a cleanup function for document listener and store it
+		const clickOutsideHandler = (e: MouseEvent) => {
 			if (!selectorWrapper.contains(e.target as Node)) {
 				dropdown.style.display = 'none';
 				dropdownIcon.innerHTML = '▲';
 			}
-		});
+		};
+		
+		// Store the handler for cleanup
+		(selectorWrapper as any)._clickOutsideHandler = clickOutsideHandler;
+		
+		// Add document listener
+		document.addEventListener('click', clickOutsideHandler);
+		
+		// Clean up previous handler if it exists
+		const prevHandler = (container as any)._prevClickOutsideHandler;
+		if (prevHandler) {
+			document.removeEventListener('click', prevHandler);
+		}
+		(container as any)._prevClickOutsideHandler = clickOutsideHandler;
 	}
 
 	private showFilePicker(): void {
@@ -892,7 +1185,18 @@ export class AIChatView extends ItemView {
 		input.click();
 	}
 
-	private renderImagePreviews(container: HTMLElement, imageDataList: any[], inputArea: HTMLElement): void {
+	private updateImagePreviewForNonVisionModel(inputArea: HTMLElement, imageDataList: any[]): void {
+		const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
+		if (!imagePreviewArea) return;
+		
+		// Update the current image data list
+		(inputArea as any)._currentImageDataList = imageDataList;
+		
+		// Re-render with automatic model capability detection
+		this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+	}
+
+	private renderImagePreviews(container: HTMLElement, imageDataList: any[], inputArea: HTMLElement, isNonVisionModel: boolean = false): void {
 		container.innerHTML = '';
 		
 		if (imageDataList.length === 0) {
@@ -900,17 +1204,35 @@ export class AIChatView extends ItemView {
 			return;
 		}
 		
+		// Check current model vision capability if not explicitly provided
+		if (!isNonVisionModel) {
+			const allModels = this.plugin.settings.modelConfigs;
+			const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+			isNonVisionModel = !(currentModel?.isVisionCapable || false);
+		}
+		
 		const previewContainer = container.createEl('div', { cls: 'images-preview-container' });
 		
-		// Header with count
+		// Header with count or warning
 		const headerEl = previewContainer.createEl('div', { cls: 'preview-header' });
-		headerEl.createEl('span', { text: `${imageDataList.length} image${imageDataList.length > 1 ? 's' : ''} ready to send`, cls: 'preview-count' });
+		if (isNonVisionModel) {
+			headerEl.createEl('span', { 
+				text: t('aiChat.nonVisionModelWarning'), 
+				cls: 'preview-count non-vision-warning' 
+			});
+		} else {
+			const plural = imageDataList.length > 1 ? 's' : '';
+			headerEl.createEl('span', { 
+				text: t('aiChat.imagesReadyToSend', { count: imageDataList.length, plural }), 
+				cls: 'preview-count' 
+			});
+		}
 		
 		const clearAllBtn = headerEl.createEl('button', { 
 			cls: 'ai-chat-action-btn',
 			attr: { 
-				title: 'Clear All',
-				'data-tooltip': 'Clear All'
+				title: t('aiChat.clearAllImages'),
+				'data-tooltip': t('aiChat.clearAllImages')
 			}
 		});
 		clearAllBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c0 1 1 2 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
@@ -940,7 +1262,7 @@ export class AIChatView extends ItemView {
 			// Create remove button directly on imageItem, not in infoOverlay
 			const removeBtn = imageItem.createEl('button', { cls: 'remove-single-image-btn' });
 			removeBtn.innerHTML = '✕'; // Use heavy multiplication X (更粗的斜十字)
-			removeBtn.title = 'Remove this image';
+			removeBtn.title = t('aiChat.removeThisImage');
 			removeBtn.addEventListener('click', (e) => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1497,7 +1819,7 @@ export class AIChatView extends ItemView {
 
 				.ai-chat-empty {
 					text-align: center;
-					padding: 32px 16px;
+					padding: 16px 16px;
 					color: var(--text-muted);
 				}
 
@@ -1648,8 +1970,8 @@ export class AIChatView extends ItemView {
 				}
 
 				.ai-status {
-					margin-top: 20px;
-					padding: 12px;
+					margin-top: 12px;
+					padding: 8px;
 					border-radius: 6px;
 					text-align: center;
 				}
@@ -1662,6 +1984,12 @@ export class AIChatView extends ItemView {
 
 				.ai-status-ready {
 					color: var(--text-success);
+					font-weight: 600;
+					margin-bottom: 4px;
+				}
+
+				.ai-status-text-only-ready {
+					color: var(--text-muted);
 					font-weight: 600;
 					margin-bottom: 4px;
 				}
@@ -2086,9 +2414,8 @@ export class AIChatView extends ItemView {
 					cursor: not-allowed;
 				}
 
-				/* Send button tooltip */
-				.ai-chat-send-button-embedded::after {
-					content: "Send message (Enter)";
+				/* Send button tooltip - remove content to allow dynamic tooltips */
+				.ai-chat-send-button-embedded .send-tooltip {
 					position: absolute;
 					bottom: 100%;
 					right: 0;
@@ -2105,7 +2432,7 @@ export class AIChatView extends ItemView {
 					z-index: 1000;
 				}
 
-				.ai-chat-send-button-embedded:hover::after {
+				.ai-chat-send-button-embedded:hover .send-tooltip {
 					opacity: 1;
 				}
 
@@ -2116,10 +2443,14 @@ export class AIChatView extends ItemView {
 					justify-content: space-between;
 					padding: 0 1px;
 					margin-top: 1px;
+					height: 32px; /* 固定高度防止layout shift */
+					position: relative; /* 为dropdown提供定位上下文 */
 				}
 
 				.model-selector-container {
 					flex: 1;
+					height: 32px; /* 固定高度与wrapper一致 */
+					overflow: visible; /* 允许dropdown超出容器 */
 				}
 
 				/* Send button in bottom row */
@@ -2160,6 +2491,14 @@ export class AIChatView extends ItemView {
 					cursor: not-allowed;
 				}
 
+				.ai-chat-send-button-bottom.no-models-disabled {
+					opacity: 0.3;
+					cursor: not-allowed;
+					background-color: var(--background-modifier-border);
+					color: var(--text-muted);
+					border-color: var(--background-modifier-border);
+				}
+
 				.ai-chat-right-actions {
 					display: flex;
 					gap: 8px;
@@ -2184,11 +2523,14 @@ export class AIChatView extends ItemView {
 				/* Model selector with upward popup */
 				.model-selector-wrapper {
 					position: relative;
+					height: 32px; /* 固定高度防止layout shift */
+					overflow: visible; /* 确保dropdown可以显示在外面 */
 				}
 
 				.model-selector-button {
 					display: flex;
 					align-items: center;
+					justify-content: flex-start; /* 确保内容左对齐 */
 					gap: 4px;
 					padding: 4px 8px;
 					background: transparent !important;
@@ -2197,9 +2539,11 @@ export class AIChatView extends ItemView {
 					color: #9CA3AF !important; /* Gray default with !important */
 					cursor: pointer;
 					font-size: 11px;
+					line-height: 1.2; /* 添加固定行高 */
 					transition: color 0.2s ease;
 					outline: none !important;
 					box-shadow: none !important;
+					white-space: nowrap; /* 防止文字换行 */
 				}
 
 				.model-selector-button:hover {
@@ -2227,7 +2571,9 @@ export class AIChatView extends ItemView {
 					position: absolute;
 					bottom: 100%;
 					left: 0;
-					right: 0;
+					min-width: 160px;
+					max-width: 300px;
+					width: max-content;
 					background: var(--background-primary);
 					border: 1px solid var(--background-modifier-border);
 					border-radius: 6px;
@@ -2236,12 +2582,14 @@ export class AIChatView extends ItemView {
 					margin-bottom: 4px;
 					max-height: 200px;
 					overflow-y: auto;
+					/* 确保不影响父容器布局 */
+					transform: translateZ(0); /* 创建新的stacking context */
 				}
 
 				.model-dropdown-option {
 					padding: 8px 12px;
 					cursor: pointer;
-					font-size: 13px;
+					font-size: 11px;
 					color: var(--text-normal);
 					transition: background-color 0.2s ease;
 				}
@@ -2253,6 +2601,52 @@ export class AIChatView extends ItemView {
 				.model-dropdown-option.selected {
 					background: var(--interactive-accent);
 					color: var(--text-on-accent);
+				}
+
+				.model-option-content {
+					display: flex;
+					align-items: center;
+					gap: 6px;
+					width: 100%;
+				}
+
+				.model-option-content .model-name {
+					font-size: 11px;
+					color: inherit;
+					flex: 1;
+				}
+
+				.vision-icon {
+					color: #8b5cf6;
+					display: inline-flex;
+					align-items: center;
+					flex-shrink: 0;
+				}
+
+				.vision-icon svg {
+					width: 12px;
+					height: 12px;
+					stroke: #8b5cf6;
+				}
+
+				/* Specific styles for vision icons in dropdown options */
+				.model-dropdown-option .vision-icon {
+					color: #8b5cf6;
+					display: inline-flex;
+					align-items: center;
+					flex-shrink: 0;
+				}
+
+				.model-dropdown-option .vision-icon svg {
+					width: 12px;
+					height: 12px;
+					stroke: #8b5cf6;
+				}
+
+				/* Ensure model name in selector button maintains button color */
+				.model-selector-button .model-name {
+					color: inherit;
+					font-size: inherit;
 				}
 
 				.model-dropdown-option:first-child {
@@ -2306,6 +2700,11 @@ export class AIChatView extends ItemView {
 					font-size: 12px;
 					color: var(--text-normal);
 					font-weight: 500;
+				}
+
+				.preview-count.non-vision-warning {
+					color: var(--text-warning);
+					font-weight: 600;
 				}
 
 				.images-grid {
@@ -2525,10 +2924,24 @@ export class AIChatView extends ItemView {
 		this.clearAutoSaveTimer();
 		this.lastAutoSaveContent = null;
 		
+		// Clean up document event listeners
+		this.cleanupEventListeners();
+		
 		// Cleanup drag and drop listeners
 		const dropZone = this.containerEl.querySelector('.ai-chat-drop-zone') as HTMLElement;
 		if (dropZone && (dropZone as any)._dragCleanup) {
 			(dropZone as any)._dragCleanup();
+		}
+	}
+
+	private cleanupEventListeners(): void {
+		const container = this.containerEl.children[1] as HTMLElement;
+		if (container) {
+			const prevHandler = (container as any)._prevClickOutsideHandler;
+			if (prevHandler) {
+				document.removeEventListener('click', prevHandler);
+				(container as any)._prevClickOutsideHandler = null;
+			}
 		}
 	}
 
@@ -2546,12 +2959,12 @@ export class AIChatView extends ItemView {
 			return;
 		}
 		
-		// Set up periodic auto-save using the configured interval
+		// Set up periodic auto-save
 		this.autoSaveTimer = setInterval(() => {
 			this.performPeriodicAutoSave();
 		}, this.autoSaveInterval);
 		
-		console.log('Auto-save timer started for conversation:', conversation.id, 'with interval:', this.autoSaveInterval);
+		console.log('Auto-save timer started for conversation:', conversation.id);
 	}
 	
 	private clearAutoSaveTimer(): void {
@@ -2967,5 +3380,54 @@ export class AIChatView extends ItemView {
 			console.error('Failed to load conversation:', error);
 			new Notice(`❌ Failed to load conversation: ${error.message}`);
 		}
+	}
+
+	private updateSelectorButtonContent(button: HTMLButtonElement, modelConfig: any) {
+		// Clear existing content (except dropdown arrow)
+		const dropdownArrow = button.querySelector('.model-dropdown-arrow');
+		button.innerHTML = '';
+		
+		// Add model name
+		const modelName = button.createEl('span', { text: modelConfig.name, cls: 'model-name' });
+		
+		// Add vision icon if applicable (smaller size for selector button)
+		if (modelConfig.isVisionCapable) {
+			const visionIcon = button.createEl('span', { cls: 'vision-icon' });
+			visionIcon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+		}
+		
+		// Re-add dropdown arrow
+		if (dropdownArrow) {
+			button.appendChild(dropdownArrow);
+		}
+	}
+
+	private refreshModelDependentComponents() {
+		// Update send button state based on model configuration
+		const updateSendButtonState = (this as any)._updateSendButtonState;
+		if (updateSendButtonState) {
+			updateSendButtonState();
+		}
+
+		// Refresh settings tab by finding the settings tab instance and calling display()
+		const app = this.plugin.app as any;
+		if (app.setting && app.setting.pluginTabs) {
+			const pluginTab = app.setting.pluginTabs.find((tab: any) => 
+				tab.id === this.plugin.manifest.id
+			);
+			if (pluginTab && typeof pluginTab.display === 'function') {
+				// Refresh the settings tab if it's currently active
+				pluginTab.display();
+			}
+		}
+
+		// Refresh other AI chat views (not the current one)
+		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
+		aiChatLeaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && view !== this && typeof view.updateContent === 'function') {
+				view.updateContent();
+			}
+		});
 	}
 }

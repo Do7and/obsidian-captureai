@@ -1,6 +1,7 @@
 import { Modal, Notice, TFile } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIConversation } from '../ai/ai-manager';
+import { t } from '../i18n';
 
 interface ConversationHistoryItem {
 	file: TFile;
@@ -34,7 +35,7 @@ export class ChatHistoryModal extends Modal {
 		`;
 
 		// Title
-		const titleEl = contentEl.createEl('h2', { text: 'Chat History' });
+		const titleEl = contentEl.createEl('h2', { text: t('ui.chatHistory') });
 		titleEl.style.cssText = 'margin-bottom: 20px; text-align: center;';
 
 		// Main container
@@ -58,7 +59,7 @@ export class ChatHistoryModal extends Modal {
 			background: var(--background-secondary);
 		`;
 
-		const autoSavedTitle = autoSavedSection.createEl('h3', { text: 'Auto-saved Conversations' });
+		const autoSavedTitle = autoSavedSection.createEl('h3', { text: t('ui.autoSavedConversations') });
 		autoSavedTitle.style.cssText = 'margin: 0 0 12px 0; color: var(--text-normal);';
 
 		const autoSavedList = autoSavedSection.createEl('div', { cls: 'conversation-list' });

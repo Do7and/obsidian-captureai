@@ -3,6 +3,7 @@ import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, LLMProvider, LLMModel } from '../types';
 import { SetKeysModal } from '../ui/set-keys-modal';
 import { ManageModelsModal } from '../ui/manage-models-modal';
+import { i18n, t } from '../i18n';
 
 export class ImageCaptureSettingTab extends PluginSettingTab {
 	plugin: ImageCapturePlugin;
@@ -16,25 +17,32 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Image Capture Settings' });
+		containerEl.createEl('h2', { text: t('settings.title') });
 
-		// Screenshot功能设置分类
-		containerEl.createEl('h3', { text: 'Screenshot Function' });
+		// 通用设置分类
+		containerEl.createEl('h3', { text: t('settings.general') });
 
+		// 语言设置
 		new Setting(containerEl)
-			.setName('Default save location')
-			.setDesc('Directory where captured images will be saved. Leave empty to use vault root.')
-			.addText(text => text
-				.setPlaceholder('Enter folder path (e.g., screenshots-capture/savedscreenshots)')
-				.setValue(this.plugin.settings.defaultSaveLocation)
+			.setName(t('settings.language.name'))
+			.setDesc(t('settings.language.desc'))
+			.addDropdown(dropdown => dropdown
+				.addOption('en', 'English')
+				.addOption('zh', '中文')
+				.setValue(this.plugin.settings.language)
 				.onChange(async (value) => {
-					this.plugin.settings.defaultSaveLocation = value;
+					this.plugin.settings.language = value;
 					await this.plugin.saveSettings();
+					// Update i18n immediately
+					i18n.setLanguage(value);
+					// Refresh the settings display to show new language
+					this.display();
 				}));
 
+		// 使用相对路径设置
 		new Setting(containerEl)
-			.setName('Use relative paths')
-			.setDesc('Use relative paths for images in markdown files. When disabled, uses absolute paths.')
+			.setName(t('settings.useRelativePath.name'))
+			.setDesc(t('settings.useRelativePath.desc'))
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.useRelativePath)
 				.onChange(async (value) => {
@@ -42,9 +50,23 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		// Screenshot功能设置分类
+		containerEl.createEl('h3', { text: t('settings.screenshotFunction') });
+
 		new Setting(containerEl)
-			.setName('Image format')
-			.setDesc('Choose the format for saved images')
+			.setName(t('settings.defaultSaveLocation.name'))
+			.setDesc(t('settings.defaultSaveLocation.desc'))
+			.addText(text => text
+				.setPlaceholder(t('settings.defaultSaveLocation.placeholder'))
+				.setValue(this.plugin.settings.defaultSaveLocation)
+				.onChange(async (value) => {
+					this.plugin.settings.defaultSaveLocation = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('settings.imageFormat.name'))
+			.setDesc(t('settings.imageFormat.desc'))
 			.addDropdown(dropdown => dropdown
 				.addOption('png', 'PNG (lossless)')
 				.addOption('jpg', 'JPG (compressed)')
@@ -55,11 +77,11 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				}));
 
 		// AI Chat功能设置分类
-		containerEl.createEl('h3', { text: 'AI Chat Function' });
+		containerEl.createEl('h3', { text: t('settings.aiFunction') });
 
 		const aiAnalysisSetting = new Setting(containerEl)
-			.setName('Enable AI analysis')
-			.setDesc('Enable AI-powered image analysis features')
+			.setName(t('settings.enableAI.name'))
+			.setDesc(t('settings.enableAI.desc'))
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableAIAnalysis)
 				.onChange(async (value) => {
@@ -71,20 +93,20 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 		// AI Configuration Section
 		if (this.plugin.settings.enableAIAnalysis) {
 			// 第一块：AI API配置相关设置
-			containerEl.createEl('h4', { text: 'AI API Configuration' });
+			containerEl.createEl('h4', { text: t('settings.aiApiConfig') });
 			
 			// Quick access to AI Chat
 			new Setting(containerEl)
-				.setName('AI Chat Panel')
-				.setDesc('Open the AI chat panel to interact with your configured models')
+				.setName(t('ui.aiChatPanel'))
+				.setDesc(t('settings.aiChatPanel.desc'))
 				.addButton(button => button
-					.setButtonText('Open AI Chat')
+					.setButtonText(t('commands.openAiChat.name'))
 					.onClick(async () => {
 						try {
 							await this.plugin.showAIChatPanel();
-							new Notice('✅ AI Chat panel opened');
+							new Notice(t('notice.aiChatOpened'));
 						} catch (error) {
-							new Notice(`❌ Failed to open AI Chat: ${error.message}`);
+							new Notice(t('notice.aiChatFailed') + `: ${error.message}`);
 						}
 					}));
 
@@ -92,10 +114,10 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 			const apiKeysContainer = containerEl.createEl('div', { cls: 'api-keys-section' });
 			
 			new Setting(apiKeysContainer)
-				.setName('API Keys')
-				.setDesc('Configure API keys for different AI providers')
+				.setName(t('settings.apiKeys.name'))
+				.setDesc(t('settings.apiKeys.desc'))
 				.addButton(button => button
-					.setButtonText('Set Keys')
+					.setButtonText(t('settings.setKeys.button'))
 					.setCta()
 					.onClick(() => {
 						const modal = new SetKeysModal(this.plugin);
@@ -104,10 +126,10 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 
 			// Model management
 			new Setting(apiKeysContainer)
-				.setName('Model Configurations')
-				.setDesc(`Manage your AI models (${this.plugin.settings.modelConfigs.length} configured)`)
+				.setName(t('settings.modelConfigs.name'))
+				.setDesc(t('settings.modelConfigs.desc', { count: this.plugin.settings.modelConfigs.length }))
 				.addButton(button => button
-					.setButtonText('Manage Models')
+					.setButtonText(t('settings.manageModels.button'))
 					.onClick(() => {
 						const modal = new ManageModelsModal(this.plugin);
 						modal.open();
@@ -115,36 +137,31 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 
 			// Default model selection
 			if (this.plugin.settings.modelConfigs.length > 0) {
-				const visionModels = this.plugin.settings.modelConfigs.filter(mc => mc.isVisionCapable);
+				const allModels = this.plugin.settings.modelConfigs;
 				
-				if (visionModels.length > 0) {
-					new Setting(apiKeysContainer)
-						.setName('Default Model')
-						.setDesc('Select the default model for image analysis')
-						.addDropdown(dropdown => {
-							visionModels.forEach(modelConfig => {
-								dropdown.addOption(modelConfig.id, modelConfig.name);
-							});
-							dropdown.setValue(this.plugin.settings.defaultModelConfigId || visionModels[0].id)
-							.onChange(async (value) => {
-								this.plugin.settings.defaultModelConfigId = value;
-								await this.plugin.saveSettings();
-							});
+				new Setting(apiKeysContainer)
+					.setName(t('settings.defaultModel.name'))
+					.setDesc(t('settings.defaultModel.desc'))
+					.addDropdown(dropdown => {
+						allModels.forEach(modelConfig => {
+							const displayName = modelConfig.isVisionCapable 
+								? `${modelConfig.name} (${t('settings.defaultModel.visionCapable')})`
+								: `${modelConfig.name} (${t('settings.defaultModel.textOnly')})`;
+							dropdown.addOption(modelConfig.id, displayName);
 						});
-				} else {
-					// Warning if no vision models
-					const warningEl = apiKeysContainer.createEl('div', { 
-						cls: 'setting-item-description',
-						text: '⚠️ No vision-capable models configured. Use "Set Keys" to add models that support image analysis.'
+						dropdown.setValue(this.plugin.settings.defaultModelConfigId || allModels[0].id)
+						.onChange(async (value) => {
+							this.plugin.settings.defaultModelConfigId = value;
+							await this.plugin.saveSettings();
+							// Refresh AI chat views to update model selector
+							this.refreshModelDependentComponents();
+						});
 					});
-					warningEl.style.color = 'var(--text-warning)';
-					warningEl.style.fontWeight = 'bold';
-				}
 			} else {
 				// Guide to add models
 				const guideEl = apiKeysContainer.createEl('div', { 
 					cls: 'setting-item-description',
-					text: '💡 Get started by clicking "Set Keys" to configure your AI providers and add models.'
+					text: t('settings.getStarted.guide')
 				});
 				guideEl.style.color = 'var(--text-muted)';
 				guideEl.style.fontStyle = 'italic';
@@ -152,13 +169,13 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 			}
 
 			// 第二块：图片上传和保存功能
-			containerEl.createEl('h4', { text: 'Image Upload and Save' });
+			containerEl.createEl('h4', { text: t('settings.imageUpload.name') });
 			
 			new Setting(containerEl)
-				.setName('Other source images save location')
-				.setDesc('Directory where images from external sources (drag from outside vault, browse files) will be saved.')
+				.setName(t('settings.imageSaveLocation.name'))
+				.setDesc(t('settings.imageSaveLocation.desc'))
 				.addText(text => text
-					.setPlaceholder('Enter folder path (e.g., screenshots-capture/othersourceimage)')
+					.setPlaceholder(t('settings.imageSaveLocation.placeholder'))
 					.setValue(this.plugin.settings.otherSourceImageLocation)
 					.onChange(async (value) => {
 						this.plugin.settings.otherSourceImageLocation = value;
@@ -166,11 +183,11 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					}));
 
 			// 第三块：会话记录相关设置
-			containerEl.createEl('h4', { text: 'Conversation Records' });
+			containerEl.createEl('h4', { text: t('settings.conversationHistory') });
 			
 			new Setting(containerEl)
-				.setName('Auto-save conversations')
-				.setDesc('Automatically save conversations after each message exchange.')
+				.setName(t('settings.autoSave.name'))
+				.setDesc(t('settings.autoSave.desc'))
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.autoSaveConversations)
 					.onChange(async (value) => {
@@ -181,41 +198,19 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 
 			if (this.plugin.settings.autoSaveConversations) {
 				new Setting(containerEl)
-					.setName('Auto-saved conversation location')
-					.setDesc('Directory where automatically saved conversations will be stored.')
+					.setName(t('settings.autoSaveLocation.name'))
+					.setDesc(t('settings.autoSaveLocation.desc'))
 					.addText(text => text
-						.setPlaceholder('Enter folder path (e.g., screenshots-capture/autosavedconversations)')
+						.setPlaceholder(t('settings.autoSaveLocation.placeholder'))
 						.setValue(this.plugin.settings.autoSavedConversationLocation)
 						.onChange(async (value) => {
 							this.plugin.settings.autoSavedConversationLocation = value;
 							await this.plugin.saveSettings();
 						}));
 
-				// 新增自动保存间隔设置
 				new Setting(containerEl)
-					.setName('Auto-save interval')
-					.setDesc('How often conversations are automatically saved.')
-					.addDropdown(dropdown => {
-						dropdown.addOption('20', '20 seconds');
-						dropdown.addOption('30', '30 seconds (default)');
-						dropdown.addOption('60', '1 minute');
-						dropdown.addOption('120', '2 minutes');
-						dropdown.addOption('300', '5 minutes');
-						dropdown.addOption('600', '10 minutes');
-						dropdown.addOption('3600', '1 hour');
-						
-						// 默认值为30秒
-						const currentValue = this.plugin.settings.autoSaveInterval?.toString() || '30';
-						dropdown.setValue(currentValue)
-							.onChange(async (value) => {
-								this.plugin.settings.autoSaveInterval = parseInt(value);
-								await this.plugin.saveSettings();
-							});
-					});
-
-				new Setting(containerEl)
-					.setName('Max auto-saved conversations')
-					.setDesc('Maximum number of conversations to keep in auto-save history. Older conversations will be automatically deleted.')
+					.setName(t('settings.maxHistory.name'))
+					.setDesc(t('settings.maxHistory.desc'))
 					.addDropdown(dropdown => {
 						// 预设选项: 1, 2, 3, 4, 5 (默认), 6, 7, 8, 9, 10, 15, 20, 1000
 						const options = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 1000];
@@ -239,17 +234,17 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 			}
 
 			// 第四块：AI prompt设置
-			containerEl.createEl('h4', { text: 'AI Prompt Settings' });
+			containerEl.createEl('h4', { text: t('settings.promptSettings') });
 			
 			// Create a container for prompts to ensure consistent styling
 			const promptsContainer = containerEl.createEl('div', { cls: 'prompts-settings-container' });
 			
 			// Global System Prompt
 			new Setting(promptsContainer)
-				.setName('Global System Prompt')
-				.setDesc('This system prompt will be used for all AI conversations. It defines the AI\'s personality and behavior.')
+				.setName(t('settings.globalPrompt.name'))
+				.setDesc(t('settings.globalPrompt.desc'))
 				.addTextArea(text => text
-					.setPlaceholder('You are a helpful AI assistant...')
+					.setPlaceholder(t('settings.globalPrompt.placeholder'))
 					.setValue(this.plugin.settings.globalSystemPrompt || '')
 					.onChange(async (value) => {
 						this.plugin.settings.globalSystemPrompt = value;
@@ -270,10 +265,10 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 
 			// Screenshot Prompt
 			new Setting(promptsContainer)
-				.setName('Screenshot Analysis Prompt')
-				.setDesc('This prompt will be automatically added when analyzing screenshots. It guides the AI on how to analyze images.')
+				.setName(t('settings.screenshotPrompt.name'))
+				.setDesc(t('settings.screenshotPrompt.desc'))
 				.addTextArea(text => text
-					.setPlaceholder('Please analyze this screenshot and provide detailed insights...')
+					.setPlaceholder(t('settings.screenshotPrompt.placeholder'))
 					.setValue(this.plugin.settings.screenshotPrompt || '')
 					.onChange(async (value) => {
 						this.plugin.settings.screenshotPrompt = value;
@@ -294,57 +289,36 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 		}
 
 		// Shortcuts Section
-		containerEl.createEl('h3', { text: 'Shortcuts' });
+		containerEl.createEl('h3', { text: t('settings.shortcuts.name') });
 		
 		const shortcutsDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		shortcutsDesc.innerHTML = `
-			<p>Available keyboard shortcuts:</p>
-			<ul>
-				<li><kbd>Escape</kbd> - Cancel region selection</li>
-				<li><kbd>Ctrl/Cmd + Z</kbd> - Undo last edit</li>
-				<li><kbd>Ctrl/Cmd + Y</kbd> - Redo last edit</li>
-			</ul>
-		`;
+		shortcutsDesc.innerHTML = t('settings.shortcuts.help');
 
 		// Usage Section
-		containerEl.createEl('h3', { text: 'Usage' });
+		containerEl.createEl('h3', { text: t('settings.usage.name') });
 		
 		const usageDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		usageDesc.innerHTML = `
-			<p>How to use the screenshot capture plugin:</p>
-			<ol>
-				<li>Click the camera icon in the ribbon or use the command palette</li>
-				<li>Select "Capture selected area" or "Capture full screen"</li>
-				<li>For region capture: drag to select the area you want to capture</li>
-				<li>Use the editing tools to annotate your screenshot</li>
-				<li>Click "Save" to save the image or "Send to AI" for analysis</li>
-			</ol>
-			<p><strong>Note:</strong> This plugin requires Obsidian to be running on a desktop platform with Electron support.</p>
-		`;
+		usageDesc.innerHTML = t('settings.usage.helpContent');
 
 		// Troubleshooting Section
-		containerEl.createEl('h3', { text: 'Troubleshooting' });
+		containerEl.createEl('h3', { text: t('settings.troubleshooting') });
 		
 		const troubleshootingDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		troubleshootingDesc.innerHTML = `
-			<p>If screenshots are not working:</p>
-			<ul>
-				<li>Make sure you're running Obsidian on desktop (not mobile)</li>
-				<li>Try restarting Obsidian</li>
-				<li>Check that you have proper screen recording permissions on macOS</li>
-				<li>Use the "Test desktopCapturer API" command to diagnose issues</li>
-			</ul>
-			<p>If AI analysis is not working:</p>
-			<ul>
-				<li>Check that your API keys are correctly configured using "Set Keys"</li>
-				<li>Ensure you have at least one vision-capable model configured</li>
-				<li>Verify your internet connection</li>
-				<li>Check the Console (Ctrl+Shift+I) for error messages</li>
-			</ul>
-		`;
+		troubleshootingDesc.innerHTML = t('settings.troubleshooting.helpContent');
 
 		// Add custom styles for the settings page
 		this.addStyles();
+	}
+
+	private refreshModelDependentComponents() {
+		// Refresh AI chat views
+		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
+		aiChatLeaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && typeof view.updateContent === 'function') {
+				view.updateContent();
+			}
+		});
 	}
 
 	private addStyles() {

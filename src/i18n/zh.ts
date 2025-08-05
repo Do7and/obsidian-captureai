@@ -1,0 +1,417 @@
+export default {
+  // Settings tab translations
+  "settings.title": "图像捕获设置",
+  "settings.general": "通用",
+  "settings.screenshotFunction": "截图功能",
+  "settings.defaultSaveLocation.name": "默认保存位置",
+  "settings.defaultSaveLocation.desc": "捕获图像将保存到的目录。留空以使用库根目录。",
+  "settings.useRelativePath.name": "使用相对路径",
+  "settings.useRelativePath.desc": "在 Markdown 文件中使用图像的相对路径。禁用时使用绝对路径。",
+  "settings.imageFormat.name": "图像格式",
+  "settings.imageFormat.desc": "选择保存图像的格式",
+  "settings.language.name": "语言",
+  "settings.language.desc": "选择插件界面的语言。更改将在重启Obsidian后生效。",
+  "settings.removeAreaSelect.name": "移除区域选择",
+  "settings.removeAreaSelect.desc": "捕获后移除区域选择",
+  "settings.jpegQuality.name": "JPEG 质量",
+  "settings.jpegQuality.desc": "JPEG 图像的质量设置 (1-100)",
+  "settings.imagePreprocessing.name": "图像预处理",
+  "settings.imagePreprocessing.desc": "启用图像压缩和调整大小",
+  "settings.maxImageWidth.name": "最大图像宽度",
+  "settings.maxImageWidth.desc": "捕获图像的最大宽度 (0 表示无限制)",
+  
+  // AI Settings
+  "settings.aiFunction": "AI 会话功能",
+  "settings.enableAI.name": "启用 AI 分析",
+  "settings.enableAI.desc": "启用图像分析的 AI 功能",
+  "settings.aiApiConfig": "AI API 配置",
+  "settings.apiKey.name": "API 密钥",
+  "settings.apiKey.desc": "所选提供商的 API 密钥",
+  "settings.setModel.name": "设置模型",
+  "settings.setModel.desc": "设置用于图像分析的 AI 模型",
+  "settings.defaultModel.name": "默认模型",
+  "settings.defaultModel.desc": "用于AI交互的默认AI模型",
+  "settings.defaultModel.visionCapable": "视觉",
+  "settings.defaultModel.textOnly": "仅文本",
+  "settings.imageSaveLocation.name": "图像保存位置",
+  "settings.imageSaveLocation.desc": "从其他来源保存图像的目录",
+  "settings.conversationHistory": "对话历史设置",
+  "settings.autoSave.name": "自动保存对话",
+  "settings.autoSave.desc": "自动保存 AI 会话",
+  "settings.autoSaveLocation.name": "自动保存位置",
+  "settings.autoSaveLocation.desc": "AI会话将保存到的目录",
+  "settings.maxHistory.name": "自动保存的会话最大数量",
+  "settings.maxHistory.desc": "要保留的对话最大数量",
+  "settings.promptSettings": "提示词设置",
+  "settings.globalPrompt.name": "全局系统提示词",
+  "settings.globalPrompt.desc": "AI 分析的全局系统提示词",
+  "settings.screenshotPrompt.name": "截图分析提示词",
+  "settings.screenshotPrompt.desc": "用于截图分析的提示词",
+  
+  // Placeholders
+  "settings.defaultSaveLocation.placeholder": "输入文件夹路径 (例如: screenshots-capture/savedscreenshots)",
+  "settings.imageSaveLocation.placeholder": "输入文件夹路径 (例如: screenshots-capture/othersourceimage)",
+  "settings.autoSaveLocation.placeholder": "输入文件夹路径 (例如: screenshots-capture/autosavedconversations)",
+  "settings.globalPrompt.placeholder": "你是一个有用的AI助手...",
+  "settings.screenshotPrompt.placeholder": "请分析这个截图并提供详细的见解...",
+
+  // AI Chat Panel
+  "settings.aiChatPanel.desc": "打开AI会话面板与您配置的模型交互",
+  
+  // API Keys
+  "settings.apiKeys.name": "API密钥",
+  "settings.apiKeys.desc": "为不同的AI提供商配置API密钥",
+  "settings.setKeys.button": "设置密钥",
+  
+  // Model configurations
+  "settings.modelConfigs.name": "模型配置",
+  "settings.modelConfigs.desc": "管理您的AI模型 (已配置{{count}}个)",
+  "settings.manageModels.button": "管理模型",
+  
+  // Warnings and guides
+  "settings.noVisionModels.warning": "⚠️ 未配置支持视觉的模型。使用设置密钥添加支持图像分析的模型。",
+  "settings.getStarted.guide": "💡 点击设置密钥开始配置您的AI提供商并添加模型。",
+  
+  // Section names
+  "settings.usage.name": "使用方法",
+  "settings.troubleshooting.name": "故障排除",
+  
+  // Help content
+  "settings.shortcuts.help": `
+    <p>可用的键盘快捷键:</p>
+    <ul>
+      <li><kbd>Escape</kbd> - 取消区域选择</li>
+      <li><kbd>Ctrl/Cmd + Z</kbd> - 撤销上次编辑</li>
+      <li><kbd>Ctrl/Cmd + Y</kbd> - 重做上次编辑</li>
+    </ul>
+  `,
+  "settings.usage.help": `
+    <p>如何使用截图插件:</p>
+    <ol>
+      <li>点击功能区中的相机图标或使用命令面板</li>
+      <li>选择"捕获选定区域"或"捕获全屏"</li>
+      <li>对于区域捕获：拖动选择要捕获的区域</li>
+      <li>使用编辑工具注释您的截图</li>
+      <li>点击"保存"保存图像或"发送到AI"进行分析</li>
+    </ol>
+    <p><strong>注意:</strong> 此插件需要Obsidian在支持Electron的桌面平台上运行。</p>
+  `,
+  "settings.troubleshooting.help": `
+    <p>如果截图不工作:</p>
+    <ul>
+      <li>确保您在桌面版Obsidian上运行（非移动版）</li>
+      <li>尝试重启Obsidian</li>
+      <li>检查您在macOS上是否有适当的屏幕录制权限</li>
+      <li>使用"测试桌面捕获API"命令诊断问题</li>
+    </ul>
+    <p>如果AI分析不工作:</p>
+    <ul>
+      <li>检查您的API密钥是否使用"设置密钥"正确配置</li>
+      <li>确保您至少配置了一个支持视觉的模型</li>
+      <li>验证您的网络连接</li>
+      <li>检查控制台 (Ctrl+Shift+I) 查看错误消息</li>
+    </ul>
+  `,
+  
+  // Other settings
+  "settings.autoAnalysis.name": "自动分析",
+  "settings.autoAnalysis.desc": "自动发送截图进行 AI 分析",
+  "settings.historyLimit.name": "历史记录限制",
+  "settings.historyLimit.desc": "要保留的 AI 对话数量 (默认: 5)",
+  "settings.notification.name": "通知设置",
+  "settings.notification.desc": "控制通知显示和持续时间",
+  "settings.shortcuts.name": "快捷键",
+  "settings.shortcuts.desc": "自定义截图快捷方式",
+  "settings.aiBehavior.name": "AI 行为",
+  "settings.aiBehavior.desc": "默认 AI 行为和自定义问题",
+  "settings.imageUpload.name": "图像上传和保存",
+  "settings.imageUpload.desc": "控制图像如何上传和保存",
+  
+  // Commands
+  "commands.captureArea.name": "捕获选定区域",
+  "commands.captureFull.name": "捕获全屏",
+  "commands.openAiChat.name": "打开 AI 会话面板",
+  "commands.toggleAiChat.name": "切换 AI 会话面板",
+  "commands.testDesktopCapturer.name": "测试桌面捕获 API",
+  "commands.processClipboard.name": "处理剪贴板图像",
+  
+  // Notices
+  "notice.screenshotSaved": "截图已保存到: {{filePath}}",
+  "notice.aiAnalysisComplete": "AI 分析完成",
+  "notice.clipboardImageProcessed": "剪贴板图像已处理并保存",
+  "notice.aiChatOpened": "✅ AI会话面板已打开",
+  "notice.aiChatFailed": "❌ 打开AI会话失败",
+  
+  // UI elements
+  "ui.save": "保存",
+  "ui.cancel": "取消",
+  "ui.close": "关闭",
+  "ui.delete": "删除",
+  "ui.edit": "编辑",
+  "ui.done": "完成",
+  "ui.add": "添加",
+  "ui.remove": "移除",
+  "ui.screenshotCapture": "截图捕获",
+  "ui.aiChatPanel": "AI 会话面板",
+  
+  // Chat History Modal
+  "ui.chatHistory": "会话历史",
+  "ui.autoSavedConversations": "自动保存的会话",
+  "ui.loadConversation": "加载会话",
+  "ui.deleteConversation": "删除会话",
+  "ui.noConversationsFound": "未找到会话",
+  
+  // Manage Models Modal
+  "ui.manageModels": "管理模型",
+  "ui.addModel": "添加模型",
+  "ui.editModel": "编辑模型",
+  "ui.deleteModel": "删除模型",
+  "ui.noModelsConfigured": "未配置模型",
+  "ui.useSetKeysToAdd": "使用\"设置密钥\"来添加API密钥并配置模型。",
+  
+  // Set Keys Modal
+  "ui.setApiKeys": "设置 API 密钥",
+  "ui.saveKeys": "保存密钥",
+  
+  // Troubleshooting
+  "settings.troubleshooting": "故障排除",
+
+  // Screenshot Manager messages
+  "notice.regionCaptureStarting": "开始区域截图...",
+  "notice.regionSelectionCancelled": "区域选择已取消",
+  "notice.screenCaptureFailed": "截屏失败",
+  "notice.regionCaptureFailed": "区域截图失败: {{message}}",
+  "notice.fullScreenCapturing": "正在截取全屏...",
+  "notice.fullScreenCaptureFailed": "全屏截图失败: {{message}}",
+  "notice.screenCapturingOverlayInstruction": "🖱️ 拖拽选择截图区域<br><small>灰色区域仅在当前窗口内，但可以截取整个屏幕的任何区域<br>按 ESC 取消</small>",
+  "notice.electronAPINotAvailable": "Electron API 不可用 - 请确保在桌面端运行",
+  "notice.electronRemoteNotAvailable": "Electron remote 不可用 - 请尝试重启 Obsidian",
+  "notice.desktopCapturerNotAvailable": "desktopCapturer 不可用",
+  "notice.screenRecordingPermissionDenied": "屏幕录制权限被拒绝。请在系统偏好设置中授予 Obsidian 屏幕录制权限。",
+  "notice.screenPermissionCheckFailed": "屏幕录制权限检查失败。请检查系统权限。",
+  "notice.noScreenSourcesFound": "未找到屏幕源 - 请检查屏幕录制权限",
+  "notice.noThumbnailAvailable": "无缩略图可用",
+  "notice.thumbnailEmpty": "缩略图为空 - 请在系统偏好设置中检查屏幕录制权限",
+  "notice.screenCaptureApiError": "屏幕截取 API 不可用。请重启 Obsidian。",
+  "notice.screenCaptureGenericError": "屏幕截取错误: {{message}}",
+  "notice.allCaptureAttemptsFailed": "所有分辨率的屏幕截取都失败了 - 请检查系统权限",
+  "notice.testingAdvancedCapture": "正在测试高级截取方法...",
+  "notice.advancedCaptureTestCompleted": "高级截取测试完成",
+  "notice.advancedTestError": "高级测试错误: {{message}}",
+  "notice.screenshotCapturedSuccessfully": "截图成功!",
+  "notice.screenshotSavedToFile": "截图已保存到: {{fileName}}",
+  "notice.failedToSaveScreenshot": "保存截图失败: {{message}}",
+  "notice.foundScreenSources": "找到 {{count}} 个屏幕源",
+  "notice.primarySource": "主要源: {{name}}",
+  "notice.remoteDesktopCapturerAccessible": "远程 desktopCapturer 可访问，正在测试截取...",
+  "notice.desktopCapturerNotAvailableRemote": "远程无法访问 desktopCapturer",
+  "notice.errorAccessingRemoteDesktopCapturer": "访问远程 desktopCapturer 错误: {{message}}",
+
+  // Image Editor messages
+  "imageEditor.title": "图像编辑器",
+  "imageEditor.saveButton": "保存并复制",
+  "imageEditor.aiButton": "保存复制并发送到 AI",
+  "imageEditor.cancelButton": "取消",
+  "imageEditor.undoButton": "撤销",
+  "imageEditor.redoButton": "重做",
+  "imageEditor.penTool": "画笔",
+  "imageEditor.lineTool": "直线",
+  "imageEditor.arrowTool": "箭头",
+  "imageEditor.rectangleTool": "矩形",
+  "imageEditor.circleTool": "圆形",
+  "imageEditor.highlighterTool": "荧光笔",
+  "imageEditor.eraserTool": "橡皮擦",
+  "imageEditor.handTool": "移动工具",
+  "imageEditor.cropTool": "裁剪",
+  "imageEditor.textTool": "文本",
+  "imageEditor.wavyLineTool": "波浪线",
+  "imageEditor.dashedLineTool": "虚线",
+  "imageEditor.dottedLineTool": "点线",
+  "imageEditor.strokeSize.small": "小",
+  "imageEditor.strokeSize.medium": "中",
+  "imageEditor.strokeSize.large": "大",
+  "imageEditor.savingAndAddingToQueue": "正在保存图片并添加到AI发送队列...",
+  "imageEditor.savingAndSendingToAI": "正在保存并发送图片给AI分析...",
+  "imageEditor.imageAddedToQueue": "✅ 图片已添加到AI发送队列，可继续添加更多图片",
+  "imageEditor.imageSentToAI": "✅ 图片已发送给AI分析，请查看右侧面板",
+  "imageEditor.saveError": "保存图片失败: {{message}}",
+  "imageEditor.aiSendError": "发送到AI失败: {{message}}",
+  "imageEditor.copyFailed": "❌ 复制失败: {{message}}",
+  "imageEditor.addToQueueFailed": "❌ 添加到AI队列失败: {{message}}",
+  "imageEditor.operationFailed": "❌ 操作失败: {{message}}",
+  "imageEditor.aiAnalysisFailed": "❌ AI分析失败: {{message}}",
+  "imageEditor.noVisionModelsTooltip": "未配置支持视觉的模型。请使用设置 > 设置密钥来添加模型。",
+  "imageEditor.noDefaultModelTooltip": "未选择默认模型或模型不支持视觉功能",
+  "imageEditor.credentialsNotVerifiedTooltip": "API凭据未验证。请使用设置 > 设置密钥来验证。",
+
+  // Set Keys Modal
+  "setKeys.title": "AI 提供商设置",
+  "setKeys.description": "通过添加 API 密钥来配置您的 AI 提供商。",
+  "setKeys.getApiKey": "获取 API 密钥",
+  "setKeys.apiKeyLabel": "API 密钥",
+  "setKeys.apiKeyDescription": "输入此提供商的 API 密钥",
+  "setKeys.apiKeyPlaceholder": "输入 API 密钥...",
+  "setKeys.verifyButton": "验证",
+  "setKeys.verifyingButton": "验证中...",
+  "setKeys.verifiedButton": "已验证",
+  "setKeys.retryButton": "重试",
+  "setKeys.baseUrlLabel": "基础 URL",
+  "setKeys.baseUrlDescription": "输入自定义 API 端点的基础 URL",
+  "setKeys.baseUrlPlaceholder": "https://api.example.com/v1",
+  "setKeys.customNameLabel": "提供商名称",
+  "setKeys.customNameDescription": "为此提供商输入自定义名称 (例如: '我的公司API')",
+  "setKeys.customNamePlaceholder": "我的自定义提供商",
+  "setKeys.addModelLabel": "添加模型",
+  "setKeys.addModelDescription": "选择并添加可用模型",
+  "setKeys.addCustomModelDescription": "输入模型名称",
+  "setKeys.addModelButton": "添加模型",
+  "setKeys.selectModelPlaceholder": "选择一个模型...",
+  "setKeys.customModelPlaceholder": "输入模型名称 (例如: gpt-4-vision-preview)",
+  "setKeys.verifyApiKeyFirst": "请先验证 API 密钥",
+  "setKeys.enterApiKeyFirst": "请先输入 API 密钥",
+  "setKeys.apiKeyVerified": "✅ {{providerName}} API 密钥验证成功",
+  "setKeys.apiKeyVerificationFailed": "❌ {{providerName}} API 密钥验证失败",
+  "setKeys.verificationError": "❌ {{providerName}} 验证错误: {{message}}",
+  "setKeys.noModelsAvailable": "此提供商没有可用模型",
+  "setKeys.modelAddedSuccessfully": "✅ 已将 {{modelName}} 添加到您的模型配置中",
+  "setKeys.modelSelectionTitle": "从 {{providerName}} 添加模型",
+  "setKeys.modelSelectionDescription": "选择要添加到配置的模型:",
+  "setKeys.visionCapableLabel": "支持视觉",
+  "setKeys.visionCapableDescription": "勾选此选项如果该模型支持图像分析",
+  "setKeys.visionBadge": "视觉",
+  "setKeys.contextBadge": "{{count}} 令牌",
+
+  // Manage Models Modal
+  "manageModels.description": "配置和管理您的 AI 模型配置。",
+  "manageModels.setDefaultButton": "设为默认",
+  "manageModels.configureButton": "⚙️",
+  "manageModels.deleteButton": "🗑️",
+  "manageModels.deleteButtonTitle": "删除此模型配置",
+  "manageModels.configureButtonTitle": "配置模型设置",
+  "manageModels.providerBadge": "{{providerName}}",
+  "manageModels.defaultBadge": "默认",
+  "manageModels.setAsDefaultSuccess": "✅ 已将 {{modelName}} 设为默认模型",
+  "manageModels.deletedSuccessfully": "✅ 已删除 {{modelName}}",
+  "manageModels.maxTokensLabel": "最大令牌数",
+  "manageModels.maxTokensDescription": "响应的最大令牌数",
+  "manageModels.maxTokensPlaceholder": "4000",
+  "manageModels.temperatureLabel": "温度",
+  "manageModels.temperatureDescription": "控制随机性 (0.0 = 确定性, 1.0 = 非常有创意)",
+  "manageModels.topPLabel": "Top P",
+  "manageModels.topPDescription": "核心采样参数",
+  "manageModels.frequencyPenaltyLabel": "频率惩罚",
+  "manageModels.frequencyPenaltyDescription": "减少令牌重复",
+  "manageModels.presencePenaltyLabel": "存在惩罚",
+  "manageModels.presencePenaltyDescription": "减少主题重复",
+  "manageModels.maxResponseTimeLabel": "最大响应时间",
+  "manageModels.maxResponseTimeDescription": "等待响应的最大时间(秒)",
+  "manageModels.maxResponseTimePlaceholder": "30",
+  "manageModels.systemPromptLabel": "系统提示词",
+  "manageModels.systemPromptDescription": "此模型的自定义系统提示词(可选)",
+  "manageModels.systemPromptPlaceholder": "输入自定义系统提示词...",
+  "manageModels.resetToDefaultsButton": "重置为默认值",
+  "manageModels.settingsResetSuccess": "✅ 设置已重置为默认值",
+  "manageModels.confirmDeleteTitle": "删除模型配置",
+  "manageModels.confirmDeleteMessage": "您确定要删除 \"{{modelName}}\" 吗？此操作无法撤销。",
+  "manageModels.confirmDeleteCancel": "取消",
+  "manageModels.confirmDeleteConfirm": "删除",
+
+  // Chat History Modal
+  "chatHistory.manualSavedTitle": "手动保存的对话",
+  "chatHistory.closeButton": "关闭",
+  "chatHistory.noAutoSavedFound": "未找到自动保存的对话",
+  "chatHistory.noManualSavedFound": "未找到手动保存的对话",
+  "chatHistory.errorLoading": "加载对话时出错: {{message}}",
+  "chatHistory.autoSavedBadge": "自动保存",
+  "chatHistory.manualBadge": "手动",
+  "chatHistory.conversationLoaded": "✅ 已加载对话: {{title}}",
+  "chatHistory.failedToParse": "❌ 解析对话失败",
+  "chatHistory.failedToLoad": "❌ 加载对话失败: {{message}}",
+
+  // AI Chat View
+  "aiChat.title": "AI 会话 - 来自截图捕获插件",
+  "aiChat.assistantTitle": "AI 助手",
+  "aiChat.howToUseTitle": "使用方法",
+  "aiChat.instruction.screenshot": "截取屏幕截图，它将自动分析",
+  "aiChat.instruction.dragDrop": "将图像拖放到会话区域",
+  "aiChat.instruction.typeQuestions": "输入您的问题并按 Enter 发送",
+  "aiChat.instruction.configureKeys": "要想使用AI，需要在设置中配置 API 密钥",
+  "aiChat.noModelsConfigured": "⚠️ 未配置 AI 模型",
+  "aiChat.noModelsDescription": "转到设置 → 设置密钥来配置 AI 提供商",
+  "aiChat.readyWithModel": "✅ 准备就绪，使用 {{modelName}}",
+  "aiChat.readyWithModelTextOnly": "⚪ 准备就绪，使用 {{modelName}} (仅文本)",
+  "aiChat.textOnlyModelNotice": "此模型不支持图像分析，但正常文本对话仍然可用",
+  "aiChat.modelsConfigured": "已配置 {{count}} 个视觉模型",
+  "aiChat.allModelsConfigured": "已配置 {{total}} 个模型，其中 {{vision}} 个视觉模型",
+  "aiChat.sendButton": "发送",
+  "aiChat.typePlaceholder": "输入您的消息...",
+  "aiChat.dragImageHere": "将图像拖拽到这里或",
+  "aiChat.selectImages": "选择图像",
+  "aiChat.newConversationButton": "新会话",
+  "aiChat.loadHistoryButton": "加载历史会话",
+  "aiChat.saveConversationButton": "保存会话",
+  "aiChat.clearImagesButton": "清除图像",
+  "aiChat.removeImageButton": "移除",
+  "aiChat.user": "用户",
+  "aiChat.aiAssistant": "AI 助手",
+  "aiChat.textChatTitle": "文本会话",
+  "aiChat.screenshotAnalysisTitle": "截图分析",
+  "aiChat.sendingMessage": "正在发送消息...",
+  "aiChat.aiThinking": "AI 正在思考...",
+  "aiChat.conversationSaved": "✅ 对话已保存为: {{fileName}}",
+  "aiChat.failedToSave": "❌ 保存对话失败: {{message}}",
+  "aiChat.imagesCleared": "✅ 图像已清除",
+  "aiChat.noActiveConversation": "没有活跃的对话可保存",
+  "aiChat.errorSendingMessage": "❌ 发送消息错误: {{message}}",
+  "aiChat.menuButton": "菜单",
+  "aiChat.browseFiles": "选择文件",
+  "aiChat.inputPlaceholder": "您想了解什么，或者试试图片？",
+  "aiChat.textCopied": "文本已复制到剪贴板",
+  "aiChat.imageCopied": "图像已复制到剪贴板",
+  "aiChat.selectionCopied": "选择内容已复制为 Markdown",
+  "aiChat.copyFailed": "复制消息失败",
+  "aiChat.copyImageFailed": "复制图片失败",
+  "aiChat.copySelectionFailed": "复制选择内容失败",
+  "aiChat.imagesReadyToSend": "{{count}} 张图片准备发送",
+  "aiChat.clearAllImages": "清除全部",
+  "aiChat.removeThisImage": "移除此图片",
+  "aiChat.sendMessageTooltip": "发送消息 (Enter)",
+  "aiChat.nonVisionModelWarning": "当前为非视觉模型无法发送图片",
+  "aiChat.nonVisionModelCannotSendImages": "当前为非视觉模型无法处理图片。请输入文字消息或切换到支持视觉的模型。",
+  "aiChat.nonVisionModelNotice": "当前使用的是非视觉模型，无法处理图片。请输入文字消息或切换到支持视觉的模型。",
+
+  // Main plugin messages
+  "plugin.aiChatPanelToggleFailed": "❌ 切换 AI 会话面板失败: {{message}}",
+  "plugin.aiManagerNotInitialized": "AI 管理器未初始化",
+  "plugin.aiChatPanelNotFound": "未找到 AI 会话面板或不支持图像队列",
+  "plugin.failedToCreateAiChatPanel": "创建 AI 会话面板失败: {{message}}",
+
+  // Settings tab - hardcoded content that needs i18n
+  "settings.usage.helpContent": `
+    <p>如何使用截图插件:</p>
+    <ol>
+      <li>点击功能区中的相机图标或使用命令面板</li>
+      <li>选择"捕获选定区域"或"捕获全屏"</li>
+      <li>对于区域捕获：拖动选择要捕获的区域</li>
+      <li>使用编辑工具注释您的截图</li>
+      <li>点击"保存"保存图像或"发送到AI"进行分析</li>
+    </ol>
+    <p><strong>注意:</strong> 此插件需要Obsidian在支持Electron的桌面平台上运行。</p>
+  `,
+  "settings.troubleshooting.helpContent": `
+    <p>如果截图不工作:</p>
+    <ul>
+      <li>确保您在桌面版Obsidian上运行（非移动版）</li>
+      <li>尝试重启Obsidian</li>
+      <li>检查您在macOS上是否有适当的屏幕录制权限</li>  
+      <li>使用"测试桌面捕获API"命令诊断问题</li>
+    </ul>
+    <p>如果AI分析不工作:</p>
+    <ul>
+      <li>检查您的API密钥是否使用"设置密钥"正确配置</li>
+      <li>确保您至少配置了一个支持视觉的模型</li>
+      <li>验证您的网络连接</li>
+      <li>检查控制台 (Ctrl+Shift+I) 查看错误消息</li>
+    </ul>
+  `,
+};

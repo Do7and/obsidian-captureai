@@ -1,0 +1,417 @@
+export default {
+  // Settings tab translations
+  "settings.title": "Image Capture Settings",
+  "settings.general": "General",
+  "settings.screenshotFunction": "Screenshot Function",
+  "settings.defaultSaveLocation.name": "Default save location",
+  "settings.defaultSaveLocation.desc": "Directory where captured images will be saved. Leave empty to use vault root.",
+  "settings.useRelativePath.name": "Use relative paths",
+  "settings.useRelativePath.desc": "Use relative paths for images in markdown files. When disabled, uses absolute paths.",
+  "settings.imageFormat.name": "Image format",
+  "settings.imageFormat.desc": "Choose the format for saved images",
+  "settings.language.name": "Language",
+  "settings.language.desc": "Select the language for the plugin interface. Changes take effect after restarting Obsidian.",
+  "settings.removeAreaSelect.name": "Remove area selection",
+  "settings.removeAreaSelect.desc": "Remove area selection after capture",
+  "settings.jpegQuality.name": "JPEG Quality",
+  "settings.jpegQuality.desc": "Quality setting for JPEG images (1-100)",
+  "settings.imagePreprocessing.name": "Image preprocessing",
+  "settings.imagePreprocessing.desc": "Enable image compression and resizing",
+  "settings.maxImageWidth.name": "Max image width",
+  "settings.maxImageWidth.desc": "Maximum width for captured images (0 for no limit)",
+  
+  // AI Settings
+  "settings.aiFunction": "AI Chat Function",
+  "settings.enableAI.name": "Enable AI Analysis",
+  "settings.enableAI.desc": "Enable AI features for image analysis",
+  "settings.aiApiConfig": "AI API Configuration",
+  "settings.apiKey.name": "API Key",
+  "settings.apiKey.desc": "API key for selected provider",
+  "settings.setModel.name": "Set Model",
+  "settings.setModel.desc": "Set AI model for image analysis",
+  "settings.defaultModel.name": "Default Model",
+  "settings.defaultModel.desc": "Default AI model for AI interactions",
+  "settings.defaultModel.visionCapable": "Vision",
+  "settings.defaultModel.textOnly": "Text Only",
+  "settings.imageSaveLocation.name": "Image save location",
+  "settings.imageSaveLocation.desc": "Directory where images from other sources will be saved",
+  "settings.conversationHistory": "Conversation History Settings",
+  "settings.autoSave.name": "Auto-save conversations",
+  "settings.autoSave.desc": "Automatically save AI chat conversations",
+  "settings.autoSaveLocation.name": "Auto-save location",
+  "settings.autoSaveLocation.desc": "Directory where chat conversations will be saved",
+  "settings.maxHistory.name": "Max history count",
+  "settings.maxHistory.desc": "Maximum number of conversations to keep (default: 5)",
+  "settings.promptSettings": "Prompt Settings",
+  "settings.globalPrompt.name": "Global system prompt",
+  "settings.globalPrompt.desc": "Global system prompt for AI analysis",
+  "settings.screenshotPrompt.name": "Screenshot analysis prompt",
+  "settings.screenshotPrompt.desc": "Prompt used for screenshot analysis",
+  
+  // Placeholders
+  "settings.defaultSaveLocation.placeholder": "Enter folder path (e.g., screenshots-capture/savedscreenshots)",
+  "settings.imageSaveLocation.placeholder": "Enter folder path (e.g., screenshots-capture/othersourceimage)",
+  "settings.autoSaveLocation.placeholder": "Enter folder path (e.g., screenshots-capture/autosavedconversations)",
+  "settings.globalPrompt.placeholder": "You are a helpful AI assistant...",
+  "settings.screenshotPrompt.placeholder": "Please analyze this screenshot and provide detailed insights...",
+
+  // AI Chat Panel
+  "settings.aiChatPanel.desc": "Open the AI chat panel to interact with your configured models",
+  
+  // API Keys
+  "settings.apiKeys.name": "API Keys",
+  "settings.apiKeys.desc": "Configure API keys for different AI providers",
+  "settings.setKeys.button": "Set Keys",
+  
+  // Model configurations
+  "settings.modelConfigs.name": "Model Configurations",
+  "settings.modelConfigs.desc": "Manage your AI models ({{count}} configured)",
+  "settings.manageModels.button": "Manage Models",
+  
+  // Warnings and guides
+  "settings.noVisionModels.warning": "⚠️ No vision-capable models configured. Use \"Set Keys\" to add models that support image analysis.",
+  "settings.getStarted.guide": "💡 Get started by clicking \"Set Keys\" to configure your AI providers and add models.",
+  
+  // Section names
+  "settings.usage.name": "Usage",
+  "settings.troubleshooting.name": "Troubleshooting",
+  
+  // Help content
+  "settings.shortcuts.help": `
+    <p>Available keyboard shortcuts:</p>
+    <ul>
+      <li><kbd>Escape</kbd> - Cancel region selection</li>
+      <li><kbd>Ctrl/Cmd + Z</kbd> - Undo last edit</li>
+      <li><kbd>Ctrl/Cmd + Y</kbd> - Redo last edit</li>
+    </ul>
+  `,
+  "settings.usage.help": `
+    <p>How to use the screenshot capture plugin:</p>
+    <ol>
+      <li>Click the camera icon in the ribbon or use the command palette</li>
+      <li>Select "Capture selected area" or "Capture full screen"</li>
+      <li>For region capture: drag to select the area you want to capture</li>
+      <li>Use the editing tools to annotate your screenshot</li>
+      <li>Click "Save" to save the image or "Send to AI" for analysis</li>
+    </ol>
+    <p><strong>Note:</strong> This plugin requires Obsidian to be running on a desktop platform with Electron support.</p>
+  `,
+  "settings.troubleshooting.help": `
+    <p>If screenshots are not working:</p>
+    <ul>
+      <li>Make sure you're running Obsidian on desktop (not mobile)</li>
+      <li>Try restarting Obsidian</li>
+      <li>Check that you have proper screen recording permissions on macOS</li>
+      <li>Use the "Test desktopCapturer API" command to diagnose issues</li>
+    </ul>
+    <p>If AI analysis is not working:</p>
+    <ul>
+      <li>Check that your API keys are correctly configured using "Set Keys"</li>
+      <li>Ensure you have at least one vision-capable model configured</li>
+      <li>Verify your internet connection</li>
+      <li>Check the Console (Ctrl+Shift+I) for error messages</li>
+    </ul>
+  `,
+  
+  // Other settings
+  "settings.autoAnalysis.name": "Auto analysis",
+  "settings.autoAnalysis.desc": "Automatically send screenshots for AI analysis",
+  "settings.historyLimit.name": "History limit",
+  "settings.historyLimit.desc": "Number of AI conversations to keep (default: 5)",
+  "settings.notification.name": "Notification settings",
+  "settings.notification.desc": "Control notification display and duration",
+  "settings.shortcuts.name": "Shortcuts",
+  "settings.shortcuts.desc": "Customize screenshot shortcuts",
+  "settings.aiBehavior.name": "AI behavior",
+  "settings.aiBehavior.desc": "Default AI behavior and custom questions",
+  "settings.imageUpload.name": "Image upload and save",
+  "settings.imageUpload.desc": "Control how images are uploaded and saved",
+  
+  // Commands
+  "commands.captureArea.name": "Capture selected area",
+  "commands.captureFull.name": "Capture full screen",
+  "commands.openAiChat.name": "Open AI Chat Panel",
+  "commands.toggleAiChat.name": "Toggle AI Chat Panel",
+  "commands.testDesktopCapturer.name": "Test desktopCapturer API",
+  "commands.processClipboard.name": "Process clipboard image",
+  
+  // Notices
+  "notice.screenshotSaved": "Screenshot saved to: {{filePath}}",
+  "notice.aiAnalysisComplete": "AI analysis complete",
+  "notice.clipboardImageProcessed": "Clipboard image processed and saved",
+  "notice.aiChatOpened": "✅ AI Chat panel opened",
+  "notice.aiChatFailed": "❌ Failed to open AI Chat",
+  
+  // UI elements
+  "ui.save": "Save",
+  "ui.cancel": "Cancel",
+  "ui.close": "Close",
+  "ui.delete": "Delete",
+  "ui.edit": "Edit",
+  "ui.done": "Done",
+  "ui.add": "Add",
+  "ui.remove": "Remove",
+  "ui.screenshotCapture": "Screenshot Capture",
+  "ui.aiChatPanel": "AI Chat Panel",
+  
+  // Chat History Modal
+  "ui.chatHistory": "Chat History",
+  "ui.autoSavedConversations": "Auto-saved Conversations",
+  "ui.loadConversation": "Load Conversation",
+  "ui.deleteConversation": "Delete Conversation",
+  "ui.noConversationsFound": "No conversations found",
+  
+  // Manage Models Modal
+  "ui.manageModels": "Manage Models",
+  "ui.addModel": "Add Model",
+  "ui.editModel": "Edit Model",
+  "ui.deleteModel": "Delete Model",
+  "ui.noModelsConfigured": "No Models Configured",
+  "ui.useSetKeysToAdd": "Use \"Set Keys\" to add API keys and configure models.",
+  
+  // Set Keys Modal
+  "ui.setApiKeys": "Set API Keys",
+  "ui.saveKeys": "Save Keys",
+  
+  // Troubleshooting
+  "settings.troubleshooting": "Troubleshooting",
+
+  // Screenshot Manager messages
+  "notice.regionCaptureStarting": "Starting region capture...",
+  "notice.regionSelectionCancelled": "Region selection cancelled",
+  "notice.screenCaptureFailed": "Failed to capture screen",
+  "notice.regionCaptureFailed": "Region capture failed: {{message}}",
+  "notice.fullScreenCapturing": "Capturing full screen...",
+  "notice.fullScreenCaptureFailed": "Full screen capture failed: {{message}}",
+  "notice.screenCapturingOverlayInstruction": "🖱️ Drag to select screenshot area<br><small>Gray area is within current window, but can capture any area of the screen<br>Press ESC to cancel</small>",
+  "notice.electronAPINotAvailable": "Electron API not available - make sure you are running on desktop",
+  "notice.electronRemoteNotAvailable": "Electron remote not available - try restarting Obsidian",
+  "notice.desktopCapturerNotAvailable": "desktopCapturer not available",
+  "notice.screenRecordingPermissionDenied": "Screen recording permission denied. Please grant screen recording permission to Obsidian in System Preferences.",
+  "notice.screenPermissionCheckFailed": "Screen recording permission check failed. Please check system permissions.",
+  "notice.noScreenSourcesFound": "No screen sources found - check screen recording permissions",
+  "notice.noThumbnailAvailable": "No thumbnail available",
+  "notice.thumbnailEmpty": "Thumbnail is empty - check screen recording permissions in System Preferences",
+  "notice.screenCaptureApiError": "Screen capture API not available. Please restart Obsidian.",
+  "notice.screenCaptureGenericError": "Screen capture error: {{message}}",
+  "notice.allCaptureAttemptsFailed": "Failed to capture screen with any resolution - check system permissions",
+  "notice.testingAdvancedCapture": "Testing advanced capture methods...",
+  "notice.advancedCaptureTestCompleted": "Advanced capture test completed",
+  "notice.advancedTestError": "Error in advanced test: {{message}}",
+  "notice.screenshotCapturedSuccessfully": "Screenshot captured successfully!",
+  "notice.screenshotSavedToFile": "Screenshot saved to: {{fileName}}",
+  "notice.failedToSaveScreenshot": "Failed to save screenshot: {{message}}",
+  "notice.foundScreenSources": "Found {{count}} screen sources",
+  "notice.primarySource": "Primary source: {{name}}",
+  "notice.remoteDesktopCapturerAccessible": "Remote desktopCapturer accessible, testing capture...",
+  "notice.desktopCapturerNotAvailableRemote": "desktopCapturer not available through remote",
+  "notice.errorAccessingRemoteDesktopCapturer": "Error accessing remote desktopCapturer: {{message}}",
+
+  // Image Editor messages
+  "imageEditor.title": "Image Editor",
+  "imageEditor.saveButton": "Save",
+  "imageEditor.aiButton": "Send to AI",
+  "imageEditor.cancelButton": "Cancel",
+  "imageEditor.undoButton": "Undo",
+  "imageEditor.redoButton": "Redo",
+  "imageEditor.penTool": "Pen",
+  "imageEditor.lineTool": "Line",
+  "imageEditor.arrowTool": "Arrow",
+  "imageEditor.rectangleTool": "Rectangle",
+  "imageEditor.circleTool": "Circle",
+  "imageEditor.highlighterTool": "Highlighter",
+  "imageEditor.eraserTool": "Eraser",
+  "imageEditor.handTool": "Hand (Move)",
+  "imageEditor.cropTool": "Crop",
+  "imageEditor.textTool": "Text",
+  "imageEditor.wavyLineTool": "Wavy Line",
+  "imageEditor.dashedLineTool": "Dashed Line",
+  "imageEditor.dottedLineTool": "Dotted Line",
+  "imageEditor.strokeSize.small": "Small",
+  "imageEditor.strokeSize.medium": "Medium",
+  "imageEditor.strokeSize.large": "Large",
+  "imageEditor.savingAndAddingToQueue": "Saving image and adding to AI queue...",
+  "imageEditor.savingAndSendingToAI": "Saving and sending image to AI for analysis...",
+  "imageEditor.imageAddedToQueue": "✅ Image added to AI queue, you can add more images",
+  "imageEditor.imageSentToAI": "✅ Image sent to AI for analysis, check the right panel",
+  "imageEditor.saveError": "Failed to save image: {{message}}",
+  "imageEditor.aiSendError": "Failed to send to AI: {{message}}",
+  "imageEditor.copyFailed": "❌ Copy failed: {{message}}",
+  "imageEditor.addToQueueFailed": "❌ Failed to add to AI queue: {{message}}",
+  "imageEditor.operationFailed": "❌ Operation failed: {{message}}",
+  "imageEditor.aiAnalysisFailed": "❌ AI analysis failed: {{message}}",
+  "imageEditor.noVisionModelsTooltip": "No vision-capable models configured. Use Settings > Set Keys to add models.",
+  "imageEditor.noDefaultModelTooltip": "No default model selected or model does not support vision",
+  "imageEditor.credentialsNotVerifiedTooltip": "API credentials not verified. Use Settings > Set Keys to verify.",
+  
+  // Set Keys Modal
+  "setKeys.title": "AI Provider Settings",
+  "setKeys.description": "Configure your AI providers by adding their API keys.",
+  "setKeys.getApiKey": "Get API Key",
+  "setKeys.apiKeyLabel": "API Key",
+  "setKeys.apiKeyDescription": "Enter your API key for this provider",
+  "setKeys.apiKeyPlaceholder": "Enter API key...",
+  "setKeys.verifyButton": "Verify",
+  "setKeys.verifyingButton": "Verifying...",
+  "setKeys.verifiedButton": "Verified",
+  "setKeys.retryButton": "Retry",
+  "setKeys.baseUrlLabel": "Base URL",
+  "setKeys.baseUrlDescription": "Enter the base URL for your custom API endpoint",
+  "setKeys.baseUrlPlaceholder": "https://api.example.com/v1",
+  "setKeys.customNameLabel": "Provider Name",
+  "setKeys.customNameDescription": "Enter a custom name for this provider (e.g., 'My Company API')",
+  "setKeys.customNamePlaceholder": "My Custom Provider",
+  "setKeys.addModelLabel": "Add Model",
+  "setKeys.addModelDescription": "Select and add available models",
+  "setKeys.addCustomModelDescription": "Enter model name",
+  "setKeys.addModelButton": "Add Model",
+  "setKeys.selectModelPlaceholder": "Select a model...",
+  "setKeys.customModelPlaceholder": "Enter model name (e.g., gpt-4-vision-preview)",
+  "setKeys.verifyApiKeyFirst": "Verify API key first",
+  "setKeys.enterApiKeyFirst": "Please enter an API key first",
+  "setKeys.apiKeyVerified": "✅ {{providerName}} API key verified successfully",
+  "setKeys.apiKeyVerificationFailed": "❌ {{providerName}} API key verification failed",
+  "setKeys.verificationError": "❌ {{providerName}} verification error: {{message}}",
+  "setKeys.noModelsAvailable": "No models available for this provider",
+  "setKeys.modelAddedSuccessfully": "✅ Added {{modelName}} to your model configurations",
+  "setKeys.modelSelectionTitle": "Add Model from {{providerName}}",
+  "setKeys.modelSelectionDescription": "Select a model to add to your configuration:",
+  "setKeys.visionCapableLabel": "Vision Capable",
+  "setKeys.visionCapableDescription": "Check if this model supports image analysis",
+  "setKeys.visionBadge": "Vision",
+  "setKeys.contextBadge": "{{count}} tokens",
+
+  // Manage Models Modal
+  "manageModels.description": "Configure and manage your AI model configurations.",
+  "manageModels.setDefaultButton": "Set Default",
+  "manageModels.configureButton": "⚙️",
+  "manageModels.deleteButton": "🗑️",
+  "manageModels.deleteButtonTitle": "Delete this model configuration",
+  "manageModels.configureButtonTitle": "Configure model settings",
+  "manageModels.providerBadge": "{{providerName}}",
+  "manageModels.defaultBadge": "Default",
+  "manageModels.setAsDefaultSuccess": "✅ Set {{modelName}} as default model",
+  "manageModels.deletedSuccessfully": "✅ Deleted {{modelName}}",
+  "manageModels.maxTokensLabel": "Max Tokens",
+  "manageModels.maxTokensDescription": "Maximum number of tokens for responses",
+  "manageModels.maxTokensPlaceholder": "4000",
+  "manageModels.temperatureLabel": "Temperature",
+  "manageModels.temperatureDescription": "Controls randomness (0.0 = deterministic, 1.0 = very creative)",
+  "manageModels.topPLabel": "Top P",
+  "manageModels.topPDescription": "Nucleus sampling parameter",
+  "manageModels.frequencyPenaltyLabel": "Frequency Penalty",
+  "manageModels.frequencyPenaltyDescription": "Reduces repetition of tokens",
+  "manageModels.presencePenaltyLabel": "Presence Penalty",
+  "manageModels.presencePenaltyDescription": "Reduces repetition of topics",
+  "manageModels.maxResponseTimeLabel": "Max Response Time",
+  "manageModels.maxResponseTimeDescription": "Maximum time to wait for response (seconds)",
+  "manageModels.maxResponseTimePlaceholder": "30",
+  "manageModels.systemPromptLabel": "System Prompt",
+  "manageModels.systemPromptDescription": "Custom system prompt for this model (optional)",
+  "manageModels.systemPromptPlaceholder": "Enter custom system prompt...",
+  "manageModels.resetToDefaultsButton": "Reset to Defaults",
+  "manageModels.settingsResetSuccess": "✅ Settings reset to defaults",
+  "manageModels.confirmDeleteTitle": "Delete Model Configuration",
+  "manageModels.confirmDeleteMessage": "Are you sure you want to delete \"{{modelName}}\"? This action cannot be undone.",
+  "manageModels.confirmDeleteCancel": "Cancel",
+  "manageModels.confirmDeleteConfirm": "Delete",
+
+  // Chat History Modal
+  "chatHistory.manualSavedTitle": "Manually Saved Conversations",
+  "chatHistory.closeButton": "Close",
+  "chatHistory.noAutoSavedFound": "No auto-saved conversations found",
+  "chatHistory.noManualSavedFound": "No manually saved conversations found",
+  "chatHistory.errorLoading": "Error loading conversations: {{message}}",
+  "chatHistory.autoSavedBadge": "Auto-saved",
+  "chatHistory.manualBadge": "Manual",
+  "chatHistory.conversationLoaded": "✅ Loaded conversation: {{title}}",
+  "chatHistory.failedToParse": "❌ Failed to parse conversation",
+  "chatHistory.failedToLoad": "❌ Failed to load conversation: {{message}}",
+
+  // AI Chat View
+  "aiChat.title": "AI Chat - from ScreenshotCapture",
+  "aiChat.assistantTitle": "AI Assistant",
+  "aiChat.howToUseTitle": "How to Use",
+  "aiChat.instruction.screenshot": "Take a screenshot and it will be automatically analyzed",
+  "aiChat.instruction.dragDrop": "Drag and drop images into the chat area",
+  "aiChat.instruction.typeQuestions": "Type your questions and press Enter to send",
+  "aiChat.instruction.configureKeys": "Configure API keys in Settings if you want to use AI",
+  "aiChat.noModelsConfigured": "⚠️ No AI models configured",
+  "aiChat.noModelsDescription": "Go to Settings → Set Keys to configure AI providers",
+  "aiChat.readyWithModel": "✅ Ready with {{modelName}}",
+  "aiChat.readyWithModelTextOnly": "⚪ Ready with {{modelName}} (Text Only)",
+  "aiChat.textOnlyModelNotice": "This model doesn't support image analysis, but normal text chat is available",
+  "aiChat.modelsConfigured": "{{count}} vision model{{plural}} configured",
+  "aiChat.allModelsConfigured": "{{total}} model{{totalPlural}} configured, {{vision}} with vision",
+  "aiChat.sendButton": "Send",
+  "aiChat.typePlaceholder": "Type your message...",
+  "aiChat.dragImageHere": "Drag images here or",
+  "aiChat.selectImages": "select images",
+  "aiChat.newConversationButton": "New Chat",
+  "aiChat.loadHistoryButton": "Load History",
+  "aiChat.saveConversationButton": "Save Chat",
+  "aiChat.clearImagesButton": "Clear Images",
+  "aiChat.removeImageButton": "Remove",
+  "aiChat.user": "User",
+  "aiChat.aiAssistant": "AI Assistant",
+  "aiChat.textChatTitle": "Text Chat",
+  "aiChat.screenshotAnalysisTitle": "Screenshot Analysis",
+  "aiChat.sendingMessage": "Sending message...",
+  "aiChat.aiThinking": "AI is thinking...",
+  "aiChat.conversationSaved": "✅ Conversation saved as: {{fileName}}",
+  "aiChat.failedToSave": "❌ Failed to save conversation: {{message}}",
+  "aiChat.imagesCleared": "✅ Images cleared",
+  "aiChat.noActiveConversation": "No active conversation to save",
+  "aiChat.errorSendingMessage": "❌ Error sending message: {{message}}",
+  "aiChat.menuButton": "Menu",
+  "aiChat.browseFiles": "browse files",
+  "aiChat.inputPlaceholder": "What do you want to know, or with pic?",
+  "aiChat.textCopied": "Text copied to clipboard",
+  "aiChat.imageCopied": "Image copied to clipboard",
+  "aiChat.selectionCopied": "Selection copied as Markdown",
+  "aiChat.copyFailed": "Failed to copy message",
+  "aiChat.copyImageFailed": "Failed to copy image",
+  "aiChat.copySelectionFailed": "Failed to copy selection",
+  "aiChat.imagesReadyToSend": "{{count}} image{{plural}} ready to send",
+  "aiChat.clearAllImages": "Clear All",
+  "aiChat.removeThisImage": "Remove this image",
+  "aiChat.sendMessageTooltip": "Send message (Enter)",
+  "aiChat.nonVisionModelWarning": "Current non-vision model cannot send images",
+  "aiChat.nonVisionModelCannotSendImages": "Current non-vision model cannot process images. Please enter a text message or switch to a vision-capable model.",
+  "aiChat.nonVisionModelNotice": "Current model does not support vision. Please enter a text message or switch to a vision-capable model.",
+
+  // Main plugin messages
+  "plugin.aiChatPanelToggleFailed": "❌ Failed to toggle AI chat panel: {{message}}",
+  "plugin.aiManagerNotInitialized": "AI Manager not initialized",
+  "plugin.aiChatPanelNotFound": "AI Chat panel not found or does not support image queue",
+  "plugin.failedToCreateAiChatPanel": "Failed to create AI chat panel: {{message}}",
+
+  // Settings tab - hardcoded content that needs i18n
+  "settings.usage.helpContent": `
+    <p>How to use the screenshot capture plugin:</p>
+    <ol>
+      <li>Click the camera icon in the ribbon or use the command palette</li>
+      <li>Select "Capture selected area" or "Capture full screen"</li>
+      <li>For region capture: drag to select the area you want to capture</li>
+      <li>Use the editing tools to annotate your screenshot</li>
+      <li>Click "Save" to save the image or "Send to AI" for analysis</li>
+    </ol>
+    <p><strong>Note:</strong> This plugin requires Obsidian to be running on a desktop platform with Electron support.</p>
+  `,
+  "settings.troubleshooting.helpContent": `
+    <p>If screenshots are not working:</p>
+    <ul>
+      <li>Make sure you're running Obsidian on desktop (not mobile)</li>
+      <li>Try restarting Obsidian</li>
+      <li>Check that you have proper screen recording permissions on macOS</li>
+      <li>Use the "Test desktopCapturer API" command to diagnose issues</li>
+    </ul>
+    <p>If AI analysis is not working:</p>
+    <ul>
+      <li>Check that your API keys are correctly configured using "Set Keys"</li>
+      <li>Ensure you have at least one vision-capable model configured</li>
+      <li>Verify your internet connection</li>
+      <li>Check the Console (Ctrl+Shift+I) for error messages</li>
+    </ul>
+  `,
+};

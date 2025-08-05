@@ -1,6 +1,7 @@
 import { Modal, Setting, Notice, DropdownComponent } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, LLMProvider, LLMModel, ModelConfig, DEFAULT_MODEL_SETTINGS } from '../types';
+import { t } from '../i18n';
 
 export class SetKeysModal extends Modal {
 	private plugin: ImageCapturePlugin;
@@ -19,9 +20,9 @@ export class SetKeysModal extends Modal {
 
 		// Modal header
 		const headerEl = contentEl.createEl('div', { cls: 'modal-header' });
-		headerEl.createEl('h2', { text: 'AI Provider Settings' });
+		headerEl.createEl('h2', { text: t('setKeys.title') });
 		headerEl.createEl('p', { 
-			text: 'Configure your AI providers by adding their API keys.',
+			text: t('setKeys.description'),
 			cls: 'modal-description'
 		});
 
@@ -47,7 +48,7 @@ export class SetKeysModal extends Modal {
 		
 		if (provider.apiKeyLink) {
 			const linkEl = headerEl.createEl('a', { 
-				text: 'Get API Key',
+				text: t('setKeys.getApiKey'),
 				cls: 'provider-link',
 				attr: { href: provider.apiKeyLink, target: '_blank' }
 			});
@@ -61,28 +62,38 @@ export class SetKeysModal extends Modal {
 
 		// Initialize verification state
 		this.verificationStates.set(provider.id, isVerified ? 'verified' : 'idle');
-		if (isVerified && provider.models) {
+		if (isVerified) {
+			// Automatically load models for verified providers
+			this.loadAvailableModels(provider).then(() => {
+				// Update UI after models are loaded
+				this.updateAddModelSection(provider.id);
+			}).catch((error) => {
+				console.error(`Failed to load models for ${provider.displayName}:`, error);
+				// Still update UI even if loading failed (will use fallback models)
+				this.updateAddModelSection(provider.id);
+			});
+		} else if (provider.models) {
 			this.availableModels.set(provider.id, provider.models);
 		}
 
 		// API Key setting with inline verify button
 		const apiKeyContainer = providerEl.createEl('div', { cls: 'api-key-container' });
 		const apiKeyLabel = apiKeyContainer.createEl('div', { cls: 'setting-item-info' });
-		apiKeyLabel.createEl('div', { text: 'API Key', cls: 'setting-item-name' });
-		apiKeyLabel.createEl('div', { text: 'Enter your API key for this provider', cls: 'setting-item-description' });
+		apiKeyLabel.createEl('div', { text: t('setKeys.apiKeyLabel'), cls: 'setting-item-name' });
+		apiKeyLabel.createEl('div', { text: t('setKeys.apiKeyDescription'), cls: 'setting-item-description' });
 		
 		const apiKeyInputContainer = apiKeyContainer.createEl('div', { cls: 'api-key-input-container' });
 		
 		const apiKeyInput = apiKeyInputContainer.createEl('input', { 
 			type: 'password',
-			placeholder: 'Enter API key...',
+			placeholder: t('setKeys.apiKeyPlaceholder'),
 			cls: 'api-key-input'
 		});
 		apiKeyInput.value = apiKey;
 		
 		// Verify button inline with input
 		const verifyButton = apiKeyInputContainer.createEl('button', { 
-			text: 'Verify',
+			text: t('setKeys.verifyButton'),
 			cls: 'verify-button-inline'
 		});
 		
@@ -111,10 +122,10 @@ export class SetKeysModal extends Modal {
 		// Base URL setting (if required)
 		if (provider.requiresBaseUrl) {
 			new Setting(providerEl)
-				.setName('Base URL')
-				.setDesc('Enter the base URL for your custom API endpoint')
+				.setName(t('setKeys.baseUrlLabel'))
+				.setDesc(t('setKeys.baseUrlDescription'))
 				.addText(text => {
-					text.setPlaceholder('https://api.example.com/v1')
+					text.setPlaceholder(t('setKeys.baseUrlPlaceholder'))
 						.setValue(baseUrl)
 						.onChange(async (value) => {
 							if (!this.plugin.settings.providerCredentials[provider.id]) {
@@ -129,37 +140,107 @@ export class SetKeysModal extends Modal {
 				});
 		}
 
-		// Add Model section with dropdown
+		// Custom name setting (for custom providers)
+		if (provider.id === 'custom') {
+			const currentCustomName = this.plugin.settings.providerCredentials[provider.id]?.customName || '';
+			new Setting(providerEl)
+				.setName(t('setKeys.customNameLabel'))
+				.setDesc(t('setKeys.customNameDescription'))
+				.addText(text => {
+					text.setPlaceholder(t('setKeys.customNamePlaceholder'))
+						.setValue(currentCustomName)
+						.onChange(async (value) => {
+							if (!this.plugin.settings.providerCredentials[provider.id]) {
+								this.plugin.settings.providerCredentials[provider.id] = {
+									apiKey: '',
+									verified: false
+								};
+							}
+							this.plugin.settings.providerCredentials[provider.id].customName = value.trim();
+							await this.plugin.saveSettings();
+						});
+				});
+		}
+
+		// Add Model section with dropdown or text input
 		const addModelContainer = providerEl.createEl('div', { cls: 'add-model-container' });
 		const addModelLabel = addModelContainer.createEl('div', { cls: 'setting-item-info' });
-		addModelLabel.createEl('div', { text: 'Add Model', cls: 'setting-item-name' });
-		addModelLabel.createEl('div', { text: 'Select and add available models', cls: 'setting-item-description' });
+		addModelLabel.createEl('div', { text: t('setKeys.addModelLabel'), cls: 'setting-item-name' });
 		
 		const addModelInputContainer = addModelContainer.createEl('div', { cls: 'add-model-input-container' });
 		
-		const modelDropdown = addModelInputContainer.createEl('select', { cls: 'model-dropdown' });
+		let modelInput: HTMLSelectElement | HTMLInputElement;
+		
+		if (provider.id === 'custom') {
+			// For custom provider, use text input
+			addModelLabel.createEl('div', { text: t('setKeys.addCustomModelDescription'), cls: 'setting-item-description' });
+			addModelInputContainer.addClass('custom-provider');
+			
+			modelInput = addModelInputContainer.createEl('input', { 
+				cls: 'model-text-input',
+				attr: {
+					type: 'text',
+					placeholder: t('setKeys.customModelPlaceholder')
+				}
+			});
+
+			// Add vision checkbox for custom models
+			const visionContainer = addModelInputContainer.createEl('div', { cls: 'vision-checkbox-container' });
+			const visionCheckbox = visionContainer.createEl('input', {
+				type: 'checkbox',
+				cls: 'vision-checkbox'
+			});
+			visionCheckbox.checked = true; // Default to vision enabled
+			visionContainer.createEl('label', { 
+				text: t('setKeys.visionCapableLabel'),
+				cls: 'vision-checkbox-label'
+			});
+			visionContainer.setAttribute('title', t('setKeys.visionCapableDescription'));
+			
+			// Store reference
+			(providerEl as any)._visionCheckbox = visionCheckbox;
+		} else {
+			// For other providers, use dropdown
+			addModelLabel.createEl('div', { text: t('setKeys.addModelDescription'), cls: 'setting-item-description' });
+			modelInput = addModelInputContainer.createEl('select', { cls: 'modellist-dropdown' });
+		}
+		
 		const addModelButton = addModelInputContainer.createEl('button', { 
-			text: 'Add Model',
+			text: t('setKeys.addModelButton'),
 			cls: 'add-model-button'
 		});
 		
 		// Store references for updates
 		(providerEl as any)._verifyButton = verifyButton;
 		(providerEl as any)._addModelButton = addModelButton;
-		(providerEl as any)._modelDropdown = modelDropdown;
+		(providerEl as any)._modelInput = modelInput;
+		(providerEl as any)._isCustomProvider = provider.id === 'custom';
 
 		// Set initial states
 		this.updateVerifyButton(provider.id);
-		this.updateAddModelSection(provider.id);
+		// For verified providers, updateAddModelSection will be called after loadAvailableModels completes
+		// For non-verified providers, update immediately
+		if (!isVerified) {
+			this.updateAddModelSection(provider.id);
+		}
 
 		// Add model selection handler
 		addModelButton.addEventListener('click', () => {
 			if (this.verificationStates.get(provider.id) === 'verified') {
-				const selectedValue = modelDropdown.value;
-				if (selectedValue) {
-					const model = this.availableModels.get(provider.id)?.find(m => m.id === selectedValue);
-					if (model) {
-						this.addModelConfig(provider, model);
+				if (provider.id === 'custom') {
+					// Handle custom model input
+					const modelName = (modelInput as HTMLInputElement).value.trim();
+					if (modelName) {
+						this.addCustomModel(provider, modelName);
+					}
+				} else {
+					// Handle dropdown selection
+					const selectedValue = (modelInput as HTMLSelectElement).value;
+					if (selectedValue) {
+						const model = this.availableModels.get(provider.id)?.find(m => m.id === selectedValue);
+						if (model) {
+							this.addModelConfig(provider, model);
+						}
 					}
 				}
 			}
@@ -178,29 +259,36 @@ export class SetKeysModal extends Modal {
 
 		const state = this.verificationStates.get(providerId) || 'idle';
 		
+		// Remove all state classes first
+		verifyButton.classList.remove('verified', 'verifying', 'error');
+		
 		switch (state) {
 			case 'idle':
-				verifyButton.textContent = 'Verify';
+				verifyButton.textContent = t('setKeys.verifyButton');
 				verifyButton.disabled = false;
-				verifyButton.classList.remove('verified', 'verifying', 'error');
 				break;
 			case 'verifying':
-				verifyButton.textContent = 'Verifying...';
+				verifyButton.textContent = t('setKeys.verifyingButton');
 				verifyButton.disabled = true;
 				verifyButton.classList.add('verifying');
-				verifyButton.classList.remove('verified', 'error');
 				break;
 			case 'verified':
-				verifyButton.textContent = 'Verified';
+				verifyButton.textContent = t('setKeys.verifiedButton');
 				verifyButton.disabled = false;
 				verifyButton.classList.add('verified');
-				verifyButton.classList.remove('verifying', 'error');
+				// Force style refresh
+				verifyButton.style.background = '#22c55e';
+				verifyButton.style.color = 'white';
+				verifyButton.style.borderColor = '#22c55e';
 				break;
 			case 'error':
-				verifyButton.textContent = 'Retry';
+				verifyButton.textContent = t('setKeys.retryButton');
 				verifyButton.disabled = false;
 				verifyButton.classList.add('error');
-				verifyButton.classList.remove('verifying', 'verified');
+				// Force style refresh
+				verifyButton.style.background = '#ef4444';
+				verifyButton.style.color = 'white';
+				verifyButton.style.borderColor = '#ef4444';
 				break;
 		}
 	}
@@ -213,29 +301,52 @@ export class SetKeysModal extends Modal {
 		if (!providerEl) return;
 
 		const addModelButton = (providerEl as any)._addModelButton as HTMLButtonElement;
-		const modelDropdown = (providerEl as any)._modelDropdown as HTMLSelectElement;
-		if (!addModelButton || !modelDropdown) return;
+		const modelInput = (providerEl as any)._modelInput as HTMLSelectElement | HTMLInputElement;
+		const isCustomProvider = (providerEl as any)._isCustomProvider as boolean;
+		
+		if (!addModelButton || !modelInput) return;
 
 		const state = this.verificationStates.get(providerId) || 'idle';
 		const isVerified = state === 'verified';
 		
 		addModelButton.disabled = !isVerified;
-		modelDropdown.disabled = !isVerified;
+		modelInput.disabled = !isVerified;
 		
 		if (isVerified) {
 			addModelButton.classList.add('enabled');
-			// Populate dropdown with available models
-			const models = this.availableModels.get(providerId) || [];
-			modelDropdown.innerHTML = '<option value="">Select a model...</option>';
-			models.forEach(model => {
-				const option = modelDropdown.createEl('option', { 
-					value: model.id,
-					text: `${model.name}${model.hasVision ? ' (Vision)' : ''}`
+			
+			if (isCustomProvider) {
+				// For custom provider, just enable the text input
+				const textInput = modelInput as HTMLInputElement;
+				textInput.placeholder = t('setKeys.customModelPlaceholder');
+			} else {
+				// For other providers, populate dropdown
+				const dropdown = modelInput as HTMLSelectElement;
+				const models = this.availableModels.get(providerId) || [];
+				dropdown.innerHTML = `<option value="">${t('setKeys.selectModelPlaceholder')}</option>`;
+				models.forEach(model => {
+					const option = dropdown.createEl('option', { 
+						value: model.id,
+						text: `${model.name}${model.hasVision ? ' (Vision)' : ' (Text Only)'}`
+					});
+					// Add visual indicator for non-vision models
+					if (!model.hasVision) {
+						option.style.color = 'var(--text-muted)';
+						option.style.fontStyle = 'italic';
+					}
 				});
-			});
+			}
 		} else {
 			addModelButton.classList.remove('enabled');
-			modelDropdown.innerHTML = '<option value="">Verify API key first</option>';
+			
+			if (isCustomProvider) {
+				const textInput = modelInput as HTMLInputElement;
+				textInput.placeholder = t('setKeys.verifyApiKeyFirst');
+				textInput.value = '';
+			} else {
+				const dropdown = modelInput as HTMLSelectElement;
+				dropdown.innerHTML = `<option value="">${t('setKeys.verifyApiKeyFirst')}</option>`;
+			}
 		}
 	}
 
@@ -317,38 +428,295 @@ export class SetKeysModal extends Modal {
 	}
 
 	private async loadAvailableModels(provider: LLMProvider) {
-		// For now, use the static models from the provider definition
-		// In a real implementation, you might fetch this from the API
-		this.availableModels.set(provider.id, provider.models);
+		try {
+			const credentials = this.plugin.settings.providerCredentials[provider.id];
+			if (!credentials || !credentials.apiKey) {
+				console.warn(`No API key found for provider ${provider.id}`);
+				this.availableModels.set(provider.id, provider.models || []);
+				return;
+			}
+
+			// For major providers, try to fetch models from API
+			if (provider.id !== 'custom') {
+				console.log(`Loading models for ${provider.displayName}...`);
+				try {
+					const fetchedModels = await this.fetchModelsFromAPI(provider, credentials);
+					if (fetchedModels && fetchedModels.length > 0) {
+						this.availableModels.set(provider.id, fetchedModels);
+						console.log(`✅ Fetched ${fetchedModels.length} models for ${provider.displayName}`);
+						return;
+					} else {
+						console.warn(`No models returned from API for ${provider.displayName}, using fallback`);
+					}
+				} catch (error) {
+					console.warn(`API fetch failed for ${provider.displayName}, using fallback:`, error);
+				}
+			}
+			
+			// Fallback to static models
+			const fallbackModels = provider.models || [];
+			this.availableModels.set(provider.id, fallbackModels);
+			console.log(`Using ${fallbackModels.length} fallback models for ${provider.displayName}`);
+		} catch (error) {
+			console.error(`Failed to load models for ${provider.displayName}:`, error);
+			// Fallback to static models on error
+			this.availableModels.set(provider.id, provider.models || []);
+		}
 	}
 
-	private showAddModelDropdown(providerId: string) {
-		const provider = LLM_PROVIDERS.find(p => p.id === providerId);
-		if (!provider) return;
+	private async fetchModelsFromAPI(provider: LLMProvider, credentials: any): Promise<LLMModel[]> {
+		const baseUrl = credentials.baseUrl || provider.defaultBaseUrl;
+		const apiKey = credentials.apiKey;
 
-		const models = this.availableModels.get(providerId) || [];
-		if (models.length === 0) {
-			new Notice('No models available for this provider');
-			return;
+		try {
+			let url: string;
+			let headers: Record<string, string>;
+
+			switch (provider.id) {
+				case 'openai':
+					url = `${baseUrl}/models`;
+					headers = {
+						'Authorization': `Bearer ${apiKey}`,
+						'Content-Type': 'application/json'
+					};
+					break;
+				
+				case 'anthropic':
+					// Anthropic doesn't have a public models endpoint, use static list
+					return provider.models || [];
+				
+				case 'google':
+					// Google AI Studio models endpoint
+					url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+					headers = {
+						'Content-Type': 'application/json'
+					};
+					break;
+				
+				case 'cohere':
+					url = `${baseUrl}/models`;
+					headers = {
+						'Authorization': `Bearer ${apiKey}`,
+						'Content-Type': 'application/json'
+					};
+					break;
+				
+				case 'openrouter':
+					url = `${baseUrl}/models`;
+					headers = {
+						'Authorization': `Bearer ${apiKey}`,
+						'Content-Type': 'application/json'
+					};
+					break;
+				
+				default:
+					return provider.models || [];
+			}
+
+			// Create an AbortController for timeout
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+			const response = await fetch(url, {
+				method: 'GET',
+				headers: headers,
+				signal: controller.signal
+			});
+
+			clearTimeout(timeoutId);
+
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+			}
+
+			const data = await response.json();
+			return this.parseModelsResponse(provider.id, data);
+
+		} catch (error) {
+			console.error(`API call failed for ${provider.displayName}:`, error);
+			throw error;
 		}
+	}
 
-		// Create a simple dropdown selection
-		const options = models.map(model => ({
-			value: model.id,
-			label: `${model.name}${model.hasVision ? ' (Vision)' : ''}`
-		}));
+	private parseModelsResponse(providerId: string, data: any): LLMModel[] {
+		try {
+			switch (providerId) {
+				case 'openai':
+					if (data.data && Array.isArray(data.data)) {
+						return data.data
+							.filter((model: any) => {
+								// Include all OpenAI models
+								const id = model.id?.toLowerCase() || '';
+								return id.includes('gpt') || id.includes('davinci') || id.includes('curie') || id.includes('babbage') || id.includes('ada');
+							})
+							.map((model: any) => {
+								const id = model.id?.toLowerCase() || '';
+								
+								// Priority 1: Check capabilities field from API metadata if available
+								let hasVision = false;
+								if (model.capabilities && Array.isArray(model.capabilities)) {
+									hasVision = model.capabilities.some((cap: string) => 
+										cap.toLowerCase().includes('vision') || 
+										cap.toLowerCase().includes('image')
+									);
+								}
+								
+								// Priority 2: Fallback to model ID detection with enhanced patterns
+								if (!hasVision) {
+									hasVision = id.includes('vision') || 
+												(id.includes('gpt-4') && (id.includes('turbo') || id.includes('preview') || id.includes('o'))) ||
+												id.includes('gpt-4o');
+								}
+								
+								return {
+									id: model.id,
+									name: model.id,
+									hasVision: hasVision,
+									contextWindow: 4096 // Default, can be improved
+								};
+							});
+					}
+					break;
+				
+				case 'google':
+					if (data.models && Array.isArray(data.models)) {
+						return data.models
+							.filter((model: any) => {
+								// Include all Google models that support text generation
+								const name = model.name?.toLowerCase() || '';
+								return name.includes('gemini') || name.includes('bison') || name.includes('chat');
+							})
+							.map((model: any) => {
+								const name = model.name?.toLowerCase() || '';
+								
+								// Priority 1: Check supportedGenerationMethods from API metadata
+								let hasVision = false;
+								if (model.supportedGenerationMethods && Array.isArray(model.supportedGenerationMethods)) {
+									hasVision = model.supportedGenerationMethods.some((method: string) => 
+										method.toLowerCase().includes('vision') || 
+										method.toLowerCase().includes('multimodal')
+									);
+								}
+								
+								// Priority 2: Check inputModalities if available
+								if (!hasVision && model.inputModalities && Array.isArray(model.inputModalities)) {
+									hasVision = model.inputModalities.some((modality: string) => 
+										modality.toLowerCase().includes('image') || 
+										modality.toLowerCase().includes('vision')
+									);
+								}
+								
+								// Priority 3: Fallback to model name detection with enhanced patterns
+								if (!hasVision) {
+									hasVision = name.includes('vision') || name.includes('gemini-pro') ||
+												name.includes('gemini-1.5') || name.includes('gemini-2');
+								}
+								
+								return {
+									id: model.name.replace('models/', ''),
+									name: model.displayName || model.name.replace('models/', ''),
+									hasVision: hasVision,
+									contextWindow: 4096
+								};
+							});
+					}
+					break;
+				
+				case 'cohere':
+					if (data.models && Array.isArray(data.models)) {
+						return data.models
+							.filter((model: any) => model.endpoints?.includes('chat'))
+							.map((model: any) => ({
+								id: model.name,
+								name: model.name,
+								hasVision: false, // Cohere doesn't have vision models yet
+								contextWindow: model.context_length || 4096
+							}));
+					}
+					break;
+				
+				case 'openrouter':
+					if (data.data && Array.isArray(data.data)) {
+						return data.data
+							.map((model: any) => {
+								const id = model.id?.toLowerCase() || '';
+								const name = model.name?.toLowerCase() || '';
+								
+								// Priority 1: Check modalities field from API metadata
+								let hasVision = false;
+								if (model.modalities && Array.isArray(model.modalities)) {
+									// Check if model supports image input
+									hasVision = model.modalities.some((modality: string) => 
+										modality.toLowerCase().includes('image') || 
+										modality.toLowerCase().includes('vision')
+									);
+								}
+								
+								// Priority 2: Fallback to model ID/name detection with enhanced patterns
+								if (!hasVision) {
+									hasVision = id.includes('vision') || name.includes('vision') || 
+												id.includes('vl') || name.includes('vl') || // For Qwen VL models
+												(id.includes('gpt-4') && (id.includes('turbo') || id.includes('preview') || id.includes('o'))) ||
+												id.includes('claude-3') || id.includes('gemini') ||
+												id.includes('llama') && (id.includes('vision') || id.includes('vl')) ||
+												id.includes('pixtral') || id.includes('flamingo');
+								}
+								
+								return {
+									id: model.id,
+									name: model.name || model.id,
+									hasVision: hasVision,
+									contextWindow: model.context_length || 4096
+								};
+							});
+					}
+					break;
+			}
+		} catch (error) {
+			console.error(`Failed to parse models response for ${providerId}:`, error);
+		}
+		
+		return [];
+	}
 
-		// Create a temporary modal for model selection
-		const modal = new ModelSelectionModal(this.plugin, provider, models, (selectedModel) => {
-			this.addModelConfig(provider, selectedModel);
-		});
-		modal.open();
+	private addCustomModel(provider: LLMProvider, modelName: string) {
+		const providerEl = this.contentEl.querySelector(`[data-provider="${provider.id}"]`) as HTMLElement;
+		if (!providerEl) return;
+
+		// Get vision checkbox state
+		const visionCheckbox = (providerEl as any)._visionCheckbox as HTMLInputElement;
+		const hasVision = visionCheckbox ? visionCheckbox.checked : true;
+
+		// Create a custom model object
+		const customModel: LLMModel = {
+			id: modelName,
+			name: modelName,
+			hasVision: hasVision,
+			contextWindow: 4096 // Default context window
+		};
+		
+		this.addModelConfig(provider, customModel);
+		
+		// Clear the input field
+		const modelInput = (providerEl as any)._modelInput as HTMLInputElement;
+		if (modelInput) {
+			modelInput.value = '';
+		}
 	}
 
 	private addModelConfig(provider: LLMProvider, model: LLMModel) {
+		// Get the display name for the provider, using custom name if available
+		let providerDisplayName = provider.displayName;
+		if (provider.id === 'custom') {
+			const customName = this.plugin.settings.providerCredentials[provider.id]?.customName;
+			if (customName && customName.trim()) {
+				providerDisplayName = customName.trim();
+			}
+		}
+		
 		const modelConfig: ModelConfig = {
 			id: `${provider.id}-${model.id}-${Date.now()}`,
-			name: `${provider.displayName} - ${model.name}`,
+			name: `${providerDisplayName} - ${model.name}`,
 			providerId: provider.id,
 			modelId: model.id,
 			isVisionCapable: model.hasVision,
@@ -363,13 +731,41 @@ export class SetKeysModal extends Modal {
 
 		this.plugin.settings.modelConfigs.push(modelConfig);
 		
-		// Set as default if it's the first vision-capable model
-		if (model.hasVision && !this.plugin.settings.defaultModelConfigId) {
+		// Set as default if it's the first model, or if it's vision-capable and no vision model is set as default
+		const currentDefault = this.plugin.settings.modelConfigs.find(mc => mc.id === this.plugin.settings.defaultModelConfigId);
+		if (!this.plugin.settings.defaultModelConfigId || 
+			(model.hasVision && (!currentDefault || !currentDefault.isVisionCapable))) {
 			this.plugin.settings.defaultModelConfigId = modelConfig.id;
 		}
 
 		this.plugin.saveSettings();
 		new Notice(`✅ Added ${modelConfig.name} to your model configurations`);
+		
+		// Refresh all UI components that depend on model configurations
+		this.refreshModelDependentComponents();
+	}
+
+	private refreshModelDependentComponents() {
+		// Refresh settings tab by finding the settings tab instance and calling display()
+		const app = this.plugin.app as any;
+		if (app.setting && app.setting.pluginTabs) {
+			const pluginTab = app.setting.pluginTabs.find((tab: any) => 
+				tab.id === this.plugin.manifest.id
+			);
+			if (pluginTab && typeof pluginTab.display === 'function') {
+				// Refresh the settings tab if it's currently active
+				pluginTab.display();
+			}
+		}
+
+		// Refresh AI chat views
+		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
+		aiChatLeaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && typeof view.updateContent === 'function') {
+				view.updateContent();
+			}
+		});
 	}
 
 	private addStyles() {
@@ -455,10 +851,47 @@ export class SetKeysModal extends Modal {
 					color: var(--text-muted);
 				}
 
-				.api-key-input-container, .add-model-input-container {
+				.api-key-input-container {
 					display: flex;
 					gap: 8px;
 					align-items: center;
+				}
+
+				.add-model-input-container {
+					display: flex;
+					gap: 8px;
+					align-items: center; /* Center align for proper alignment */
+					height: 36px; /* Fixed height for consistent alignment */
+					min-height: 36px;
+					flex-wrap: wrap; /* Allow wrapping for custom provider layout */
+				}
+
+				.add-model-input-container.custom-provider {
+					flex-direction: column;
+					height: auto;
+					align-items: stretch;
+				}
+
+				.vision-checkbox-container {
+					display: flex;
+					align-items: center;
+					gap: 6px;
+					margin-top: 8px;
+					padding: 4px 8px;
+					background: var(--background-modifier-form-field);
+					border-radius: 4px;
+					border: 1px solid var(--background-modifier-border);
+				}
+
+				.vision-checkbox {
+					margin: 0;
+				}
+
+				.vision-checkbox-label {
+					font-size: 12px;
+					color: var(--text-normal);
+					margin: 0;
+					cursor: pointer;
 				}
 
 				.api-key-input {
@@ -476,7 +909,7 @@ export class SetKeysModal extends Modal {
 					outline: none;
 				}
 
-				.model-dropdown {
+				.modellist-dropdown, .model-text-input {
 					flex: 1;
 					padding: 8px 12px;
 					border: 1px solid var(--background-modifier-border);
@@ -484,14 +917,22 @@ export class SetKeysModal extends Modal {
 					background: var(--background-primary);
 					color: var(--text-normal);
 					font-size: 13px;
+					min-height: 36px;
+					height: 36px;
+					box-sizing: border-box;
 				}
 
-				.model-dropdown:disabled {
+				.modellist-dropdown:disabled, .model-text-input:disabled {
 					opacity: 0.5;
 					cursor: not-allowed;
 				}
 
-				.verify-button-inline, .add-model-button {
+				.model-text-input:focus {
+					border-color: var(--interactive-accent);
+					outline: none;
+				}
+
+				.set-keys-modal .verify-button-inline, .set-keys-modal .add-model-button {
 					padding: 8px 16px;
 					border: 1px solid var(--background-modifier-border);
 					border-radius: 4px;
@@ -501,36 +942,54 @@ export class SetKeysModal extends Modal {
 					font-size: 13px;
 					transition: all 0.2s;
 					white-space: nowrap;
+					min-height: 36px;
+					height: 36px;
+					box-sizing: border-box;
+					display: flex;
+					align-items: center;
+					justify-content: center;
 				}
 
-				.verify-button-inline:hover, .add-model-button:hover:not(:disabled) {
+				.set-keys-modal .verify-button-inline:hover, .set-keys-modal .add-model-button:hover:not(:disabled) {
 					background: var(--background-modifier-hover);
 				}
 
-				.verify-button-inline.verifying {
-					background: var(--interactive-accent);
-					color: var(--text-on-accent);
+				/* Higher specificity for verified state */
+				.set-keys-modal .api-key-input-container .verify-button-inline.verified,
+				.set-keys-modal .verify-button-inline.verified {
+					background: #22c55e !important;
+					color: white !important;
+					border-color: #22c55e !important;
+					border: 1px solid #22c55e !important;
+				}
+
+				/* Higher specificity for error state */
+				.set-keys-modal .api-key-input-container .verify-button-inline.error,
+				.set-keys-modal .verify-button-inline.error {
+					background: #ef4444 !important;
+					color: white !important;
+					border-color: #ef4444 !important;
+					border: 1px solid #ef4444 !important;
+				}
+
+				/* Higher specificity for verifying state */
+				.set-keys-modal .api-key-input-container .verify-button-inline.verifying,
+				.set-keys-modal .verify-button-inline.verifying {
+					background: #3b82f6 !important;
+					color: white !important;
+					border-color: #3b82f6 !important;
+					border: 1px solid #3b82f6 !important;
 					cursor: not-allowed;
 				}
 
-				.verify-button-inline.verified {
-					background: var(--interactive-success);
-					color: white;
-				}
-
-				.verify-button-inline.error {
-					background: var(--interactive-critical);
-					color: white;
-				}
-
-				.add-model-button:disabled {
+				.set-keys-modal .add-model-button:disabled {
 					opacity: 0.5;
 					cursor: not-allowed;
 				}
 
-				.add-model-button.enabled {
-					background: var(--interactive-accent);
-					color: var(--text-on-accent);
+				.set-keys-modal .add-model-button.enabled {
+					background: var(--interactive-accent) !important;
+					color: var(--text-on-accent) !important;
 				}
 			`;
 			document.head.appendChild(style);
@@ -540,6 +999,15 @@ export class SetKeysModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
+		
+		// Refresh AI chat views when modal closes
+		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
+		aiChatLeaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && typeof view.updateContent === 'function') {
+				view.updateContent();
+			}
+		});
 	}
 }
 
@@ -665,5 +1133,14 @@ class ModelSelectionModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
+		
+		// Refresh AI chat views when modal closes
+		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
+		aiChatLeaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && typeof view.updateContent === 'function') {
+				view.updateContent();
+			}
+		});
 	}
 }

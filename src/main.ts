@@ -5,6 +5,7 @@ import { ImageCaptureSettingTab } from './settings/settings-tab';
 import { ImageCaptureSettings, DEFAULT_SETTINGS } from './types';
 import { AIManager } from './ai/ai-manager';
 import { AIChatView, AI_CHAT_VIEW_TYPE } from './ai/ai-chat-view';
+import { i18n, t } from './i18n';
 
 export default class ImageCapturePlugin extends Plugin {
 	settings: ImageCaptureSettings;
@@ -14,6 +15,9 @@ export default class ImageCapturePlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+		
+		// Initialize i18n with user's language setting
+		i18n.setLanguage(this.settings.language || 'en');
 
 		this.screenshotManager = new ScreenshotManager(this);
 		this.imageEditor = new ImageEditor(this);
@@ -25,44 +29,44 @@ export default class ImageCapturePlugin extends Plugin {
 			(leaf) => new AIChatView(leaf, this)
 		);
 
-		this.addRibbonIcon('camera', 'Screenshot Capture', (evt: MouseEvent) => {
+		this.addRibbonIcon('camera', t('ui.screenshotCapture'), (evt: MouseEvent) => {
 			this.screenshotManager.startRegionCapture();
 		});
 
 		// Add AI Chat ribbon icon (only if AI is enabled)
 		if (this.settings.enableAIAnalysis) {
-			this.addRibbonIcon('bot', 'AI Chat Panel', (evt: MouseEvent) => {
+			this.addRibbonIcon('bot', t('ui.aiChatPanel'), (evt: MouseEvent) => {
 				this.showAIChatPanel();
 			});
 		}
 
 		this.addCommand({
 			id: 'capture-selected-area',
-			name: 'Capture selected area',
+			name: t('commands.captureArea.name'),
 			callback: () => this.screenshotManager.startRegionCapture()
 		});
 
 		this.addCommand({
 			id: 'capture-full-screen',
-			name: 'Capture full screen',
+			name: t('commands.captureFull.name'),
 			callback: () => this.screenshotManager.captureFullScreen()
 		});
 
 		this.addCommand({
 			id: 'show-ai-chat',
-			name: 'Show AI Chat Panel',
+			name: t('commands.openAiChat.name'),
 			callback: () => this.showAIChatPanel()
 		});
 
 		this.addCommand({
 			id: 'toggle-ai-chat',
-			name: 'Toggle AI Chat Panel',
+			name: t('commands.toggleAiChat.name'),
 			callback: () => this.toggleAIChatPanel()
 		});
 
 		this.addCommand({
 			id: 'test-desktop-capturer',
-			name: 'Test desktopCapturer API',
+			name: t('commands.testDesktopCapturer.name'),
 			callback: async () => {
 				await this.testAdvancedCapture();
 			}
@@ -195,13 +199,13 @@ export default class ImageCapturePlugin extends Plugin {
 			}
 		} catch (error) {
 			console.error('Failed to toggle AI chat panel:', error);
-			new Notice(`❌ Failed to toggle AI chat panel: ${error.message}`);
+			new Notice(t('plugin.aiChatPanelToggleFailed', { message: error.message }));
 		}
 	}
 
 	async testAdvancedCapture() {
 		try {
-			new Notice('Testing advanced capture methods...');
+			new Notice(t('notice.testingAdvancedCapture'));
 			console.log('Testing advanced capture methods...');
 			
 			const electron = this.getElectronAPI();
@@ -213,7 +217,7 @@ export default class ImageCapturePlugin extends Plugin {
 					const path = electron.remote.require('path');
 					
 					if (desktopCapturer) {
-						new Notice('Remote desktopCapturer accessible, testing capture...');
+						new Notice(t('notice.remoteDesktopCapturerAccessible'));
 						console.log('Remote desktopCapturer accessible, testing capture...');
 						
 						const sources = await desktopCapturer.getSources({
@@ -221,12 +225,12 @@ export default class ImageCapturePlugin extends Plugin {
 							thumbnailSize: { width: 0, height: 0 }
 						});
 						
-						new Notice(`Found ${sources.length} screen sources`);
+						new Notice(t('notice.foundScreenSources', { count: sources.length }));
 						console.log(`Found ${sources.length} screen sources:`, sources);
 						
 						if (sources.length > 0) {
 							const primarySource = sources[0];
-							new Notice(`Primary source: ${primarySource.name}`);
+							new Notice(t('notice.primarySource', { name: primarySource.name }));
 							console.log(`Primary source: ${primarySource.name}`);
 							
 							const fullSources = await desktopCapturer.getSources({
@@ -237,7 +241,7 @@ export default class ImageCapturePlugin extends Plugin {
 							if (fullSources.length > 0) {
 								const thumbnail = fullSources[0].thumbnail;
 								if (thumbnail && !thumbnail.isEmpty()) {
-									new Notice('Screenshot captured successfully!');
+									new Notice(t('notice.screenshotCapturedSuccessfully'));
 									console.log('Screenshot captured successfully!');
 									console.log('Thumbnail size:', thumbnail.getSize());
 									
@@ -250,10 +254,10 @@ export default class ImageCapturePlugin extends Plugin {
 									
 									fs.writeFile(filePath, base64Data, 'base64', (err: any) => {
 										if (err) {
-											new Notice(`Failed to save screenshot: ${err.message}`);
+											new Notice(t('notice.failedToSaveScreenshot', { message: err.message }));
 											console.error('Failed to save screenshot:', err);
 										} else {
-											new Notice(`Screenshot saved to: ${fileName}`);
+											new Notice(t('notice.screenshotSavedToFile', { fileName }));
 											console.log(`Screenshot saved to: ${filePath}`);
 										}
 									});
@@ -263,18 +267,18 @@ export default class ImageCapturePlugin extends Plugin {
 							}
 						}
 					} else {
-						new Notice('desktopCapturer not available through remote');
+						new Notice(t('notice.desktopCapturerNotAvailableRemote'));
 						console.log('desktopCapturer not available through remote');
 					}
 				} catch (e: any) {
-					new Notice(`Error accessing remote desktopCapturer: ${e.message}`);
+					new Notice(t('notice.errorAccessingRemoteDesktopCapturer', { message: e.message }));
 					console.log('Error accessing remote desktopCapturer:', e);
 				}
 			}
 			
-			new Notice('Advanced capture test completed');
+			new Notice(t('notice.advancedCaptureTestCompleted'));
 		} catch (error: any) {
-			new Notice(`Error in advanced test: ${error.message}`);
+			new Notice(t('notice.advancedTestError', { message: error.message }));
 			console.error('Error in advanced test:', error);
 		}
 	}

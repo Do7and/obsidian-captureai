@@ -1,6 +1,7 @@
 import { Modal, Notice } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { EditTool, Region, StrokeSize, StrokeSetting, LLM_PROVIDERS } from '../types';
+import { t } from '../i18n';
 
 export class ImageEditor extends Modal {
 	private plugin: ImageCapturePlugin;
@@ -320,16 +321,16 @@ export class ImageEditor extends Modal {
 		
 		// Tool names for tooltips
 		const toolNames: Record<string, string> = {
-			'pen': '画笔',
-			'highlighter': '荧光笔',
-			'line': '直线',
-			'wavy-line': '波浪线',
-			'dashed-line': '虚线',
-			'dotted-line': '点线',
-			'rectangle': '矩形',
-			'ellipse': '椭圆',
-			'arrow': '箭头',
-			'hand': '移动工具'
+			'pen': t('imageEditor.penTool'),
+			'highlighter': t('imageEditor.highlighterTool'),
+			'line': t('imageEditor.lineTool'),
+			'wavy-line': t('imageEditor.wavyLineTool'),
+			'dashed-line': t('imageEditor.dashedLineTool'),
+			'dotted-line': t('imageEditor.dottedLineTool'),
+			'rectangle': t('imageEditor.rectangleTool'),
+			'ellipse': t('imageEditor.circleTool'),
+			'arrow': t('imageEditor.arrowTool'),
+			'hand': t('imageEditor.handTool')
 		};
 		
 		tools.forEach(tool => {
@@ -623,9 +624,9 @@ export class ImageEditor extends Modal {
 
 		// Save and Send to AI button
 		if (aiEnabled) {
-			const aiButton = buttonBar.createEl('button', { text: '保存复制图片并发送给AI' });
+			const aiButton = buttonBar.createEl('button', { text: t('imageEditor.aiButton') });
 			if (aiButtonEnabled) {
-				this.styleActionButton(aiButton, 'var(--interactive-accent-hover)', 'var(--text-on-accent)');
+				this.styleActionButton(aiButton, 'var(--interactive-accent)', 'var(--text-on-accent)');
 			} else {
 				this.styleActionButton(aiButton, 'var(--background-modifier-border)', 'var(--text-muted)');
 				aiButton.disabled = true;
@@ -633,11 +634,11 @@ export class ImageEditor extends Modal {
 				// Add tooltip for disabled state
 				let tooltip = '';
 				if (visionModels.length === 0) {
-					tooltip = 'No vision-capable models configured. Use Settings > Set Keys to add models.';
+					tooltip = t('imageEditor.noVisionModelsTooltip');
 				} else if (!hasValidModel) {
-					tooltip = 'No default model selected or model does not support vision';
+					tooltip = t('imageEditor.noDefaultModelTooltip');
 				} else if (!hasValidCredentials) {
-					tooltip = 'API credentials not verified. Use Settings > Set Keys to verify.';
+					tooltip = t('imageEditor.credentialsNotVerifiedTooltip');
 				}
 				aiButton.title = tooltip;
 			}
@@ -648,7 +649,7 @@ export class ImageEditor extends Modal {
 			});
 		}
 		
-		const saveButton = buttonBar.createEl('button', { text: '保存并复制' });
+		const saveButton = buttonBar.createEl('button', { text: t('imageEditor.saveButton') });
 		this.styleActionButton(saveButton, 'var(--interactive-accent)', 'var(--text-on-accent)');
 		saveButton.addEventListener('click', () => this.saveAndCopyMarkdown());
 	}
@@ -1401,7 +1402,7 @@ export class ImageEditor extends Modal {
 			this.close();
 			
 		} catch (error: any) {
-			new Notice(`❌ 复制失败: ${error.message}`);
+			new Notice(t('imageEditor.copyFailed', { message: error.message }));
 			console.error('Save and copy markdown failed:', error);
 		}
 	}
@@ -1458,7 +1459,7 @@ export class ImageEditor extends Modal {
 			const fileName = `screenshot-${timestamp}.png`;
 			
 			// Show progress notice
-			const notice = new Notice('正在保存图片并添加到AI发送队列...', 2000);
+			const notice = new Notice(t('imageEditor.savingAndAddingToQueue'), 2000);
 			
 			try {
 				// Save the image to vault first and get the path
@@ -1475,17 +1476,17 @@ export class ImageEditor extends Modal {
 				this.close();
 				
 				notice.hide();
-				new Notice(`✅ 图片已添加到AI发送队列，可继续添加更多图片`);
+				new Notice(t('imageEditor.imageAddedToQueue'));
 				
 			} catch (error: any) {
 				notice.hide();
 				console.error('Add to AI queue failed:', error);
-				new Notice(`❌ 添加到AI队列失败: ${error.message}`);
+				new Notice(t('imageEditor.addToQueueFailed', { message: error.message }));
 			}
 			
 		} catch (error: any) {
 			console.error('Save and add to AI queue failed:', error);
-			new Notice(`❌ 操作失败: ${error.message}`);
+			new Notice(t('imageEditor.operationFailed', { message: error.message }));
 		}
 	}
 
@@ -1501,7 +1502,7 @@ export class ImageEditor extends Modal {
 			const fileName = `screenshot-${timestamp}.png`;
 			
 			// Show progress notice immediately
-			const notice = new Notice('正在保存并发送图片给AI分析...', 0);
+			const notice = new Notice(t('imageEditor.savingAndSendingToAI'), 0);
 			
 			// Close the editor modal immediately to give user feedback
 			this.close();
@@ -1515,17 +1516,17 @@ export class ImageEditor extends Modal {
 				await this.plugin.sendImageToAI(dataUrl, '', fileName);
 				
 				notice.hide();
-				new Notice('✅ 图片已发送给AI分析，请查看右侧面板');
+				new Notice(t('imageEditor.imageSentToAI'));
 				
 			} catch (aiError: any) {
 				notice.hide();
 				console.error('AI analysis failed:', aiError);
-				new Notice(`❌ AI分析失败: ${aiError.message}`);
+				new Notice(t('imageEditor.aiAnalysisFailed', { message: aiError.message }));
 			}
 			
 		} catch (error: any) {
 			console.error('Save and send to AI failed:', error);
-			new Notice(`❌ 操作失败: ${error.message}`);
+			new Notice(t('imageEditor.operationFailed', { message: error.message }));
 			
 			// Close the editor if it's still open
 			this.close();

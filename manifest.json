@@ -7,5 +7,15 @@
 	"author": "Screenshot Plugin Developer",
 	"authorUrl": "https://github.com/obsidian-screenshot-capture",
 	"fundingUrl": "https://github.com/obsidian-screenshot-capture",
-	"isDesktopOnly": true
+	"isDesktopOnly": true,
+	"i18n": {
+		"en": {
+			"name": "Screenshot Capture",
+			"description": "Capture screenshots with region selection and built-in editing tools. And use LLM to analyze them."
+		},
+		"zh": {
+			"name": "截图捕获",
+			"description": "通过区域选择和内置编辑工具捕获屏幕截图。使用LLM分析它们。"
+		}
+	}
 }

@@ -1,6 +1,7 @@
 import { Notice } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { Region } from '../types';
+import { t } from '../i18n';
 
 export class ScreenshotManager {
 	private plugin: ImageCapturePlugin;
@@ -18,7 +19,6 @@ export class ScreenshotManager {
 	async startRegionCapture() {
 		try {
 			console.log('🚀 Starting region capture process...');
-			new Notice('Starting region capture...');
 			
 			console.log('🔍 Creating overlay for region selection...');
 			this.createOverlay();
@@ -27,7 +27,7 @@ export class ScreenshotManager {
 			const region = await this.waitForRegionSelection();
 			if (!region) {
 				console.log('❌ Region selection cancelled by user');
-				new Notice('Region selection cancelled');
+				new Notice(t('notice.regionSelectionCancelled'));
 				return;
 			}
 			
@@ -37,7 +37,7 @@ export class ScreenshotManager {
 			const screenshot = await this.captureScreen();
 			if (!screenshot) {
 				console.error('❌ Failed to capture screen');
-				new Notice('Failed to capture screen');
+				new Notice(t('notice.screenCaptureFailed'));
 				return;
 			}
 			
@@ -56,24 +56,24 @@ export class ScreenshotManager {
 				message: error.message,
 				stack: error.stack
 			});
-			new Notice(`Region capture failed: ${error.message}`);
+			new Notice(t('notice.regionCaptureFailed', { message: error.message }));
 		}
 	}
 
 	async captureFullScreen() {
 		try {
-			new Notice('Capturing full screen...');
+			new Notice(t('notice.fullScreenCapturing'));
 			
 			const screenshot = await this.captureScreen();
 			if (!screenshot) {
-				new Notice('Failed to capture screen');
+				new Notice(t('notice.screenCaptureFailed'));
 				return;
 			}
 			
 			this.plugin.imageEditor.showEditor(screenshot, {x: 0, y: 0, width: 0, height: 0});
 			
 		} catch (error: any) {
-			new Notice(`Full screen capture failed: ${error.message}`);
+			new Notice(t('notice.fullScreenCaptureFailed', { message: error.message }));
 			console.error('Full screen capture failed:', error);
 		}
 	}
@@ -109,11 +109,7 @@ export class ScreenshotManager {
 			pointer-events: none;
 			text-align: center;
 		`;
-		instructionEl.innerHTML = `
-			🖱️ 拖拽选择截图区域<br>
-			<small>灰色区域仅在当前窗口内，但可以截取整个屏幕的任何区域<br>
-			按 ESC 取消</small>
-		`;
+		instructionEl.innerHTML = t('notice.screenCapturingOverlayInstruction');
 		
 		// Create selection indicator that shows current mouse position
 		const mouseIndicator = document.createElement('div');
@@ -339,13 +335,13 @@ export class ScreenshotManager {
 			
 			if (!electron) {
 				console.error('❌ Electron API not available');
-				new Notice('Electron API not available - make sure you are running on desktop');
+				new Notice(t('notice.electronAPINotAvailable'));
 				return null;
 			}
 			
 			if (!electron.remote) {
 				console.error('❌ Electron remote not available');
-				new Notice('Electron remote not available - try restarting Obsidian');
+				new Notice(t('notice.electronRemoteNotAvailable'));
 				return null;
 			}
 			
@@ -355,7 +351,7 @@ export class ScreenshotManager {
 			
 			if (!desktopCapturer) {
 				console.error('❌ desktopCapturer not available');
-				new Notice('desktopCapturer not available');
+				new Notice(t('notice.desktopCapturerNotAvailable'));
 				return null;
 			}
 			
@@ -370,12 +366,12 @@ export class ScreenshotManager {
 				console.log(`🔍 Permission check: Found ${testSources.length} screen sources`);
 				if (testSources.length === 0) {
 					console.error('❌ No screen sources available - permission denied');
-					new Notice('Screen recording permission denied. Please grant screen recording permission to Obsidian in System Preferences.');
+					new Notice(t('notice.screenRecordingPermissionDenied'));
 					return null;
 				}
 			} catch (permError: any) {
 				console.error('❌ Permission check failed:', permError);
-				new Notice('Screen recording permission check failed. Please check system permissions.');
+				new Notice(t('notice.screenPermissionCheckFailed'));
 				return null;
 			}
 			
@@ -393,7 +389,7 @@ export class ScreenshotManager {
 			
 			if (sources.length === 0) {
 				console.error('❌ No screen sources found for capture');
-				new Notice('No screen sources found - check screen recording permissions');
+				new Notice(t('notice.noScreenSourcesFound'));
 				return null;
 			}
 			
@@ -403,13 +399,13 @@ export class ScreenshotManager {
 			const primaryThumbnail = primarySource.thumbnail;
 			if (!primaryThumbnail) {
 				console.error('❌ No thumbnail in source');
-				new Notice('No thumbnail available');
+				new Notice(t('notice.noThumbnailAvailable'));
 				return null;
 			}
 			
 			if (primaryThumbnail.isEmpty()) {
 				console.error('❌ Thumbnail is empty');
-				new Notice('Thumbnail is empty - check screen recording permissions in System Preferences');
+				new Notice(t('notice.thumbnailEmpty'));
 				return null;
 			}
 			
@@ -450,7 +446,7 @@ export class ScreenshotManager {
 				}
 				
 				console.error('❌ All capture attempts failed');
-				new Notice('Failed to capture screen with any resolution - check system permissions');
+				new Notice(t('notice.allCaptureAttemptsFailed'));
 				return null;
 			}
 			
@@ -469,11 +465,11 @@ export class ScreenshotManager {
 			
 			// Provide more specific error messages
 			if (error.message.includes('denied')) {
-				new Notice('Screen recording permission denied. Please check System Preferences > Security & Privacy > Privacy > Screen Recording');
+				new Notice(t('notice.screenRecordingPermissionDenied'));
 			} else if (error.message.includes('not available')) {
-				new Notice('Screen capture API not available. Please restart Obsidian.');
+				new Notice(t('notice.screenCaptureApiError'));
 			} else {
-				new Notice(`Screen capture error: ${error.message}`);
+				new Notice(t('notice.screenCaptureGenericError', { message: error.message }));
 			}
 			return null;
 		}
