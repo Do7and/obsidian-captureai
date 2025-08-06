@@ -6,6 +6,7 @@ import { ImageCaptureSettings, DEFAULT_SETTINGS } from './types';
 import { AIManager } from './ai/ai-manager';
 import { AIChatView, AI_CHAT_VIEW_TYPE } from './ai/ai-chat-view';
 import { i18n, t } from './i18n';
+import { initializeLogger, getLogger } from './utils/logger';
 
 export default class ImageCapturePlugin extends Plugin {
 	settings: ImageCaptureSettings;
@@ -18,6 +19,9 @@ export default class ImageCapturePlugin extends Plugin {
 		
 		// Initialize i18n with user's language setting
 		i18n.setLanguage(this.settings.language || 'en');
+
+		// Initialize logger
+		initializeLogger(this);
 
 		this.screenshotManager = new ScreenshotManager(this);
 		this.imageEditor = new ImageEditor(this);
@@ -102,6 +106,40 @@ export default class ImageCapturePlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		
+		// Migrate settings if needed
+		this.migrateSettings();
+	}
+
+	private migrateSettings() {
+		let needsSave = false;
+
+		// Migrate to AI Chat Mode prompts
+		if (!this.settings.aiChatModePrompts) {
+			this.settings.aiChatModePrompts = {
+				analyze: (this.settings as any).screenshotPrompt || DEFAULT_SETTINGS.aiChatModePrompts.analyze,
+				ocr: DEFAULT_SETTINGS.aiChatModePrompts.ocr,
+				chat: DEFAULT_SETTINGS.aiChatModePrompts.chat,
+				custom: DEFAULT_SETTINGS.aiChatModePrompts.custom
+			};
+			needsSave = true;
+		}
+
+		// Set default mode if not present
+		if (!this.settings.defaultAIChatMode) {
+			this.settings.defaultAIChatMode = DEFAULT_SETTINGS.defaultAIChatMode;
+			needsSave = true;
+		}
+
+		// Remove old screenshotPrompt if it exists
+		if ('screenshotPrompt' in this.settings) {
+			delete (this.settings as any).screenshotPrompt;
+			needsSave = true;
+		}
+
+		if (needsSave) {
+			this.saveSettings();
+		}
 	}
 
 	async saveSettings() {
@@ -146,10 +184,10 @@ export default class ImageCapturePlugin extends Plugin {
 		if (aiLeaf) {
 			// Panel exists, just reveal it without recreating
 			this.app.workspace.revealLeaf(aiLeaf);
-			console.log('AI panel already exists, just revealing it');
+			getLogger().log('AI panel already exists, just revealing it');
 		} else {
 			// Panel doesn't exist, create it
-			console.log('Creating new AI panel');
+			getLogger().log('Creating new AI panel');
 			await this.showAIChatPanel();
 		}
 	}
@@ -206,7 +244,7 @@ export default class ImageCapturePlugin extends Plugin {
 	async testAdvancedCapture() {
 		try {
 			new Notice(t('notice.testingAdvancedCapture'));
-			console.log('Testing advanced capture methods...');
+			getLogger().log('Testing advanced capture methods...');
 			
 			const electron = this.getElectronAPI();
 			if (electron && electron.remote) {
@@ -218,7 +256,7 @@ export default class ImageCapturePlugin extends Plugin {
 					
 					if (desktopCapturer) {
 						new Notice(t('notice.remoteDesktopCapturerAccessible'));
-						console.log('Remote desktopCapturer accessible, testing capture...');
+						getLogger().log('Remote desktopCapturer accessible, testing capture...');
 						
 						const sources = await desktopCapturer.getSources({
 							types: ['screen'],
@@ -226,12 +264,12 @@ export default class ImageCapturePlugin extends Plugin {
 						});
 						
 						new Notice(t('notice.foundScreenSources', { count: sources.length }));
-						console.log(`Found ${sources.length} screen sources:`, sources);
+						getLogger().log(`Found ${sources.length} screen sources:`, sources);
 						
 						if (sources.length > 0) {
 							const primarySource = sources[0];
 							new Notice(t('notice.primarySource', { name: primarySource.name }));
-							console.log(`Primary source: ${primarySource.name}`);
+							getLogger().log(`Primary source: ${primarySource.name}`);
 							
 							const fullSources = await desktopCapturer.getSources({
 								types: ['screen'],
@@ -242,11 +280,11 @@ export default class ImageCapturePlugin extends Plugin {
 								const thumbnail = fullSources[0].thumbnail;
 								if (thumbnail && !thumbnail.isEmpty()) {
 									new Notice(t('notice.screenshotCapturedSuccessfully'));
-									console.log('Screenshot captured successfully!');
-									console.log('Thumbnail size:', thumbnail.getSize());
+									getLogger().log('Screenshot captured successfully!');
+									getLogger().log('Thumbnail size:', thumbnail.getSize());
 									
 									const dataURL = thumbnail.toDataURL();
-									console.log('Data URL length:', dataURL.length);
+									getLogger().log('Data URL length:', dataURL.length);
 									
 									const base64Data = dataURL.replace(/^data:image\/png;base64,/, "");
 									const fileName = `screenshot-${Date.now()}.png`;
@@ -258,7 +296,7 @@ export default class ImageCapturePlugin extends Plugin {
 											console.error('Failed to save screenshot:', err);
 										} else {
 											new Notice(t('notice.screenshotSavedToFile', { fileName }));
-											console.log(`Screenshot saved to: ${filePath}`);
+											getLogger().log(`Screenshot saved to: ${filePath}`);
 										}
 									});
 									
@@ -268,11 +306,11 @@ export default class ImageCapturePlugin extends Plugin {
 						}
 					} else {
 						new Notice(t('notice.desktopCapturerNotAvailableRemote'));
-						console.log('desktopCapturer not available through remote');
+						getLogger().log('desktopCapturer not available through remote');
 					}
 				} catch (e: any) {
 					new Notice(t('notice.errorAccessingRemoteDesktopCapturer', { message: e.message }));
-					console.log('Error accessing remote desktopCapturer:', e);
+					getLogger().log('Error accessing remote desktopCapturer:', e);
 				}
 			}
 			
@@ -285,23 +323,23 @@ export default class ImageCapturePlugin extends Plugin {
 
 	getElectronAPI() {
 		try {
-			console.log('🔍 Checking for Electron API...');
+			getLogger().log('🔍 Checking for Electron API...');
 			
 			// Check for modern Electron API
 			if ((window as any).electron) {
-				console.log('✅ Found window.electron');
+				getLogger().log('✅ Found window.electron');
 				const electronAPI = (window as any).electron;
-				console.log('🔍 Electron API properties:', Object.keys(electronAPI));
+				getLogger().log('🔍 Electron API properties:', Object.keys(electronAPI));
 				return electronAPI;
 			}
 			
 			// Check for legacy require method
 			if ((window as any).require) {
-				console.log('✅ Found window.require, attempting to load electron...');
+				getLogger().log('✅ Found window.require, attempting to load electron...');
 				try {
 					const electron = (window as any).require('electron');
-					console.log('✅ Successfully required electron');
-					console.log('🔍 Electron properties:', Object.keys(electron));
+					getLogger().log('✅ Successfully required electron');
+					getLogger().log('🔍 Electron properties:', Object.keys(electron));
 					
 					const api = {
 						desktopCapturer: electron.desktopCapturer,
@@ -309,7 +347,7 @@ export default class ImageCapturePlugin extends Plugin {
 						remote: electron.remote
 					};
 					
-					console.log('🔍 Constructed API object:', {
+					getLogger().log('🔍 Constructed API object:', {
 						hasDesktopCapturer: !!api.desktopCapturer,
 						hasScreen: !!api.screen,
 						hasRemote: !!api.remote
@@ -322,7 +360,7 @@ export default class ImageCapturePlugin extends Plugin {
 			}
 			
 			// Check if we're in a Node.js environment
-			console.log('🔍 Environment check:', {
+			getLogger().log('🔍 Environment check:', {
 				hasProcess: typeof process !== 'undefined',
 				hasGlobal: typeof global !== 'undefined',
 				hasWindow: typeof window !== 'undefined',

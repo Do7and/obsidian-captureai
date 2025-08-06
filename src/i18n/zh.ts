@@ -7,6 +7,8 @@ export default {
   "settings.defaultSaveLocation.desc": "捕获图像将保存到的目录。留空以使用库根目录。",
   "settings.useRelativePath.name": "使用相对路径",
   "settings.useRelativePath.desc": "在 Markdown 文件中使用图像的相对路径。禁用时使用绝对路径。",
+  "settings.enableDebugLogging.name": "启用调试日志",
+  "settings.enableDebugLogging.desc": "启用控制台调试日志用于故障排除。建议禁用。",
   "settings.imageFormat.name": "图像格式",
   "settings.imageFormat.desc": "选择保存图像的格式",
   "settings.language.name": "语言",
@@ -44,9 +46,17 @@ export default {
   "settings.maxHistory.desc": "要保留的对话最大数量",
   "settings.promptSettings": "提示词设置",
   "settings.globalPrompt.name": "全局系统提示词",
-  "settings.globalPrompt.desc": "AI 分析的全局系统提示词",
-  "settings.screenshotPrompt.name": "截图分析提示词",
-  "settings.screenshotPrompt.desc": "用于截图分析的提示词",
+  "settings.globalPrompt.desc": "AI 会话的全局系统提示词",
+  // AI Chat Mode Prompts
+  "settings.aiChatModePrompts": "AI会话模式提示词",
+  "settings.analyzePrompt.name": "图像分析模式提示词",
+  "settings.analyzePrompt.desc": "详细分析图像时使用的提示词",
+  "settings.ocrPrompt.name": "OCR模式提示词",
+  "settings.ocrPrompt.desc": "从图像中提取文本时使用的提示词",
+  "settings.chatPrompt.name": "对话模式提示词",
+  "settings.chatPrompt.desc": "只与AI文字对话时使用的提示词",
+  "settings.customPrompt.name": "自定义模式提示词",
+  "settings.customPrompt.desc": "自定义模式下的提示词",
   
   // Placeholders
   "settings.defaultSaveLocation.placeholder": "输入文件夹路径 (例如: screenshots-capture/savedscreenshots)",
@@ -54,6 +64,19 @@ export default {
   "settings.autoSaveLocation.placeholder": "输入文件夹路径 (例如: screenshots-capture/autosavedconversations)",
   "settings.globalPrompt.placeholder": "你是一个有用的AI助手...",
   "settings.screenshotPrompt.placeholder": "请分析这个截图并提供详细的见解...",
+
+  // Context Settings
+  "settings.contextSettings": "上下文设置",
+  "settings.maxContextMessages.name": "最大上下文消息数",
+  "settings.maxContextMessages.desc": "AI对话时包含的历史消息最大数量",
+  "settings.maxContextImages.name": "最大上下文图片数",
+  "settings.maxContextImages.desc": "AI对话时包含的历史图片最大数量",
+  "settings.includeSystemPrompt.name": "包含系统提示",
+  "settings.includeSystemPrompt.desc": "是否在上下文中包含系统提示词",
+  "settings.contextStrategy.name": "上下文策略",
+  "settings.contextStrategy.desc": "选择如何选择历史消息",
+  "settings.contextStrategy.recent": "最近消息",
+  "settings.contextStrategy.smart": "智能选择",
 
   // AI Chat Panel
   "settings.aiChatPanel.desc": "打开AI会话面板与您配置的模型交互",
@@ -67,6 +90,11 @@ export default {
   "settings.modelConfigs.name": "模型配置",
   "settings.modelConfigs.desc": "管理您的AI模型 (已配置{{count}}个)",
   "settings.manageModels.button": "管理模型",
+  
+  // Add Custom Provider
+  "settings.addCustomProvider.name": "添加自定义提供商",
+  "settings.addCustomProvider.desc": "添加一个新的自定义AI提供商，具有独立配置",
+  "settings.addCustomProvider.button": "添加自定义提供商",
   
   // Warnings and guides
   "settings.noVisionModels.warning": "⚠️ 未配置支持视觉的模型。使用设置密钥添加支持图像分析的模型。",
@@ -104,7 +132,7 @@ export default {
       <li>检查您在macOS上是否有适当的屏幕录制权限</li>
       <li>使用"测试桌面捕获API"命令诊断问题</li>
     </ul>
-    <p>如果AI分析不工作:</p>
+    <p>如果AI会话不工作:</p>
     <ul>
       <li>检查您的API密钥是否使用"设置密钥"正确配置</li>
       <li>确保您至少配置了一个支持视觉的模型</li>
@@ -183,7 +211,7 @@ export default {
   "notice.regionCaptureFailed": "区域截图失败: {{message}}",
   "notice.fullScreenCapturing": "正在截取全屏...",
   "notice.fullScreenCaptureFailed": "全屏截图失败: {{message}}",
-  "notice.screenCapturingOverlayInstruction": "🖱️ 拖拽选择截图区域<br><small>灰色区域仅在当前窗口内，但可以截取整个屏幕的任何区域<br>按 ESC 取消</small>",
+  "notice.screenCapturingOverlayInstruction": "🖱️ 拖拽选择截图区域<br><small><br>按 ESC 取消</small>",
   "notice.electronAPINotAvailable": "Electron API 不可用 - 请确保在桌面端运行",
   "notice.electronRemoteNotAvailable": "Electron remote 不可用 - 请尝试重启 Obsidian",
   "notice.desktopCapturerNotAvailable": "desktopCapturer 不可用",
@@ -230,10 +258,10 @@ export default {
   "imageEditor.strokeSize.small": "小",
   "imageEditor.strokeSize.medium": "中",
   "imageEditor.strokeSize.large": "大",
-  "imageEditor.savingAndAddingToQueue": "正在保存图片并添加到AI发送队列...",
+  "imageEditor.savingAndAddingToQueue": "正在保存图片并添加到待发送区...",
   "imageEditor.savingAndSendingToAI": "正在保存并发送图片给AI分析...",
   "imageEditor.imageAddedToQueue": "✅ 图片已添加到AI发送队列，可继续添加更多图片",
-  "imageEditor.imageSentToAI": "✅ 图片已发送给AI分析，请查看右侧面板",
+  "imageEditor.imageSentToAI": "✅ 图片已发送给AI，请查看右侧面板",
   "imageEditor.saveError": "保存图片失败: {{message}}",
   "imageEditor.aiSendError": "发送到AI失败: {{message}}",
   "imageEditor.copyFailed": "❌ 复制失败: {{message}}",
@@ -258,6 +286,9 @@ export default {
   "setKeys.baseUrlLabel": "基础 URL",
   "setKeys.baseUrlDescription": "输入自定义 API 端点的基础 URL",
   "setKeys.baseUrlPlaceholder": "https://api.example.com/v1",
+  "setKeys.apiPathLabel": "API 路径",
+  "setKeys.apiPathDescription": "输入API路径 (默认: /v1/chat/completions)",
+  "setKeys.apiPathPlaceholder": "/v1/chat/completions",
   "setKeys.customNameLabel": "提供商名称",
   "setKeys.customNameDescription": "为此提供商输入自定义名称 (例如: '我的公司API')",
   "setKeys.customNamePlaceholder": "我的自定义提供商",
@@ -280,6 +311,40 @@ export default {
   "setKeys.visionCapableDescription": "勾选此选项如果该模型支持图像分析",
   "setKeys.visionBadge": "视觉",
   "setKeys.contextBadge": "{{count}} 令牌",
+
+  // Add Custom Provider Modal
+  "addCustomProvider.title": "添加自定义AI提供商",
+  "addCustomProvider.description": "添加一个新的自定义AI提供商及其API配置。",
+  "addCustomProvider.providerNameLabel": "提供商名称",
+  "addCustomProvider.providerNameDescription": "输入此提供商的名称 (例如: '302.AI', '我的公司API')",
+  "addCustomProvider.providerNamePlaceholder": "302.AI",
+  "addCustomProvider.baseUrlLabel": "基础 URL",
+  "addCustomProvider.baseUrlDescription": "输入API端点的基础URL",
+  "addCustomProvider.baseUrlPlaceholder": "https://api.302.ai",
+  "addCustomProvider.apiPathLabel": "API 路径",
+  "addCustomProvider.apiPathDescription": "输入API路径 (默认: /v1/chat/completions)",
+  "addCustomProvider.apiPathPlaceholder": "/v1/chat/completions",
+  "addCustomProvider.apiKeyLabel": "API 密钥",
+  "addCustomProvider.apiKeyDescription": "输入此提供商的API密钥",
+  "addCustomProvider.apiKeyPlaceholder": "输入 API 密钥...",
+  "addCustomProvider.modelIdLabel": "模型 ID",
+  "addCustomProvider.modelIdDescription": "输入模型ID (例如: 'gpt-4o', 'claude-3-5-sonnet')",
+  "addCustomProvider.modelIdPlaceholder": "gpt-4o",
+  "addCustomProvider.modelNameLabel": "模型显示名称",
+  "addCustomProvider.modelNameDescription": "输入此模型的显示名称",
+  "addCustomProvider.modelNamePlaceholder": "GPT-4o",
+  "addCustomProvider.visionCapableLabel": "支持视觉",
+  "addCustomProvider.visionCapableDescription": "勾选此选项如果该模型支持图像分析",
+  "addCustomProvider.testButton": "测试连接",
+  "addCustomProvider.testingButton": "测试中...",
+  "addCustomProvider.addButton": "添加提供商",
+  "addCustomProvider.testSuccess": "✅ 连接测试成功！",
+  "addCustomProvider.testFailed": "❌ 连接测试失败: {{error}}",
+  "addCustomProvider.addSuccess": "✅ 成功添加 {{providerName}} - {{modelName}}！",
+  "addCustomProvider.providerNameRequired": "提供商名称是必需的",
+  "addCustomProvider.baseUrlRequired": "基础URL是必需的",
+  "addCustomProvider.apiKeyRequired": "API密钥是必需的",
+  "addCustomProvider.modelIdRequired": "模型ID是必需的",
 
   // Manage Models Modal
   "manageModels.description": "配置和管理您的 AI 模型配置。",
@@ -380,6 +445,12 @@ export default {
   "aiChat.nonVisionModelCannotSendImages": "当前为非视觉模型无法处理图片。请输入文字消息或切换到支持视觉的模型。",
   "aiChat.nonVisionModelNotice": "当前使用的是非视觉模型，无法处理图片。请输入文字消息或切换到支持视觉的模型。",
 
+  // AI Chat Modes
+  "aiChat.modes.analyze": "图像分析",
+  "aiChat.modes.ocr": "提取文本 (OCR)",
+  "aiChat.modes.chat": "纯文字对话",
+  "aiChat.modes.custom": "使用自定义提示词",
+
   // Main plugin messages
   "plugin.aiChatPanelToggleFailed": "❌ 切换 AI 会话面板失败: {{message}}",
   "plugin.aiManagerNotInitialized": "AI 管理器未初始化",
@@ -406,7 +477,7 @@ export default {
       <li>检查您在macOS上是否有适当的屏幕录制权限</li>  
       <li>使用"测试桌面捕获API"命令诊断问题</li>
     </ul>
-    <p>如果AI分析不工作:</p>
+    <p>如果AI会话不工作:</p>
     <ul>
       <li>检查您的API密钥是否使用"设置密钥"正确配置</li>
       <li>确保您至少配置了一个支持视觉的模型</li>

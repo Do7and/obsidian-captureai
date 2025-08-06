@@ -17,6 +17,9 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
+		// Add CSS styles for consistent setting item layout
+		this.addSettingsStyles(containerEl);
+
 		containerEl.createEl('h2', { text: t('settings.title') });
 
 		// 通用设置分类
@@ -47,6 +50,17 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.useRelativePath)
 				.onChange(async (value) => {
 					this.plugin.settings.useRelativePath = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// 启用调试日志设置
+		new Setting(containerEl)
+			.setName(t('settings.enableDebugLogging.name'))
+			.setDesc(t('settings.enableDebugLogging.desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableDebugLogging)
+				.onChange(async (value) => {
+					this.plugin.settings.enableDebugLogging = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -92,8 +106,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 
 		// AI Configuration Section
 		if (this.plugin.settings.enableAIAnalysis) {
-			// 第一块：AI API配置相关设置
-			containerEl.createEl('h4', { text: t('settings.aiApiConfig') });
+			
 			
 			// Quick access to AI Chat
 			new Setting(containerEl)
@@ -110,6 +123,9 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 						}
 					}));
 
+			// 第一块：AI API配置相关设置
+			containerEl.createEl('h4', { text: t('settings.aiApiConfig') });
+			
 			// API Keys management
 			const apiKeysContainer = containerEl.createEl('div', { cls: 'api-keys-section' });
 			
@@ -258,34 +274,147 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 						textArea.style.width = '100%';
 						textArea.style.minHeight = '100px';
 						textArea.style.resize = 'vertical';
-						textArea.style.fontFamily = 'var(--font-monospace)';
-						textArea.style.fontSize = '13px';
+						textArea.style.fontFamily = 'var(--font-interface)';
+						textArea.style.fontSize = '14px';
+						textArea.style.lineHeight = '1.5';
 					}
 				});
 
-			// Screenshot Prompt
-			new Setting(promptsContainer)
-				.setName(t('settings.screenshotPrompt.name'))
-				.setDesc(t('settings.screenshotPrompt.desc'))
-				.addTextArea(text => text
-					.setPlaceholder(t('settings.screenshotPrompt.placeholder'))
-					.setValue(this.plugin.settings.screenshotPrompt || '')
+			// AI Chat Mode Prompts Section
+			promptsContainer.createEl('h4', { text: t('settings.aiChatModePrompts'), cls: 'mode-prompts-header' });
+			
+			// Add AI Chat Mode prompts
+			const modes: Array<{id: keyof import('../types').ImageCaptureSettings['aiChatModePrompts'], nameKey: string, descKey: string}> = [
+				{ id: 'analyze', nameKey: 'settings.analyzePrompt.name', descKey: 'settings.analyzePrompt.desc' },
+				{ id: 'ocr', nameKey: 'settings.ocrPrompt.name', descKey: 'settings.ocrPrompt.desc' },
+				{ id: 'chat', nameKey: 'settings.chatPrompt.name', descKey: 'settings.chatPrompt.desc' },
+				{ id: 'custom', nameKey: 'settings.customPrompt.name', descKey: 'settings.customPrompt.desc' }
+			];
+
+			modes.forEach(mode => {
+				new Setting(promptsContainer)
+					.setName(t(mode.nameKey))
+					.setDesc(t(mode.descKey))
+					.addTextArea(text => text
+						.setPlaceholder(`Enter ${mode.id} mode prompt...`)
+						.setValue(this.plugin.settings.aiChatModePrompts[mode.id] || '')
+						.onChange(async (value) => {
+							if (!this.plugin.settings.aiChatModePrompts) {
+								this.plugin.settings.aiChatModePrompts = {
+									analyze: '',
+									ocr: '',
+									chat: '',
+									custom: ''
+								};
+							}
+							this.plugin.settings.aiChatModePrompts[mode.id] = value;
+							await this.plugin.saveSettings();
+						}))
+					.then(setting => {
+						// Adjust textarea size and styling to match global prompt
+						const textArea = setting.controlEl.querySelector('textarea') as HTMLTextAreaElement;
+						if (textArea) {
+							textArea.rows = 3;
+							textArea.style.width = '100%';
+							textArea.style.minHeight = '80px';
+							textArea.style.resize = 'vertical';
+							textArea.style.fontFamily = 'var(--font-interface)';
+							textArea.style.fontSize = '14px';
+							textArea.style.lineHeight = '1.5';
+						}
+					});
+			});
+
+			// Context Settings Section
+			containerEl.createEl('h4', { text: t('settings.contextSettings') });
+			
+			const contextContainer = containerEl.createEl('div', { cls: 'context-settings-container' });
+			
+			// Max Context Messages
+			new Setting(contextContainer)
+				.setName(t('settings.maxContextMessages.name'))
+				.setDesc(t('settings.maxContextMessages.desc'))
+				.addSlider(slider => slider
+					.setLimits(5, 50, 5)
+					.setValue(this.plugin.settings.contextSettings?.maxContextMessages || 20)
+					.setDynamicTooltip()
 					.onChange(async (value) => {
-						this.plugin.settings.screenshotPrompt = value;
+						if (!this.plugin.settings.contextSettings) {
+							this.plugin.settings.contextSettings = {
+								maxContextMessages: 20,
+								maxContextImages: 3,
+								includeSystemPrompt: true,
+								contextStrategy: 'recent'
+							};
+						}
+						this.plugin.settings.contextSettings.maxContextMessages = value;
 						await this.plugin.saveSettings();
-					}))
-				.then(setting => {
-					// Adjust textarea size and styling to match global prompt
-					const textArea = setting.controlEl.querySelector('textarea') as HTMLTextAreaElement;
-					if (textArea) {
-						textArea.rows = 4;
-						textArea.style.width = '100%';
-						textArea.style.minHeight = '100px';
-						textArea.style.resize = 'vertical';
-						textArea.style.fontFamily = 'var(--font-monospace)';
-						textArea.style.fontSize = '13px';
-					}
-				});
+					})
+				);
+
+			// Max Context Images
+			new Setting(contextContainer)
+				.setName(t('settings.maxContextImages.name'))
+				.setDesc(t('settings.maxContextImages.desc'))
+				.addSlider(slider => slider
+					.setLimits(1, 10, 1)
+					.setValue(this.plugin.settings.contextSettings?.maxContextImages || 3)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						if (!this.plugin.settings.contextSettings) {
+							this.plugin.settings.contextSettings = {
+								maxContextMessages: 20,
+								maxContextImages: 3,
+								includeSystemPrompt: true,
+								contextStrategy: 'recent'
+							};
+						}
+						this.plugin.settings.contextSettings.maxContextImages = value;
+						await this.plugin.saveSettings();
+					})
+				);
+
+			// Include System Prompt
+			new Setting(contextContainer)
+				.setName(t('settings.includeSystemPrompt.name'))
+				.setDesc(t('settings.includeSystemPrompt.desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.contextSettings?.includeSystemPrompt ?? true)
+					.onChange(async (value) => {
+						if (!this.plugin.settings.contextSettings) {
+							this.plugin.settings.contextSettings = {
+								maxContextMessages: 20,
+								maxContextImages: 3,
+								includeSystemPrompt: true,
+								contextStrategy: 'recent'
+							};
+						}
+						this.plugin.settings.contextSettings.includeSystemPrompt = value;
+						await this.plugin.saveSettings();
+					})
+				);
+
+			// Context Strategy
+			new Setting(contextContainer)
+				.setName(t('settings.contextStrategy.name'))
+				.setDesc(t('settings.contextStrategy.desc'))
+				.addDropdown(dropdown => dropdown
+					.addOption('recent', t('settings.contextStrategy.recent'))
+					.addOption('smart', t('settings.contextStrategy.smart'))
+					.setValue(this.plugin.settings.contextSettings?.contextStrategy || 'recent')
+					.onChange(async (value: 'recent' | 'smart') => {
+						if (!this.plugin.settings.contextSettings) {
+							this.plugin.settings.contextSettings = {
+								maxContextMessages: 20,
+								maxContextImages: 3,
+								includeSystemPrompt: true,
+								contextStrategy: 'recent'
+							};
+						}
+						this.plugin.settings.contextSettings.contextStrategy = value;
+						await this.plugin.saveSettings();
+					})
+				);
 		}
 
 		// Shortcuts Section
@@ -361,9 +490,9 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				}
 
 				.prompts-settings-container .setting-item-control textarea {
-					font-family: var(--font-monospace) !important;
-					font-size: 13px !important;
-					line-height: 1.4 !important;
+					font-family: var(--font-interface) !important;
+					font-size: 14px !important;
+					line-height: 1.5 !important;
 				}
 				
 				.number-input-buttons button {
@@ -375,8 +504,31 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					align-items: center;
 					justify-content: center;
 				}
+
+				/* Settings layout consistency */
+				.setting-item-info {
+					min-width: 200px;
+					max-width: 200px;
+					flex-shrink: 0;
+				}
+
+				.setting-item-control {
+					flex: 1;
+				}
+
+				.setting-item-control input[type="text"],
+				.setting-item-control textarea,
+				.setting-item-control select {
+					width: 100% !important;
+					max-width: 100% !important;
+				}
 			`;
 			document.head.appendChild(style);
 		}
+	}
+
+	private addSettingsStyles(containerEl: HTMLElement): void {
+		// Add a CSS class to the container for targeted styling
+		containerEl.addClass('image-capture-settings');
 	}
 }

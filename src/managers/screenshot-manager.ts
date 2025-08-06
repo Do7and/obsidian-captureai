@@ -2,6 +2,7 @@ import { Notice } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { Region } from '../types';
 import { t } from '../i18n';
+import { getLogger } from '../utils/logger';
 
 export class ScreenshotManager {
 	private plugin: ImageCapturePlugin;
@@ -18,22 +19,22 @@ export class ScreenshotManager {
 
 	async startRegionCapture() {
 		try {
-			console.log('🚀 Starting region capture process...');
+			getLogger().log('🚀 Starting region capture process...');
 			
-			console.log('🔍 Creating overlay for region selection...');
+			getLogger().log('🔍 Creating overlay for region selection...');
 			this.createOverlay();
 			
-			console.log('🔍 Waiting for region selection...');
+			getLogger().log('🔍 Waiting for region selection...');
 			const region = await this.waitForRegionSelection();
 			if (!region) {
-				console.log('❌ Region selection cancelled by user');
+				getLogger().log('❌ Region selection cancelled by user');
 				new Notice(t('notice.regionSelectionCancelled'));
 				return;
 			}
 			
-			console.log('✅ Region selected:', region);
+			getLogger().log('✅ Region selected:', region);
 			
-			console.log('🔍 Starting screen capture...');
+			getLogger().log('🔍 Starting screen capture...');
 			const screenshot = await this.captureScreen();
 			if (!screenshot) {
 				console.error('❌ Failed to capture screen');
@@ -41,12 +42,12 @@ export class ScreenshotManager {
 				return;
 			}
 			
-			console.log('✅ Screen captured successfully');
-			console.log('🔍 Creating extended crop with surrounding area...');
+			getLogger().log('✅ Screen captured successfully');
+			getLogger().log('🔍 Creating extended crop with surrounding area...');
 			const extendedImage = await this.createExtendedCrop(screenshot, region);
 			
-			console.log('✅ Extended image created successfully');
-			console.log('🔍 Opening image editor...');
+			getLogger().log('✅ Extended image created successfully');
+			getLogger().log('🔍 Opening image editor...');
 			this.plugin.imageEditor.showEditor(extendedImage.imageData, region, extendedImage.extendedRegion, screenshot);
 			
 		} catch (error: any) {
@@ -328,10 +329,10 @@ export class ScreenshotManager {
 
 	private async captureScreen(): Promise<string | null> {
 		try {
-			console.log('🔍 Starting screen capture...');
+			getLogger().log('🔍 Starting screen capture...');
 			
 			const electron = this.plugin.getElectronAPI();
-			console.log('🔍 Electron API:', electron ? 'Available' : 'Not available');
+			getLogger().log('🔍 Electron API:', electron ? 'Available' : 'Not available');
 			
 			if (!electron) {
 				console.error('❌ Electron API not available');
@@ -345,7 +346,7 @@ export class ScreenshotManager {
 				return null;
 			}
 			
-			console.log('🔍 Getting electron modules...');
+			getLogger().log('🔍 Getting electron modules...');
 			const remoteElectron = electron.remote.require('electron');
 			const desktopCapturer = remoteElectron.desktopCapturer;
 			
@@ -356,14 +357,14 @@ export class ScreenshotManager {
 			}
 			
 			// First, try to get screen sources with a small thumbnail to check availability
-			console.log('🔍 Checking screen access permissions...');
+			getLogger().log('🔍 Checking screen access permissions...');
 			try {
 				const testSources = await desktopCapturer.getSources({
 					types: ['screen'],
 					thumbnailSize: { width: 150, height: 150 }
 				});
 				
-				console.log(`🔍 Permission check: Found ${testSources.length} screen sources`);
+				getLogger().log(`🔍 Permission check: Found ${testSources.length} screen sources`);
 				if (testSources.length === 0) {
 					console.error('❌ No screen sources available - permission denied');
 					new Notice(t('notice.screenRecordingPermissionDenied'));
@@ -376,7 +377,7 @@ export class ScreenshotManager {
 			}
 			
 			// Now get the actual screen capture with higher resolution
-			console.log('🔍 Getting full screen capture...');
+			getLogger().log('🔍 Getting full screen capture...');
 			const sources = await desktopCapturer.getSources({
 				types: ['screen'],
 				thumbnailSize: { 
@@ -385,7 +386,7 @@ export class ScreenshotManager {
 				}
 			});
 			
-			console.log(`🔍 Found ${sources.length} screen sources for capture`);
+			getLogger().log(`🔍 Found ${sources.length} screen sources for capture`);
 			
 			if (sources.length === 0) {
 				console.error('❌ No screen sources found for capture');
@@ -394,7 +395,7 @@ export class ScreenshotManager {
 			}
 			
 			const primarySource = sources[0];
-			console.log('🔍 Primary source:', primarySource.name);
+			getLogger().log('🔍 Primary source:', primarySource.name);
 			
 			const primaryThumbnail = primarySource.thumbnail;
 			if (!primaryThumbnail) {
@@ -410,7 +411,7 @@ export class ScreenshotManager {
 			}
 			
 			const screenSize = primaryThumbnail.getSize();
-			console.log('🔍 Captured screen size:', screenSize);
+			getLogger().log('🔍 Captured screen size:', screenSize);
 			
 			if (screenSize.width === 0 || screenSize.height === 0) {
 				console.error('❌ Invalid screen size, trying alternative method...');
@@ -423,7 +424,7 @@ export class ScreenshotManager {
 				];
 				
 				for (const size of alternativeSizes) {
-					console.log(`🔍 Trying alternative size: ${size.width}x${size.height}`);
+					getLogger().log(`🔍 Trying alternative size: ${size.width}x${size.height}`);
 					const altSources = await desktopCapturer.getSources({
 						types: ['screen'],
 						thumbnailSize: size
@@ -433,12 +434,12 @@ export class ScreenshotManager {
 						const altThumbnail = altSources[0].thumbnail;
 						if (altThumbnail && !altThumbnail.isEmpty()) {
 							const altSize = altThumbnail.getSize();
-							console.log(`🔍 Alternative capture size: ${altSize.width}x${altSize.height}`);
+							getLogger().log(`🔍 Alternative capture size: ${altSize.width}x${altSize.height}`);
 							
 							if (altSize.width > 0 && altSize.height > 0) {
-								console.log('✅ Alternative capture successful!');
+								getLogger().log('✅ Alternative capture successful!');
 								const dataURL = altThumbnail.toDataURL();
-								console.log('✅ DataURL length:', dataURL.length);
+								getLogger().log('✅ DataURL length:', dataURL.length);
 								return dataURL;
 							}
 						}
@@ -450,9 +451,9 @@ export class ScreenshotManager {
 				return null;
 			}
 			
-			console.log('✅ Successfully captured screen, thumbnail size:', screenSize);
+			getLogger().log('✅ Successfully captured screen, thumbnail size:', screenSize);
 			const dataURL = primaryThumbnail.toDataURL();
-			console.log('✅ DataURL length:', dataURL.length);
+			getLogger().log('✅ DataURL length:', dataURL.length);
 			return dataURL;
 			
 		} catch (error: any) {
@@ -479,8 +480,8 @@ export class ScreenshotManager {
 		return new Promise((resolve) => {
 			const img = new Image();
 			img.onload = () => {
-				console.log('🔍 Creating extended crop...');
-				console.log('🔍 Original region:', region);
+				getLogger().log('🔍 Creating extended crop...');
+				getLogger().log('🔍 Original region:', region);
 				
 				// Calculate extended region (1.2x the area around the original crop)
 				const extensionFactor = 0.2; // 20% extension on each side (total 1.4x)
@@ -508,7 +509,7 @@ export class ScreenshotManager {
 					extendedRegion.height = img.height - extendedRegion.y;
 				}
 				
-				console.log('🔍 Extended region:', extendedRegion);
+				getLogger().log('🔍 Extended region:', extendedRegion);
 				
 				const canvas = document.createElement('canvas');
 				const ctx = canvas.getContext('2d')!;
@@ -542,8 +543,8 @@ export class ScreenshotManager {
 					screenY = windowY + extendedRegion.y + (window.outerHeight - window.innerHeight);
 				}
 				
-				console.log('🔍 Final screen coordinates for extended crop:', { x: screenX, y: screenY });
-				console.log('🔍 Extended crop dimensions:', { width: extendedRegion.width, height: extendedRegion.height });
+				getLogger().log('🔍 Final screen coordinates for extended crop:', { x: screenX, y: screenY });
+				getLogger().log('🔍 Extended crop dimensions:', { width: extendedRegion.width, height: extendedRegion.height });
 				
 				// Draw the extended crop
 				ctx.drawImage(
@@ -565,24 +566,24 @@ export class ScreenshotManager {
 		return new Promise((resolve) => {
 			const img = new Image();
 			img.onload = () => {
-				console.log('🔍 Starting image crop process...');
-				console.log('🔍 Original region (browser coordinates):', region);
-				console.log('🔍 Screenshot dimensions:', { width: img.width, height: img.height });
+				getLogger().log('🔍 Starting image crop process...');
+				getLogger().log('🔍 Original region (browser coordinates):', region);
+				getLogger().log('🔍 Screenshot dimensions:', { width: img.width, height: img.height });
 				
 				// Get window position and dimensions
 				const windowX = window.screenX || window.screenLeft || 0;
 				const windowY = window.screenY || window.screenTop || 0;
 				
-				console.log('🔍 Browser window position:', { x: windowX, y: windowY });
-				console.log('🔍 Browser window inner size:', { 
+				getLogger().log('🔍 Browser window position:', { x: windowX, y: windowY });
+				getLogger().log('🔍 Browser window inner size:', { 
 					width: window.innerWidth, 
 					height: window.innerHeight 
 				});
-				console.log('🔍 Browser window outer size:', { 
+				getLogger().log('🔍 Browser window outer size:', { 
 					width: window.outerWidth, 
 					height: window.outerHeight 
 				});
-				console.log('🔍 Screen dimensions:', { 
+				getLogger().log('🔍 Screen dimensions:', { 
 					width: screen.width, 
 					height: screen.height 
 				});
@@ -593,7 +594,7 @@ export class ScreenshotManager {
 				const isMaximized = window.outerWidth === screen.width && 
 								  (window.outerHeight === screen.height || window.outerHeight === screen.height - 48); // Account for taskbar
 				
-				console.log('🔍 Window state detection:', {
+				getLogger().log('🔍 Window state detection:', {
 					isFullscreen,
 					isMaximized,
 					windowSize: { w: window.outerWidth, h: window.outerHeight },
@@ -616,19 +617,19 @@ export class ScreenshotManager {
 						const uiOffset = window.outerHeight - window.innerHeight;
 						screenX = region.x + windowX;
 						screenY = region.y + windowY + uiOffset;
-						console.log('🔍 Fullscreen/Maximized with UI offset:', uiOffset);
+						getLogger().log('🔍 Fullscreen/Maximized with UI offset:', uiOffset);
 					} else {
 						// True fullscreen - direct mapping
 						screenX = region.x + windowX;
 						screenY = region.y + windowY;
-						console.log('🔍 True fullscreen: direct coordinate mapping');
+						getLogger().log('🔍 True fullscreen: direct coordinate mapping');
 					}
 				} else {
 					// In windowed mode, calculate browser chrome offsets
 					const titleBarHeight = window.outerHeight - window.innerHeight;
 					const sidebarWidth = (window.outerWidth - window.innerWidth) / 2;
 					
-					console.log('🔍 Window chrome offsets:', { 
+					getLogger().log('🔍 Window chrome offsets:', { 
 						titleBarHeight, 
 						sidebarWidth 
 					});
@@ -638,7 +639,7 @@ export class ScreenshotManager {
 					screenY = windowY + titleBarHeight + region.y;
 				}
 				
-				console.log('🔍 Converted to screen coordinates:', { 
+				getLogger().log('🔍 Converted to screen coordinates:', { 
 					x: screenX, 
 					y: screenY, 
 					width: region.width, 
@@ -649,7 +650,7 @@ export class ScreenshotManager {
 				const scaleX = img.width / screen.width;
 				const scaleY = img.height / screen.height;
 				
-				console.log('🔍 Scale factors:', { scaleX, scaleY });
+				getLogger().log('🔍 Scale factors:', { scaleX, scaleY });
 				
 				// Apply scaling to get final crop coordinates
 				const finalX = screenX * scaleX;
@@ -657,7 +658,7 @@ export class ScreenshotManager {
 				const finalWidth = region.width * scaleX;
 				const finalHeight = region.height * scaleY;
 				
-				console.log('🔍 Final crop coordinates:', { 
+				getLogger().log('🔍 Final crop coordinates:', { 
 					x: finalX, 
 					y: finalY, 
 					width: finalWidth, 
@@ -670,7 +671,7 @@ export class ScreenshotManager {
 				const clampedWidth = Math.max(1, Math.min(finalWidth, img.width - clampedX));
 				const clampedHeight = Math.max(1, Math.min(finalHeight, img.height - clampedY));
 				
-				console.log('🔍 Clamped coordinates:', { 
+				getLogger().log('🔍 Clamped coordinates:', { 
 					x: clampedX, 
 					y: clampedY, 
 					width: clampedWidth, 
@@ -694,7 +695,7 @@ export class ScreenshotManager {
 						0, 0, clampedWidth, clampedHeight  // Destination rectangle (full size)
 					);
 					
-					console.log('✅ Image cropped successfully at full resolution');
+					getLogger().log('✅ Image cropped successfully at full resolution');
 				}
 				
 				resolve(canvas.toDataURL('image/png'));

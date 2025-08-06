@@ -28,6 +28,13 @@ export interface ModelConfig {
 	settings: ModelSettings;
 	createdAt: Date;
 	lastUsed?: Date;
+	// For custom providers, store provider info directly in model config
+	customProvider?: {
+		name: string;
+		baseUrl: string;
+		apiPath?: string;
+		apiKey: string;
+	};
 }
 
 export interface ModelSettings {
@@ -44,12 +51,45 @@ export interface ProviderCredentials {
 	[providerId: string]: {
 		apiKey: string;
 		baseUrl?: string;
+		apiPath?: string; // Custom API path, e.g., "/v1/chat/completions"
 		customName?: string; // For custom providers to have user-friendly names
 		verified: boolean;
 		verifiedAt?: Date;
 		lastError?: string;
 	};
 }
+
+// AI Chat Mode Types
+export type AIChatMode = 'analyze' | 'ocr' | 'chat' | 'custom';
+
+export interface AIChatModeConfig {
+	id: AIChatMode;
+	nameKey: string; // i18n key for the mode name
+	prompt: string;
+}
+
+export const AI_CHAT_MODES: AIChatModeConfig[] = [
+	{
+		id: 'analyze',
+		nameKey: 'aiChat.modes.analyze',
+		prompt: 'Please analyze this image in detail. Describe what you see, identify key elements, patterns, and provide insights about the content, context, and any notable features.'
+	},
+	{
+		id: 'ocr',
+		nameKey: 'aiChat.modes.ocr',
+		prompt: 'Please extract all text from this image. Provide the text content exactly as it appears, maintaining the structure and formatting where possible. If there are multiple text sections, organize them clearly.'
+	},
+	{
+		id: 'chat',
+		nameKey: 'aiChat.modes.chat',
+		prompt: 'Please examine this image and be ready to answer questions about what you see. Provide detailed observations and be prepared to discuss any aspect of the image.'
+	},
+	{
+		id: 'custom',
+		nameKey: 'aiChat.modes.custom',
+		prompt: 'Please examine this image and respond according to the custom instructions provided by the user.'
+	}
+];
 
 export interface ImageCaptureSettings {
 	language: string;
@@ -68,7 +108,34 @@ export interface ImageCaptureSettings {
 	providerCredentials: ProviderCredentials;
 	defaultModelConfigId: string;
 	globalSystemPrompt: string;
-	screenshotPrompt: string;
+	// AI Chat Mode Settings
+	defaultAIChatMode: AIChatMode;
+	aiChatModePrompts: {
+		[key in AIChatMode]: string;
+	};
+	// Custom providers storage
+	customProviders: {[providerId: string]: CustomProvider};
+	// Context settings for AI conversations
+	contextSettings: {
+		maxContextMessages: number;      // Maximum number of historical messages to include
+		maxContextImages: number;        // Maximum number of historical images to include
+		includeSystemPrompt: boolean;    // Whether to include system prompt in context
+		contextStrategy: 'recent' | 'smart'; // Strategy for selecting context messages
+	};
+	// Debug settings
+	enableDebugLogging: boolean;        // Enable debug logging to console
+}
+
+export interface CustomProvider {
+	id: string;
+	name: string;
+	baseUrl: string;
+	apiPath: string;
+	apiKey: string;
+	verified: boolean;
+	verifiedAt?: Date;
+	lastError?: string;
+	createdAt: Date;
 }
 
 export const LLM_PROVIDERS: LLMProvider[] = [
@@ -157,7 +224,13 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 			{ id: 'meta-llama/llama-3.2-90b-vision-instruct', name: 'Llama 3.2 90B Vision', hasVision: true, maxTokens: 4096, contextWindow: 131072 },
 			{ id: 'meta-llama/llama-3.2-11b-vision-instruct', name: 'Llama 3.2 11B Vision', hasVision: true, maxTokens: 4096, contextWindow: 131072 },
 			{ id: 'qwen/qwen-2-vl-72b-instruct', name: 'Qwen2-VL 72B', hasVision: true, maxTokens: 4096, contextWindow: 32768 },
-			{ id: 'qwen/qwen-2-vl-7b-instruct', name: 'Qwen2-VL 7B', hasVision: true, maxTokens: 4096, contextWindow: 32768 }
+			{ id: 'qwen/qwen-2-vl-7b-instruct', name: 'Qwen2-VL 7B', hasVision: true, maxTokens: 4096, contextWindow: 32768 },
+			{ id: 'qwen/qwenvl-max', name: 'QwenVL Max', hasVision: true, maxTokens: 4096, contextWindow: 32768 },
+			{ id: 'qwen/qwenvl-plus', name: 'QwenVL Plus', hasVision: true, maxTokens: 4096, contextWindow: 32768 },
+			{ id: 'qwen/qwenvl', name: 'QwenVL', hasVision: true, maxTokens: 4096, contextWindow: 32768 },
+			{ id: 'qwen/qwen-vl-max', name: 'Qwen VL Max', hasVision: true, maxTokens: 4096, contextWindow: 32768 },
+			{ id: 'qwen/qwen-vl-plus', name: 'Qwen VL Plus', hasVision: true, maxTokens: 4096, contextWindow: 32768 },
+			{ id: 'qwen/qwen-vl-chat', name: 'Qwen VL Chat', hasVision: true, maxTokens: 4096, contextWindow: 32768 }
 		]
 	},
 	{
@@ -167,13 +240,36 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 		requiresApiKey: true,
 		requiresBaseUrl: true,
 		models: [
-			{ id: 'custom-model', name: 'Custom Model', hasVision: true, maxTokens: 4096, contextWindow: 8192 }
+			// Placeholder models - will be dynamically populated
+			{ id: 'gpt-4o', name: 'GPT-4o', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
+			{ id: 'gpt-4o-mini', name: 'GPT-4o Mini', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
+			{ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 200000 },
+			{ id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 2000000 },
+			{ id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
+			{ id: 'deepseek-chat', name: 'DeepSeek Chat', hasVision: false, maxTokens: 4096, contextWindow: 64000 },
+			{ id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', hasVision: false, maxTokens: 4096, contextWindow: 64000 },
+			{ id: 'chatgpt-4o-latest', name: 'ChatGPT-4o Latest', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
+			{ id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
+			{ id: 'gpt-4.1', name: 'GPT-4.1', hasVision: true, maxTokens: 4096, contextWindow: 1000000 },
+			{ id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', hasVision: true, maxTokens: 4096, contextWindow: 1000000 },
+			{ id: 'o3', name: 'O3', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
+			{ id: 'o4-mini', name: 'O4 Mini', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
+			{ id: 'qwen3-235b-a22b', name: 'Qwen3 235B', hasVision: false, maxTokens: 4096, contextWindow: 128000 },
+			{ id: 'llama-4-maverick', name: 'Llama 4 Maverick', hasVision: false, maxTokens: 4096, contextWindow: 128000 },
+			{ id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
+			{ id: 'gemini-2.5-flash-nothink', name: 'Gemini 2.5 Flash NoThink', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
+			{ id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', hasVision: true, maxTokens: 8192, contextWindow: 200000 },
+			{ id: 'claude-opus-4-20250514', name: 'Claude Opus 4', hasVision: true, maxTokens: 8192, contextWindow: 200000 },
+			{ id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
+			{ id: 'doubao-1.5-vision-pro-250328', name: 'Doubao 1.5 Vision Pro', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
+			{ id: 'grok-4', name: 'Grok 4', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
+			{ id: 'kimi-k2-0711-preview', name: 'Kimi K2 Preview', hasVision: false, maxTokens: 4096, contextWindow: 128000 }
 		]
 	}
 ];
 
 export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
-	maxTokens: 4000,
+	maxTokens: 20000,
 	temperature: 0.7,
 	topP: 1,
 	frequencyPenalty: 0,
@@ -199,7 +295,24 @@ export const DEFAULT_SETTINGS: ImageCaptureSettings = {
 	providerCredentials: {},
 	defaultModelConfigId: '',
 	globalSystemPrompt: 'You are a helpful AI assistant.',
-	screenshotPrompt: 'Please analyze this screenshot and provide detailed insights about what you see.'
+	// AI Chat Mode Settings
+	defaultAIChatMode: 'analyze',
+	aiChatModePrompts: {
+		analyze: 'Please analyze this image in detail. Describe what you see, identify key elements, patterns, and provide insights about the content, context, and any notable features.',
+		ocr: 'Please extract all text from this image. Provide the text content exactly as it appears, maintaining the structure and formatting where possible. If there are multiple text sections, organize them clearly.',
+		chat: 'You are a helpful AI assistant engaged in a text-based conversation. Answer questions, provide information, and assist with various tasks to the best of your ability. Be concise yet thorough in your responses.',
+		custom: 'Please examine this image and respond according to the custom instructions provided by the user.'
+	},
+	// Custom providers storage
+	customProviders: {},
+	contextSettings: {
+		maxContextMessages: 20,
+		maxContextImages: 3,
+		includeSystemPrompt: true,
+		contextStrategy: 'recent'
+	},
+	// Debug settings
+	enableDebugLogging: false
 };
 
 export interface EditTool {

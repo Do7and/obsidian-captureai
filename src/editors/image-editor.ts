@@ -2,6 +2,8 @@ import { Modal, Notice } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { EditTool, Region, StrokeSize, StrokeSetting, LLM_PROVIDERS } from '../types';
 import { t } from '../i18n';
+import { getLogger } from '../utils/logger';
+
 
 export class ImageEditor extends Modal {
 	private plugin: ImageCapturePlugin;
@@ -23,7 +25,7 @@ export class ImageEditor extends Modal {
 	private history: ImageData[] = [];
 	private historyIndex = -1;
 	private originalImageData: string = '';
-	
+
 	// Four-layer system simulation properties
 	// Layer 1: Preview page with center hole (handled by UI)
 	// Layer 2: Semi-transparent mask with transparent crop area
@@ -73,7 +75,7 @@ export class ImageEditor extends Modal {
 		medium: 15,
 		large: 25
 	};
-
+	
 	constructor(plugin: ImageCapturePlugin) {
 		super(plugin.app);
 		this.plugin = plugin;
@@ -165,7 +167,7 @@ export class ImageEditor extends Modal {
 		const modalWidth = Math.max(Math.min(preferredModalWidth, maxModalWidth), minModalWidth);
 		const modalHeight = Math.max(Math.min(preferredModalHeight, maxModalHeight), minModalHeight);
 		
-		console.log('Four-layer system setup:', {
+		getLogger().log('Four-layer system setup:', {
 			region: { width: region.width, height: region.height },
 			extendedRegion: extendedRegion,
 			fullScreenshotSize: this.fullScreenshotSize,
@@ -680,10 +682,10 @@ export class ImageEditor extends Modal {
 				height: fullImg.height
 			};
 			
-			console.log('🔍 Full screenshot size set from original:', this.fullScreenshotSize);
-			console.log('🔍 Region:', this.region);
-			console.log('🔍 Extended region:', this.extendedRegion);
-			console.log('🔍 Initial layers offset:', this.layersOffset);
+			getLogger().log('🔍 Full screenshot size set from original:', this.fullScreenshotSize);
+			getLogger().log('🔍 Region:', this.region);
+			getLogger().log('🔍 Extended region:', this.extendedRegion);
+			getLogger().log('🔍 Initial layers offset:', this.layersOffset);
 			
 			// Create edit layer canvas (same size as full screenshot)
 			this.editLayerCanvas = document.createElement('canvas');
@@ -736,7 +738,7 @@ export class ImageEditor extends Modal {
 						finalDisplayHeight = Math.floor(displayHeight * scale);
 					}
 					
-					console.log('Four-layer display calculation:', {
+					getLogger().log('Four-layer display calculation:', {
 						canvasSize: { width: displayWidth, height: displayHeight },
 						fullScreenshotSize: this.fullScreenshotSize,
 						availableSpace: { width: availableWidth, height: availableHeight },
@@ -1435,7 +1437,7 @@ export class ImageEditor extends Modal {
 			// Write file to vault
 			await vault.adapter.writeBinary(savePath, bytes.buffer);
 			
-			console.log('Image saved to vault:', savePath);
+			getLogger().log('Image saved to vault:', savePath);
 			
 			// Return the path for use in markdown links
 			return savePath;
@@ -1464,7 +1466,7 @@ export class ImageEditor extends Modal {
 			try {
 				// Save the image to vault first and get the path
 				const savedPath = await this.saveImageToVault(dataUrl, fileName);
-				console.log('Image saved to vault:', savedPath);
+				getLogger().log('Image saved to vault:', savedPath);
 				
 				// Show AI panel first (only if not already visible)
 				await this.plugin.ensureAIChatPanelVisible();
@@ -1510,7 +1512,7 @@ export class ImageEditor extends Modal {
 			try {
 				// Save the image to vault first
 				await this.saveImageToVault(dataUrl, fileName);
-				console.log('Image saved to vault:', fileName);
+				getLogger().log('Image saved to vault:', fileName);
 				
 				// Send to AI for analysis
 				await this.plugin.sendImageToAI(dataUrl, '', fileName);

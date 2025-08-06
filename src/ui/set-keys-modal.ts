@@ -2,6 +2,7 @@ import { Modal, Setting, Notice, DropdownComponent } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, LLMProvider, LLMModel, ModelConfig, DEFAULT_MODEL_SETTINGS } from '../types';
 import { t } from '../i18n';
+import { getLogger } from '../utils/logger';
 
 export class SetKeysModal extends Modal {
 	private plugin: ImageCapturePlugin;
@@ -138,6 +139,28 @@ export class SetKeysModal extends Modal {
 							await this.plugin.saveSettings();
 						});
 				});
+
+			// API Path setting (for custom providers)
+			if (provider.id === 'custom') {
+				const currentApiPath = this.plugin.settings.providerCredentials[provider.id]?.apiPath || '/v1/chat/completions';
+				new Setting(providerEl)
+					.setName(t('setKeys.apiPathLabel'))
+					.setDesc(t('setKeys.apiPathDescription'))
+					.addText(text => {
+						text.setPlaceholder('/v1/chat/completions')
+							.setValue(currentApiPath)
+							.onChange(async (value) => {
+								if (!this.plugin.settings.providerCredentials[provider.id]) {
+									this.plugin.settings.providerCredentials[provider.id] = {
+										apiKey: '',
+										verified: false
+									};
+								}
+								this.plugin.settings.providerCredentials[provider.id].apiPath = value || '/v1/chat/completions';
+								await this.plugin.saveSettings();
+							});
+					});
+			}
 		}
 
 		// Custom name setting (for custom providers)
@@ -323,17 +346,31 @@ export class SetKeysModal extends Modal {
 				// For other providers, populate dropdown
 				const dropdown = modelInput as HTMLSelectElement;
 				const models = this.availableModels.get(providerId) || [];
-				dropdown.innerHTML = `<option value="">${t('setKeys.selectModelPlaceholder')}</option>`;
+				
+				// Clear existing options properly
+				while (dropdown.firstChild) {
+					dropdown.removeChild(dropdown.firstChild);
+				}
+				
+				// Add placeholder option
+				const placeholderOption = document.createElement('option');
+				placeholderOption.value = '';
+				placeholderOption.textContent = t('setKeys.selectModelPlaceholder');
+				dropdown.appendChild(placeholderOption);
+				
+				// Add model options
 				models.forEach(model => {
-					const option = dropdown.createEl('option', { 
-						value: model.id,
-						text: `${model.name}${model.hasVision ? ' (Vision)' : ' (Text Only)'}`
-					});
+					const option = document.createElement('option');
+					option.value = model.id;
+					option.textContent = `${model.name}${model.hasVision ? ' (Vision)' : ' (Text Only)'}`;
+					
 					// Add visual indicator for non-vision models
 					if (!model.hasVision) {
 						option.style.color = 'var(--text-muted)';
 						option.style.fontStyle = 'italic';
 					}
+					
+					dropdown.appendChild(option);
 				});
 			}
 		} else {
@@ -345,7 +382,17 @@ export class SetKeysModal extends Modal {
 				textInput.value = '';
 			} else {
 				const dropdown = modelInput as HTMLSelectElement;
-				dropdown.innerHTML = `<option value="">${t('setKeys.verifyApiKeyFirst')}</option>`;
+				
+				// Clear existing options properly
+				while (dropdown.firstChild) {
+					dropdown.removeChild(dropdown.firstChild);
+				}
+				
+				// Add disabled placeholder option
+				const placeholderOption = document.createElement('option');
+				placeholderOption.value = '';
+				placeholderOption.textContent = t('setKeys.verifyApiKeyFirst');
+				dropdown.appendChild(placeholderOption);
 			}
 		}
 	}
@@ -438,12 +485,12 @@ export class SetKeysModal extends Modal {
 
 			// For major providers, try to fetch models from API
 			if (provider.id !== 'custom') {
-				console.log(`Loading models for ${provider.displayName}...`);
+				getLogger().log(`Loading models for ${provider.displayName}...`);
 				try {
 					const fetchedModels = await this.fetchModelsFromAPI(provider, credentials);
 					if (fetchedModels && fetchedModels.length > 0) {
 						this.availableModels.set(provider.id, fetchedModels);
-						console.log(`✅ Fetched ${fetchedModels.length} models for ${provider.displayName}`);
+						getLogger().log(`✅ Fetched ${fetchedModels.length} models for ${provider.displayName}`);
 						return;
 					} else {
 						console.warn(`No models returned from API for ${provider.displayName}, using fallback`);
@@ -456,7 +503,7 @@ export class SetKeysModal extends Modal {
 			// Fallback to static models
 			const fallbackModels = provider.models || [];
 			this.availableModels.set(provider.id, fallbackModels);
-			console.log(`Using ${fallbackModels.length} fallback models for ${provider.displayName}`);
+			getLogger().log(`Using ${fallbackModels.length} fallback models for ${provider.displayName}`);
 		} catch (error) {
 			console.error(`Failed to load models for ${provider.displayName}:`, error);
 			// Fallback to static models on error
@@ -687,6 +734,16 @@ export class SetKeysModal extends Modal {
 		const visionCheckbox = (providerEl as any)._visionCheckbox as HTMLInputElement;
 		const hasVision = visionCheckbox ? visionCheckbox.checked : true;
 
+		// Get the current custom provider settings
+		const credentials = this.plugin.settings.providerCredentials[provider.id];
+		if (!credentials) {
+			new Notice(t('notice.pleaseSetupProviderFirst'));
+			return;
+		}
+
+		// Get custom provider name from input field
+		const customName = credentials.customName?.trim() || 'Custom Provider';
+
 		// Create a custom model object
 		const customModel: LLMModel = {
 			id: modelName,
@@ -695,7 +752,12 @@ export class SetKeysModal extends Modal {
 			contextWindow: 4096 // Default context window
 		};
 		
-		this.addModelConfig(provider, customModel);
+		this.addModelConfigWithCustomProvider(provider, customModel, {
+			name: customName,
+			baseUrl: credentials.baseUrl || '',
+			apiPath: credentials.apiPath || '/v1/chat/completions',
+			apiKey: credentials.apiKey
+		});
 		
 		// Clear the input field
 		const modelInput = (providerEl as any)._modelInput as HTMLInputElement;
@@ -704,24 +766,21 @@ export class SetKeysModal extends Modal {
 		}
 	}
 
-	private addModelConfig(provider: LLMProvider, model: LLMModel) {
-		// Get the display name for the provider, using custom name if available
-		let providerDisplayName = provider.displayName;
-		if (provider.id === 'custom') {
-			const customName = this.plugin.settings.providerCredentials[provider.id]?.customName;
-			if (customName && customName.trim()) {
-				providerDisplayName = customName.trim();
-			}
-		}
-		
+	private addModelConfigWithCustomProvider(provider: LLMProvider, model: LLMModel, customProviderInfo: {name: string, baseUrl: string, apiPath: string, apiKey: string}) {
 		const modelConfig: ModelConfig = {
 			id: `${provider.id}-${model.id}-${Date.now()}`,
-			name: `${providerDisplayName} - ${model.name}`,
+			name: `${customProviderInfo.name} - ${model.name}`,
 			providerId: provider.id,
 			modelId: model.id,
 			isVisionCapable: model.hasVision,
 			settings: { ...DEFAULT_MODEL_SETTINGS },
-			createdAt: new Date()
+			createdAt: new Date(),
+			customProvider: {
+				name: customProviderInfo.name,
+				baseUrl: customProviderInfo.baseUrl,
+				apiPath: customProviderInfo.apiPath,
+				apiKey: customProviderInfo.apiKey
+			}
 		};
 
 		// Apply model-specific defaults
@@ -739,10 +798,102 @@ export class SetKeysModal extends Modal {
 		}
 
 		this.plugin.saveSettings();
-		new Notice(`✅ Added ${modelConfig.name} to your model configurations`);
 		
-		// Refresh all UI components that depend on model configurations
-		this.refreshModelDependentComponents();
+		const visionStatus = model.hasVision ? "✅ Vision Enabled" : "❌ Vision Disabled";
+		new Notice(`✅ Added ${modelConfig.name} - ${visionStatus}`);
+
+		// Update display
+		this.onOpen();
+	}
+
+	private addModelConfig(provider: LLMProvider, model: LLMModel) {
+		// Get the display name for the provider, using custom name if available
+		let providerDisplayName = provider.displayName;
+		if (provider.id === 'custom') {
+			const customName = this.plugin.settings.providerCredentials[provider.id]?.customName;
+			if (customName && customName.trim()) {
+				providerDisplayName = customName.trim();
+			}
+		}
+		
+		const modelConfig: ModelConfig = {
+			id: `${provider.id}-${model.id}-${Date.now()}`,
+			name: `${providerDisplayName} - ${model.name}`,
+			providerId: provider.id,
+			modelId: model.id,
+			isVisionCapable: model.hasVision, // Will be updated by vision test for non-custom providers
+			settings: { ...DEFAULT_MODEL_SETTINGS },
+			createdAt: new Date()
+		};
+
+		// Apply model-specific defaults
+		if (model.maxTokens) {
+			modelConfig.settings.maxTokens = Math.min(model.maxTokens, DEFAULT_MODEL_SETTINGS.maxTokens);
+		}
+
+		// For custom provider, don't test vision capability - trust user's checkbox setting
+		if (provider.id === 'custom') {
+			this.plugin.settings.modelConfigs.push(modelConfig);
+			
+			// Set as default if it's the first model, or if it's vision-capable and no vision model is set as default
+			const currentDefault = this.plugin.settings.modelConfigs.find(mc => mc.id === this.plugin.settings.defaultModelConfigId);
+			if (!this.plugin.settings.defaultModelConfigId || 
+				(model.hasVision && (!currentDefault || !currentDefault.isVisionCapable))) {
+				this.plugin.settings.defaultModelConfigId = modelConfig.id;
+			}
+
+			this.plugin.saveSettings();
+			
+			const visionStatus = model.hasVision ? "✅ Vision Enabled" : "❌ Vision Disabled";
+			new Notice(`✅ Added ${modelConfig.name} - ${visionStatus} (User Setting)`);
+			
+			// Refresh all UI components that depend on model configurations
+			this.refreshModelDependentComponents();
+			return;
+		}
+
+		// For other providers, test vision capability by sending a test image
+		new Notice(`🔍 Testing vision capability for ${modelConfig.name}...`);
+		
+		this.testVisionCapability(modelConfig).then((actualVisionCapability) => {
+			// Update the model config with actual vision capability
+			modelConfig.isVisionCapable = actualVisionCapability;
+			
+			this.plugin.settings.modelConfigs.push(modelConfig);
+			
+			// Set as default if it's the first model, or if it's vision-capable and no vision model is set as default
+			const currentDefault = this.plugin.settings.modelConfigs.find(mc => mc.id === this.plugin.settings.defaultModelConfigId);
+			if (!this.plugin.settings.defaultModelConfigId || 
+				(actualVisionCapability && (!currentDefault || !currentDefault.isVisionCapable))) {
+				this.plugin.settings.defaultModelConfigId = modelConfig.id;
+			}
+
+			this.plugin.saveSettings();
+			
+			const visionStatus = actualVisionCapability ? "✅ Vision Supported" : "❌ Vision Not Supported";
+			new Notice(`✅ Added ${modelConfig.name} - ${visionStatus}`);
+			
+			// Refresh all UI components that depend on model configurations
+			this.refreshModelDependentComponents();
+		}).catch((error) => {
+			console.error('Vision test failed, using default capability:', error);
+			
+			// On error, fall back to the original model definition
+			this.plugin.settings.modelConfigs.push(modelConfig);
+			
+			// Set as default if it's the first model, or if it's vision-capable and no vision model is set as default
+			const currentDefault = this.plugin.settings.modelConfigs.find(mc => mc.id === this.plugin.settings.defaultModelConfigId);
+			if (!this.plugin.settings.defaultModelConfigId || 
+				(model.hasVision && (!currentDefault || !currentDefault.isVisionCapable))) {
+				this.plugin.settings.defaultModelConfigId = modelConfig.id;
+			}
+
+			this.plugin.saveSettings();
+			new Notice(`✅ Added ${modelConfig.name} (Vision test failed, using default setting)`);
+			
+			// Refresh all UI components that depend on model configurations
+			this.refreshModelDependentComponents();
+		});
 	}
 
 	private refreshModelDependentComponents() {
@@ -1007,6 +1158,201 @@ export class SetKeysModal extends Modal {
 			if (view && typeof view.updateContent === 'function') {
 				view.updateContent();
 			}
+		});
+	}
+
+	private async testVisionCapability(modelConfig: ModelConfig): Promise<boolean> {
+		try {
+			// Create a small test image (1x1 red pixel) as base64
+			const testImageBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+			
+			// Get provider credentials
+			const credentials = this.plugin.settings.providerCredentials[modelConfig.providerId];
+			if (!credentials || !credentials.verified || !credentials.apiKey.trim()) {
+				throw new Error('Provider credentials not verified');
+			}
+
+			// Send test message with image
+			const testMessage = 'This is a vision test. Can you see this image? Please respond with yes or no.';
+			const result = await this.sendVisionTestRequest(testMessage, testImageBase64, modelConfig, credentials);
+			
+			return result;
+		} catch (error) {
+			console.error('Vision capability test failed:', error);
+			throw error;
+		}
+	}
+
+	private async sendVisionTestRequest(message: string, imageBase64: string, modelConfig: ModelConfig, credentials: any): Promise<boolean> {
+		const provider = LLM_PROVIDERS.find(p => p.id === modelConfig.providerId);
+		if (!provider) {
+			throw new Error(`Unknown provider: ${modelConfig.providerId}`);
+		}
+
+		let response: Response;
+		
+		// Remove data URL prefix to get just the base64
+		const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+
+		try {
+			switch (provider.id) {
+				case 'openai':
+					response = await this.testOpenAIVision(message, base64Data, modelConfig, credentials);
+					break;
+				case 'anthropic':
+					response = await this.testAnthropicVision(message, base64Data, modelConfig, credentials);
+					break;
+				case 'google':
+					response = await this.testGoogleVision(message, base64Data, modelConfig, credentials);
+					break;
+				case 'openrouter':
+					response = await this.testOpenRouterVision(message, base64Data, modelConfig, credentials);
+					break;
+				case 'custom':
+					response = await this.testCustomVision(message, base64Data, modelConfig, credentials);
+					break;
+				default:
+					throw new Error(`Vision testing not implemented for provider: ${provider.id}`);
+			}
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				getLogger().log('Vision test API error response:', errorText);
+				
+				// Check if the error indicates vision is not supported
+				if (errorText.toLowerCase().includes('vision') || 
+					errorText.toLowerCase().includes('image') ||
+					errorText.toLowerCase().includes('multimodal') ||
+					response.status === 400) {
+					return false; // Vision not supported
+				}
+				
+				throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+			}
+
+			// If we get a successful response, the model supports vision
+			const responseData = await response.json();
+			getLogger().log('Vision test successful, response:', responseData);
+			return true;
+			
+		} catch (error) {
+			// If there's a network error or parsing error, check the error message
+			const errorMessage = error.message.toLowerCase();
+			if (errorMessage.includes('vision') || 
+				errorMessage.includes('image') || 
+				errorMessage.includes('multimodal') ||
+				errorMessage.includes('does not support')) {
+				return false; // Vision not supported
+			}
+			
+			// For other errors, re-throw
+			throw error;
+		}
+	}
+
+	private async testOpenAIVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		return fetch('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${credentials.apiKey}`
+			},
+			body: JSON.stringify({
+				model: modelConfig.modelId,
+				messages: [{
+					role: 'user',
+					content: [
+						{ type: 'text', text: message },
+						{ type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
+					]
+				}],
+				max_tokens: 10
+			})
+		});
+	}
+
+	private async testAnthropicVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		return fetch('https://api.anthropic.com/v1/messages', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'x-api-key': credentials.apiKey,
+				'anthropic-version': '2023-06-01'
+			},
+			body: JSON.stringify({
+				model: modelConfig.modelId,
+				messages: [{
+					role: 'user',
+					content: [
+						{ type: 'text', text: message },
+						{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Image } }
+					]
+				}],
+				max_tokens: 10
+			})
+		});
+	}
+
+	private async testGoogleVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				contents: [{
+					parts: [
+						{ text: message },
+						{ inline_data: { mime_type: 'image/png', data: base64Image } }
+					]
+				}],
+				generationConfig: { maxOutputTokens: 10 }
+			})
+		});
+	}
+
+	private async testOpenRouterVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		return fetch('https://openrouter.ai/api/v1/chat/completions', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${credentials.apiKey}`,
+				'HTTP-Referer': 'https://obsidian.md',
+				'X-Title': 'Obsidian Screenshot Capture Plugin'
+			},
+			body: JSON.stringify({
+				model: modelConfig.modelId,
+				messages: [{
+					role: 'user',
+					content: [
+						{ type: 'text', text: message },
+						{ type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
+					]
+				}],
+				max_tokens: 10
+			})
+		});
+	}
+
+	private async testCustomVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const baseUrl = credentials.baseUrl || 'https://api.openai.com/v1';
+		return fetch(`${baseUrl}/chat/completions`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${credentials.apiKey}`
+			},
+			body: JSON.stringify({
+				model: modelConfig.modelId,
+				messages: [{
+					role: 'user',
+					content: [
+						{ type: 'text', text: message },
+						{ type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
+					]
+				}],
+				max_tokens: 10
+			})
 		});
 	}
 }

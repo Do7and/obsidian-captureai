@@ -102,18 +102,6 @@ export class ChatHistoryModal extends Modal {
 		// Load and display conversations
 		this.loadConversations(autoSavedList, manualSavedList);
 
-		// Close button
-		const closeBtn = contentEl.createEl('button', { text: 'Close' });
-		closeBtn.style.cssText = `
-			align-self: center;
-			margin-top: 16px;
-			padding: 8px 16px;
-			background: var(--interactive-normal);
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 4px;
-			cursor: pointer;
-		`;
-		closeBtn.addEventListener('click', () => this.close());
 
 		// Add custom styles
 		this.addModalStyles();
@@ -324,12 +312,12 @@ export class ChatHistoryModal extends Modal {
 								try {
 									const vault = this.plugin.app.vault;
 									const file = vault.getAbstractFileByPath(imagePath);
-									if (file && file instanceof this.plugin.app.vault.adapter.constructor) {
-										// For now, we'll store the local path and let the UI handle loading
+									if (file) {
+										// Store the local path and create image info
 										const imageInfo = {
 											localPath: imagePath,
 											fileName: altText || file.name,
-											dataUrl: null // Will be loaded later if needed
+											dataUrl: null // Will be loaded later by AI chat view
 										};
 										allImages.push(imageInfo);
 										
@@ -338,9 +326,35 @@ export class ChatHistoryModal extends Modal {
 											imageDataUrl = imagePath; // Use path as placeholder
 											imageData = imageInfo;
 										}
+									} else {
+										console.warn('Image file not found in vault:', imagePath);
+										// Still add the image info even if file not found, for fallback handling
+										const imageInfo = {
+											localPath: imagePath,
+											fileName: altText || imagePath.split('/').pop() || 'image',
+											dataUrl: null
+										};
+										allImages.push(imageInfo);
+										
+										if (!imageDataUrl) {
+											imageDataUrl = imagePath;
+											imageData = imageInfo;
+										}
 									}
 								} catch (error) {
 									console.warn('Could not load image from path:', imagePath, error);
+									// Add image info for fallback handling
+									const imageInfo = {
+										localPath: imagePath,
+										fileName: altText || imagePath.split('/').pop() || 'image',
+										dataUrl: null
+									};
+									allImages.push(imageInfo);
+									
+									if (!imageDataUrl) {
+										imageDataUrl = imagePath;
+										imageData = imageInfo;
+									}
 								}
 							} else {
 								// Handle data URLs or external URLs

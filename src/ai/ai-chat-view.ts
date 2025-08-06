@@ -3,6 +3,7 @@ import ImageCapturePlugin from '../main';
 import { AIManager, AIMessage, AIConversation } from './ai-manager';
 import { ChatHistoryModal } from '../ui/chat-history-modal';
 import { t } from '../i18n';
+import { getLogger } from '../utils/logger';
 
 export const AI_CHAT_VIEW_TYPE = 'ai-chat';
 
@@ -16,11 +17,18 @@ export class AIChatView extends ItemView {
 	private lastAutoSaveContent: string | null = null; // 存储上次自动保存的内容
 	private lastAutoSaveTime = 0;
 	private currentConversationId: string | null = null;
+	
+	// AI Chat Mode management  
+	private currentMode: import('../types').AIChatMode = 'analyze';
+	private modeSelector: HTMLSelectElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: ImageCapturePlugin) {
 		super(leaf);
 		this.plugin = plugin;
 		this.aiManager = plugin.aiManager;
+		
+		// Initialize current mode from settings
+		this.currentMode = plugin.settings.defaultAIChatMode || 'analyze';
 	}
 
 	getViewType(): string {
@@ -42,6 +50,13 @@ export class AIChatView extends ItemView {
 	updateContent(): void {
 		const container = this.containerEl.children[1] as HTMLElement;
 		
+		// Check if conversation content has changed and reset auto-save tracking if so
+		// Only do this when we actually have different conversation data
+		const currentConversation = this.aiManager.getCurrentConversationData();
+		if (currentConversation && this.lastAutoSaveContent && currentConversation.messages.length > 0) {
+			this.checkAndResetAutoSaveTracking();
+		}
+		
 		// Check if this is the first time rendering or if the structure doesn't exist
 		const existingInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
 		const existingChatArea = container.querySelector('.ai-chat-area') as HTMLElement;
@@ -62,7 +77,7 @@ export class AIChatView extends ItemView {
 		const oldInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
 		if (oldInputArea && (oldInputArea as any)._currentImageDataList) {
 			savedImageQueue = [...(oldInputArea as any)._currentImageDataList];
-			console.log('Saved image queue:', savedImageQueue.length, 'images');
+			getLogger().log('Saved image queue:', savedImageQueue.length, 'images');
 		}
 		
 		container.empty();
@@ -109,7 +124,7 @@ export class AIChatView extends ItemView {
 				if (imagePreviewArea) {
 					imagePreviewArea.style.display = 'block';
 					this.renderImagePreviews(imagePreviewArea, savedImageQueue, newInputArea);
-					console.log('Restored image queue:', savedImageQueue.length, 'images');
+					getLogger().log('Restored image queue:', savedImageQueue.length, 'images');
 				}
 			}
 		}
@@ -402,8 +417,8 @@ export class AIChatView extends ItemView {
 			conversation.messages.push(typingMessage);
 			this.updateContent();
 
-			// Call AI API for text-only response
-			const response = await this.callAIForText(message);
+			// Call AI API for text-only response with context
+			const response = await this.callAIForText(message, conversation);
 
 			// Remove typing indicator and add real response
 			const typingIndex = conversation.messages.findIndex(m => m.id === typingMessage.id);
@@ -443,9 +458,9 @@ export class AIChatView extends ItemView {
 		}
 	}
 
-	private async callAIForText(message: string): Promise<string> {
-		// Call AI API for text-only conversation using the AI manager
-		return await this.aiManager.callAIForTextOnly(message);
+	private async callAIForText(message: string, conversation: AIConversation): Promise<string> {
+		// Use the new context-aware API for text-only conversations
+		return await this.aiManager.callAIWithContext(conversation, message);
 	}
 
 	private renderConversation(container: HTMLElement, conversation: AIConversation): void {
@@ -545,6 +560,23 @@ export class AIChatView extends ItemView {
 						attr: { src: imageSrc, alt: imageData.fileName || 'Image' }
 					});
 					
+					// Make the image draggable and set drag data for proper Obsidian integration
+					imageEl.draggable = true;
+					imageEl.addEventListener('dragstart', (e) => {
+						if (imageData.localPath) {
+							// Use the local path for dragging so it gets properly inserted as markdown
+							e.dataTransfer?.setData('text/plain', imageData.localPath);
+							// Also set the image path for Obsidian's internal drag handling
+							e.dataTransfer?.setData('application/x-obsidian-drag', JSON.stringify({
+								type: 'file',
+								file: imageData.localPath
+							}));
+						} else {
+							// Fallback to data URL if no local path
+							e.dataTransfer?.setData('text/plain', imageData.dataUrl || imageSrc);
+						}
+					});
+					
 					// For modal display, prefer dataUrl, fallback to local path
 					imageEl.addEventListener('click', () => {
 						const modalSrc = imageData.dataUrl || imageSrc;
@@ -578,6 +610,25 @@ export class AIChatView extends ItemView {
 					cls: 'ai-chat-message-image',
 					attr: { src: imageSrc, alt: 'Screenshot' }
 				});
+				
+				// Make the image draggable and set drag data for proper Obsidian integration
+				imageEl.draggable = true;
+				imageEl.addEventListener('dragstart', (e) => {
+					const imageData = singleImageData || ((message as any).images && (message as any).images[0]);
+					if (imageData && imageData.localPath) {
+						// Use the local path for dragging so it gets properly inserted as markdown
+						e.dataTransfer?.setData('text/plain', imageData.localPath);
+						// Also set the image path for Obsidian's internal drag handling
+						e.dataTransfer?.setData('application/x-obsidian-drag', JSON.stringify({
+							type: 'file',
+							file: imageData.localPath
+						}));
+					} else {
+						// Fallback to data URL if no local path
+						e.dataTransfer?.setData('text/plain', imageSrc);
+					}
+				});
+				
 				imageEl.addEventListener('click', () => {
 					// For modal, prefer dataUrl if available, otherwise use current src
 					const modalSrc = singleImageData?.dataUrl || 
@@ -782,13 +833,104 @@ export class AIChatView extends ItemView {
 		}
 	}
 
+	private createModeSelector(container: HTMLElement): void {
+		const { AI_CHAT_MODES } = require('../types');
+		
+		// Create custom dropdown that opens upward (similar to model selector)
+		const modeSelectorWrapper = container.createEl('div', { cls: 'mode-selector-wrapper' });
+		
+		// Current mode display button
+		const currentModeData = AI_CHAT_MODES.find((mode: any) => mode.id === this.currentMode) || AI_CHAT_MODES[0];
+		const selectorButton = modeSelectorWrapper.createEl('button', { 
+			cls: 'mode-selector-button'
+		});
+		
+		// Update selector button content
+		this.updateModeSelectorButtonContent(selectorButton, currentModeData);
+		
+		// Dropdown arrow
+		const dropdownIcon = selectorButton.createEl('span', { cls: 'mode-dropdown-arrow' });
+		dropdownIcon.innerHTML = '▲';
+		
+		// Dropdown menu (initially hidden)
+		const dropdown = modeSelectorWrapper.createEl('div', { cls: 'mode-dropdown-menu' });
+		dropdown.style.display = 'none';
+		
+		// Add mode options
+		AI_CHAT_MODES.forEach((mode: any) => {
+			const option = dropdown.createEl('div', { 
+				cls: 'mode-dropdown-option',
+				attr: { 'data-mode-id': mode.id }
+			});
+			
+			// Create option content
+			const optionContent = option.createEl('span', { cls: 'mode-option-content' });
+			optionContent.createEl('span', { text: this.getModeDisplayName(mode.id), cls: 'mode-name' });
+			
+			if (mode.id === this.currentMode) {
+				option.addClass('selected');
+			}
+			
+			// Handle option click
+			option.addEventListener('click', async () => {
+				// Update selection
+				dropdown.querySelectorAll('.mode-dropdown-option').forEach(opt => opt.removeClass('selected'));
+				option.addClass('selected');
+				
+				// Update button content
+				this.updateModeSelectorButtonContent(selectorButton, mode);
+				
+				// Update current mode
+				this.currentMode = mode.id;
+				
+				// Save current mode to settings
+				this.plugin.settings.defaultAIChatMode = this.currentMode;
+				await this.plugin.saveSettings();
+				
+				// Hide dropdown
+				dropdown.style.display = 'none';
+				const dropdownIconEl = selectorButton.querySelector('.mode-dropdown-arrow') as HTMLElement;
+				if (dropdownIconEl) {
+					dropdownIconEl.innerHTML = '▲';
+				}
+			});
+		});
+		
+		// Toggle dropdown on button click
+		selectorButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			const isVisible = dropdown.style.display === 'block';
+			
+			if (isVisible) {
+				dropdown.style.display = 'none';
+				dropdownIcon.innerHTML = '▲';
+			} else {
+				dropdown.style.display = 'block';
+				dropdownIcon.innerHTML = '▼';
+			}
+		});
+		
+		// Hide dropdown when clicking outside
+		document.addEventListener('click', () => {
+			dropdown.style.display = 'none';
+			dropdownIcon.innerHTML = '▲';
+		});
+		
+		// Store reference for later use
+		this.modeSelector = selectorButton as any;
+	}
+
 	private createInputArea(container: HTMLElement, conversation: AIConversation | null): void {
 		const inputArea = container.createEl('div', { cls: 'ai-chat-input-area' });
 
 		// Top action bar (above drag zone) with reduced spacing
 		const topActionBar = inputArea.createEl('div', { cls: 'ai-chat-top-action-bar' });
 		
-		// Only right side action buttons (all three buttons right-aligned)
+		// Left side - AI Chat Mode selector
+		const leftActions = topActionBar.createEl('div', { cls: 'ai-chat-left-actions-top' });
+		this.createModeSelector(leftActions);
+		
+		// Right side action buttons (all three buttons right-aligned)
 		const rightActions = topActionBar.createEl('div', { cls: 'ai-chat-right-actions-top' });
 		
 		// Save button with Lucide save icon
@@ -956,7 +1098,10 @@ export class AIChatView extends ItemView {
 						dataUrl: img.dataUrl,
 						fileName: img.fileName,
 						localPath: img.localPath
-					})), message || 'Please analyze these images');
+					})), message || '');
+					
+					// Reset auto-save content tracking since conversation content changed
+					this.lastAutoSaveContent = null;
 				} else if (imageDataList.length > 0 && !isVisionCapable) {
 					// For non-vision models, keep images in preview and only send text
 					if (message) {
@@ -965,6 +1110,9 @@ export class AIChatView extends ItemView {
 						} else {
 							await this.sendTextMessage(message);
 						}
+						// Reset auto-save content tracking since conversation content changed
+						this.lastAutoSaveContent = null;
+						
 						// Keep images in preview but update warning message
 						this.updateImagePreviewForNonVisionModel(inputArea, imageDataList);
 					} else {
@@ -975,9 +1123,15 @@ export class AIChatView extends ItemView {
 				} else if (conversation && conversation.messages.length > 0) {
 					// Follow-up text message in existing conversation
 					await this.sendFollowUpMessage(conversation, message);
+					
+					// Reset auto-save content tracking since conversation content changed
+					this.lastAutoSaveContent = null;
 				} else {
 					// New text-only conversation
 					await this.sendTextMessage(message);
+					
+					// Reset auto-save content tracking since conversation content changed
+					this.lastAutoSaveContent = null;
 				}
 			} catch (error) {
 				console.error('Failed to send message:', error);
@@ -1251,6 +1405,23 @@ export class AIChatView extends ItemView {
 				attr: { src: imageData.dataUrl, alt: imageData.fileName }
 			});
 			
+			// Make the image draggable and set drag data for proper Obsidian integration
+			img.draggable = true;
+			img.addEventListener('dragstart', (e) => {
+				if (imageData.localPath) {
+					// Use the local path for dragging so it gets properly inserted as markdown
+					e.dataTransfer?.setData('text/plain', imageData.localPath);
+					// Also set the image path for Obsidian's internal drag handling
+					e.dataTransfer?.setData('application/x-obsidian-drag', JSON.stringify({
+						type: 'file',
+						file: imageData.localPath
+					}));
+				} else {
+					// Fallback to data URL if no local path
+					e.dataTransfer?.setData('text/plain', imageData.dataUrl);
+				}
+			});
+			
 			// Add click handler for image preview
 			img.addEventListener('click', () => {
 				this.showImageModal(imageData.dataUrl);
@@ -1359,13 +1530,13 @@ export class AIChatView extends ItemView {
 			// First, try to handle Obsidian internal drag (from markdown files, etc.)
 			try {
 				const dragData = e.dataTransfer.getData('text/plain');
-				console.log('Drag data received:', dragData);
+				getLogger().log('Drag data received:', dragData);
 				
 				if (dragData) {
 					// Check if it's a vault file reference
 					const vaultFile = await this.handleVaultFileDrop(dragData);
 					if (vaultFile && vaultFile.type.startsWith('image/')) {
-						console.log('Successfully processed vault file:', vaultFile.name);
+						getLogger().log('Successfully processed vault file:', vaultFile.name);
 						const dataUrl = await this.fileToDataUrl(vaultFile);
 						// Extract the file path from the vault file processing
 						const filePath = this.extractFilePathFromDragData(dragData);
@@ -1374,7 +1545,7 @@ export class AIChatView extends ItemView {
 					}
 				}
 			} catch (error) {
-				console.log('Vault file processing failed, trying external files:', error);
+				getLogger().log('Vault file processing failed, trying external files:', error);
 			}
 
 			// If vault file processing failed, try external files
@@ -1450,7 +1621,7 @@ export class AIChatView extends ItemView {
 			// Write file to vault
 			await vault.adapter.writeBinary(savePath, bytes.buffer);
 			
-			console.log('External image saved to vault:', savePath);
+			getLogger().log('External image saved to vault:', savePath);
 			return savePath;
 			
 		} catch (error: any) {
@@ -1470,7 +1641,7 @@ export class AIChatView extends ItemView {
 			const fileParam = url.searchParams.get('file');
 			if (fileParam) {
 				filePath = decodeURIComponent(fileParam);
-				console.log('Extracted file path from obsidian URL:', filePath);
+				getLogger().log('Extracted file path from obsidian URL:', filePath);
 			}
 		}
 		// Remove any other URL encoding or special formatting
@@ -1507,7 +1678,7 @@ export class AIChatView extends ItemView {
 
 	private async handleVaultFileDrop(data: string): Promise<File | null> {
 		try {
-			console.log('Attempting to resolve vault file from data:', data);
+			getLogger().log('Attempting to resolve vault file from data:', data);
 			
 			// Try different ways to parse the file path
 			let filePath = data;
@@ -1518,7 +1689,7 @@ export class AIChatView extends ItemView {
 				const fileParam = url.searchParams.get('file');
 				if (fileParam) {
 					filePath = decodeURIComponent(fileParam);
-					console.log('Extracted file path from obsidian URL:', filePath);
+					getLogger().log('Extracted file path from obsidian URL:', filePath);
 				}
 			}
 			// Remove any other URL encoding or special formatting
@@ -1532,14 +1703,14 @@ export class AIChatView extends ItemView {
 			// Clean up the path
 			filePath = filePath.trim();
 			
-			console.log('Cleaned file path:', filePath);
+			getLogger().log('Cleaned file path:', filePath);
 			
 			// Try to get the file from the vault
 			const vault = this.plugin.app.vault;
 			const abstractFile = vault.getAbstractFileByPath(filePath);
 			
 			if (!abstractFile || !(abstractFile instanceof TFile)) {
-				console.log('File not found directly, trying alternative methods...');
+				getLogger().log('File not found directly, trying alternative methods...');
 				
 				// Try to find by name if full path didn't work
 				const fileName = filePath.split('/').pop() || filePath;
@@ -1552,11 +1723,11 @@ export class AIChatView extends ItemView {
 				);
 				
 				if (!foundFile) {
-					console.log('Could not find file in vault:', filePath);
+					getLogger().log('Could not find file in vault:', filePath);
 					return null;
 				}
 				
-				console.log('Found file by name:', foundFile.path);
+				getLogger().log('Found file by name:', foundFile.path);
 				const buffer = await vault.readBinary(foundFile);
 				const blob = new Blob([buffer], { type: this.getMimeType(foundFile.extension) });
 				return new File([blob], foundFile.name, { type: this.getMimeType(foundFile.extension) });
@@ -1564,7 +1735,7 @@ export class AIChatView extends ItemView {
 			
 			// Read the file as binary
 			const file = abstractFile as TFile;
-			console.log('Reading vault file:', file.path);
+			getLogger().log('Reading vault file:', file.path);
 			
 			const buffer = await vault.readBinary(file);
 			const mimeType = this.getMimeType(file.extension);
@@ -1675,13 +1846,16 @@ export class AIChatView extends ItemView {
 	}
 
 	private async callAIForFollowUp(message: string, imageDataUrl: string, conversation: AIConversation): Promise<string> {
-		// Call the AI manager's public method for follow-up questions
-		return await this.aiManager.callAIForFollowUp(message, imageDataUrl);
+		// Use the new context-aware API for follow-up questions
+		return await this.aiManager.callAIWithContext(conversation, message, [imageDataUrl]);
 	}
 
 	private renderMarkdown(container: HTMLElement, content: string): void {
-		// Basic markdown rendering - in a real implementation you might use a proper markdown parser
-		const lines = content.split('\n');
+		// First, extract and render thinking blocks
+		const processedContent = this.extractAndRenderThinkingBlocks(container, content);
+		
+		// Then render the rest as normal markdown
+		const lines = processedContent.split('\n');
 		
 		for (const line of lines) {
 			if (line.startsWith('# ')) {
@@ -1701,6 +1875,104 @@ export class AIChatView extends ItemView {
 			} else {
 				const p = container.createEl('p');
 				// Handle bold and italic
+				let text = line;
+				text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+				text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+				text = text.replace(/`(.*?)`/g, '<code>$1</code>');
+				p.innerHTML = text;
+			}
+		}
+	}
+
+	private extractAndRenderThinkingBlocks(container: HTMLElement, content: string): string {
+		// Define thinking-related tags to look for
+		const thinkingTags = ['think', 'thinking', 'reasoning', 'plan', 'analysis', 'internal', 'reflection', 'decision'];
+		
+		let processedContent = content;
+		
+		// Process each thinking tag type
+		for (const tag of thinkingTags) {
+			// Match both ◁/tagname▷ and <tagname> patterns
+			const patterns = [
+				new RegExp(`◁/${tag}▷([\\s\\S]*?)◁/${tag}▷`, 'gi'),
+				new RegExp(`<${tag}([^>]*)>([\\s\\S]*?)</${tag}>`, 'gi'),
+				new RegExp(`◁${tag}▷([\\s\\S]*?)◁/${tag}▷`, 'gi')
+			];
+			
+			for (const pattern of patterns) {
+				let match;
+				while ((match = pattern.exec(processedContent)) !== null) {
+					const thinkingContent = match[1] || match[2]; // Get content from either capture group
+					
+					// Create thinking block container
+					const thinkingBlock = container.createEl('div', { cls: 'ai-thinking-block' });
+					
+					// Create header with toggle
+					const header = thinkingBlock.createEl('div', { cls: 'ai-thinking-header' });
+					const toggleIcon = header.createEl('span', { cls: 'ai-thinking-toggle' });
+					// Using Lucide Brain icon
+					toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`;
+					const label = header.createEl('span', { 
+						cls: 'ai-thinking-label',
+						text: this.getThinkingLabel(tag)
+					});
+					
+					// Create collapsible content
+					const contentEl = thinkingBlock.createEl('div', { cls: 'ai-thinking-content' });
+					
+					// Render thinking content with basic markdown
+					this.renderThinkingContent(contentEl, thinkingContent.trim());
+					
+					// Add toggle functionality
+					let isCollapsed = false;
+					header.addEventListener('click', () => {
+						isCollapsed = !isCollapsed;
+						contentEl.style.display = isCollapsed ? 'none' : 'block';
+						// Toggle between Brain and ChevronDown icons
+						if (isCollapsed) {
+							toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+						} else {
+							toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-9.29 2.5 2.5 0 0 1 4.44-.01Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-9.29 2.5 2.5 0 0 0-4.44-.01Z"/></svg>`;
+						}
+						thinkingBlock.classList.toggle('collapsed', isCollapsed);
+					});
+					
+					// Remove the thinking block from the main content
+					processedContent = processedContent.replace(match[0], '');
+					
+					// Reset regex lastIndex to avoid infinite loops
+					pattern.lastIndex = 0;
+				}
+			}
+		}
+		
+		return processedContent;
+	}
+
+	private getThinkingLabel(tag: string): string {
+		const labels: { [key: string]: string } = {
+			'think': 'Thinking',
+			'thinking': 'Thinking Process',
+			'reasoning': 'Reasoning',
+			'plan': 'Planning',
+			'analysis': 'Analysis',
+			'internal': 'Internal Process',
+			'reflection': 'Reflection',
+			'decision': 'Decision Making'
+		};
+		return labels[tag.toLowerCase()] || 'Thought Process';
+	}
+
+	private renderThinkingContent(container: HTMLElement, content: string): void {
+		// Simple text rendering for thinking content
+		const lines = content.split('\n');
+		
+		for (const line of lines) {
+			if (line.trim() === '') {
+				container.createEl('br');
+			} else {
+				const p = container.createEl('p', { cls: 'ai-thinking-text' });
+				// Handle basic formatting
 				let text = line;
 				text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 				text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
@@ -1891,6 +2163,7 @@ export class AIChatView extends ItemView {
 				}
 
 				.ai-chat-section-title {
+					padding-top: 20px;  /* 添加上内边距 */
 					margin: 0 0 12px 0;
 					font-size: 14px;
 					font-weight: 600;
@@ -1949,6 +2222,7 @@ export class AIChatView extends ItemView {
 				.ai-chat-instructions-list {
 					display: flex;
 					flex-direction: column;
+					align-items: center;  /* 水平居中 */
 					gap: 8px;
 				}
 
@@ -2200,10 +2474,16 @@ export class AIChatView extends ItemView {
 				/* Top action bar */
 				.ai-chat-top-action-bar {
 					display: flex;
-					justify-content: flex-end;
+					justify-content: space-between;
 					align-items: center;
 					margin-bottom: 2px;
 					padding: 0;
+				}
+
+				.ai-chat-left-actions-top {
+					display: flex;
+					gap: 4px;
+					align-items: center;
 				}
 
 				.ai-chat-right-actions-top {
@@ -2657,6 +2937,114 @@ export class AIChatView extends ItemView {
 					border-radius: 0 0 6px 6px;
 				}
 
+				/* Mode selector styles (match model selector) */
+				.mode-selector-wrapper {
+					position: relative;
+					height: 32px;
+					overflow: visible;
+				}
+
+				.mode-selector-button {
+					display: flex;
+					align-items: center;
+					justify-content: flex-start;
+					gap: 4px;
+					padding: 4px 8px;
+					background: transparent !important;
+					border: none !important;
+					border-radius: 4px;
+					color: #9CA3AF !important;
+					cursor: pointer;
+					font-size: 11px;
+					line-height: 1.2;
+					transition: color 0.2s ease;
+					outline: none !important;
+					box-shadow: none !important;
+					white-space: nowrap;
+				}
+
+				.mode-selector-button:hover {
+					color: #1F2937 !important;
+					background: transparent !important;
+					border: none !important;
+					outline: none !important;
+					box-shadow: none !important;
+				}
+
+				.theme-dark .mode-selector-button {
+					color: #6B7280 !important;
+				}
+
+				.theme-dark .mode-selector-button:hover {
+					color: #F9FAFB !important;
+				}
+
+				.mode-dropdown-arrow {
+					font-size: 10px;
+					margin-left: 4px;
+				}
+
+				.mode-dropdown-menu {
+					position: absolute;
+					bottom: 100%;
+					left: 0;
+					min-width: 120px;
+					max-width: 200px;
+					width: max-content;
+					background: var(--background-primary);
+					border: 1px solid var(--background-modifier-border);
+					border-radius: 6px;
+					box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+					z-index: 1000;
+					margin-bottom: 4px;
+					max-height: 200px;
+					overflow-y: auto;
+					transform: translateZ(0);
+				}
+
+				.mode-dropdown-option {
+					padding: 8px 12px;
+					cursor: pointer;
+					font-size: 11px;
+					color: var(--text-normal);
+					transition: background-color 0.2s ease;
+				}
+
+				.mode-dropdown-option:hover {
+					background: var(--background-modifier-hover);
+				}
+
+				.mode-dropdown-option.selected {
+					background: var(--interactive-accent);
+					color: var(--text-on-accent);
+				}
+
+				.mode-option-content {
+					display: flex;
+					align-items: center;
+					gap: 6px;
+					width: 100%;
+				}
+
+				.mode-option-content .mode-name {
+					font-size: 11px;
+					color: inherit;
+					flex: 1;
+				}
+
+				.mode-selector-button .mode-name {
+					color: inherit;
+					font-size: inherit;
+				}
+
+				.mode-dropdown-option:first-child {
+					border-radius: 6px 6px 0 0;
+				}
+
+				.mode-dropdown-option:last-child {
+					border-radius: 0 0 6px 6px;
+				}
+
 				.no-models-indicator {
 					font-size: 13px;
 					color: var(--text-warning);
@@ -2911,6 +3299,99 @@ export class AIChatView extends ItemView {
 					background: rgba(255, 255, 255, 0.4);
 					color: var(--text-on-accent);
 				}
+
+				/* Thinking blocks styling */
+				.ai-thinking-block {
+					margin: 12px 0;
+					border: 1px solid var(--background-modifier-border);
+					border-radius: 8px;
+					background: var(--background-secondary);
+					overflow: hidden;
+					transition: all 0.2s ease;
+				}
+
+				.ai-thinking-block.collapsed {
+					background: var(--background-primary);
+				}
+
+				.ai-thinking-header {
+					display: flex;
+					align-items: center;
+					gap: 8px;
+					padding: 10px 12px;
+					background: var(--background-modifier-border);
+					cursor: pointer;
+					user-select: none;
+					transition: background-color 0.2s ease;
+					border-bottom: 1px solid var(--background-modifier-border);
+				}
+
+				.ai-thinking-header:hover {
+					background: var(--background-modifier-hover);
+				}
+
+				.ai-thinking-toggle {
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					color: var(--text-muted);
+					transition: transform 0.2s ease, color 0.2s ease;
+					flex-shrink: 0;
+					width: 20px;
+					height: 20px;
+				}
+
+				.ai-thinking-toggle:hover {
+					color: var(--text-normal);
+				}
+
+				.ai-thinking-block.collapsed .ai-thinking-toggle {
+					transform: rotate(0deg);
+				}
+
+				.ai-thinking-label {
+					font-size: 13px;
+					font-weight: 600;
+					color: var(--text-normal);
+					text-transform: uppercase;
+					letter-spacing: 0.5px;
+				}
+
+				.ai-thinking-content {
+					padding: 12px;
+					border-top: none;
+					background: var(--background-secondary);
+					font-size: 14px;
+					line-height: 1.5;
+				}
+
+				.ai-thinking-text {
+					margin: 0 0 8px 0;
+					color: var(--text-muted);
+					font-style: normal;
+				}
+
+				.ai-thinking-text:last-child {
+					margin-bottom: 0;
+				}
+
+				.ai-thinking-text strong {
+					color: var(--text-normal);
+					font-weight: 600;
+				}
+
+				.ai-thinking-text em {
+					color: var(--text-accent);
+				}
+
+				.ai-thinking-text code {
+					background: var(--background-primary);
+					padding: 2px 4px;
+					border-radius: 3px;
+					font-family: var(--font-monospace);
+					font-size: 0.9em;
+					color: var(--text-normal);
+				}
 			`;
 			document.head.appendChild(style);
 		}
@@ -2964,7 +3445,7 @@ export class AIChatView extends ItemView {
 			this.performPeriodicAutoSave();
 		}, this.autoSaveInterval);
 		
-		console.log('Auto-save timer started for conversation:', conversation.id);
+		getLogger().log('Auto-save timer started for conversation:', conversation.id);
 	}
 	
 	private clearAutoSaveTimer(): void {
@@ -3014,7 +3495,7 @@ export class AIChatView extends ItemView {
 			
 			// Perform final auto-save
 			await this.autoSaveConversationWithTimestamp();
-			console.log('Final auto-save completed for conversation:', conversation.id);
+			getLogger().log('Final auto-save completed for conversation:', conversation.id);
 			
 		} catch (error) {
 			console.error('Final auto-save failed:', error);
@@ -3029,6 +3510,7 @@ export class AIChatView extends ItemView {
 		try {
 			const conversation = this.aiManager.getCurrentConversationData();
 			if (!conversation || conversation.messages.length === 0) {
+				getLogger().log('Auto-save skipped: No conversation or empty conversation');
 				return;
 			}
 
@@ -3041,9 +3523,13 @@ export class AIChatView extends ItemView {
 			
 			// Check if content has changed since last save
 			if (this.lastAutoSaveContent && this.lastAutoSaveContent === markdownContent) {
-				console.log('Auto-save skipped: No content changes detected');
+				getLogger().log('Auto-save skipped: No content changes detected for conversation', conversationIdShort);
 				return;
 			}
+
+			getLogger().log('Auto-save proceeding: Content changes detected for conversation', conversationIdShort, 
+				'(previous content length:', this.lastAutoSaveContent?.length || 0, 
+				', new content length:', markdownContent.length, ')');
 
 			// Get auto-save location from settings
 			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
@@ -3072,13 +3558,10 @@ export class AIChatView extends ItemView {
 			// Update the last saved content after successful save
 			this.lastAutoSaveContent = markdownContent;
 
-			// Only clean up old auto-saved conversations periodically (every 10th save)
-			// to avoid excessive file system operations
-			if (Math.random() < 0.1) { // 10% chance
-				await this.cleanupOldAutoSavedConversations();
-			}
+			// Clean up old auto-saved conversations to enforce limit
+			await this.cleanupOldAutoSavedConversations();
 
-			console.log('Auto-saved conversation to:', fullPath);
+			getLogger().log('Auto-saved conversation to:', fullPath);
 
 		} catch (error: any) {
 			console.error('Failed to auto-save conversation with timestamp:', error);
@@ -3118,7 +3601,7 @@ export class AIChatView extends ItemView {
 			await vault.create(fullPath, markdownContent);
 
 			new Notice(`✅ Conversation saved as ${fileName}`);
-			console.log('Conversation saved to:', fullPath);
+			getLogger().log('Conversation saved to:', fullPath);
 
 		} catch (error: any) {
 			console.error('Failed to save conversation:', error);
@@ -3130,7 +3613,7 @@ export class AIChatView extends ItemView {
 		try {
 			const vault = this.plugin.app.vault;
 			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
-			const maxConversations = this.plugin.settings.maxAutoSavedConversations || 10;
+			const maxConversations = this.plugin.settings.maxAutoSavedConversations || 5;
 
 			// Get all auto-saved conversation files
 			const autoSaveFolder = vault.getAbstractFileByPath(autoSaveLocation);
@@ -3141,15 +3624,15 @@ export class AIChatView extends ItemView {
 				file.name.startsWith('auto-saved-')
 			);
 
-			// Sort by creation time (newest first)
-			files.sort((a, b) => b.stat.ctime - a.stat.ctime);
+			// Sort by modification time (newest first)
+			files.sort((a, b) => b.stat.mtime - a.stat.mtime);
 
 			// Delete excess files
 			if (files.length > maxConversations) {
 				const filesToDelete = files.slice(maxConversations);
 				for (const file of filesToDelete) {
 					await vault.delete(file);
-					console.log('Deleted old auto-saved conversation:', file.path);
+					getLogger().log('Deleted old auto-saved conversation:', file.path);
 				}
 			}
 		} catch (error: any) {
@@ -3158,7 +3641,11 @@ export class AIChatView extends ItemView {
 	}
 
 	private generateConversationMarkdown(conversation: AIConversation): string {
-		const timestamp = new Date().toLocaleString();
+		// Use conversation creation time instead of current time for consistent content
+		const firstMessage = conversation.messages[0];
+		const creationTime = firstMessage ? firstMessage.timestamp : new Date();
+		const timestamp = creationTime.toLocaleString();
+		
 		let markdown = `# AI Conversation\n\n`;
 		markdown += `**Created:** ${timestamp}\n`;
 		markdown += `**Title:** ${conversation.title}\n\n`;
@@ -3183,7 +3670,6 @@ export class AIChatView extends ItemView {
 							const formattedPath = this.formatImagePath(imageData.localPath);
 							if (formattedPath) {
 								imagePath = formattedPath;
-								console.log(`Using local path for image ${index + 1}:`, formattedPath);
 							}
 						}
 						
@@ -3207,7 +3693,6 @@ export class AIChatView extends ItemView {
 						if (formattedPath) {
 							imagePath = formattedPath;
 							hasLocalPath = true;
-							console.log('✅ Using local path from images array:', formattedPath);
 						}
 					}
 					// Priority 2: Check imageData property
@@ -3216,7 +3701,6 @@ export class AIChatView extends ItemView {
 						if (formattedPath) {
 							imagePath = formattedPath;
 							hasLocalPath = true;
-							console.log('✅ Using local path from imageData:', formattedPath);
 						}
 					}
 					// Priority 3: Check if the message itself has localPath metadata
@@ -3225,7 +3709,6 @@ export class AIChatView extends ItemView {
 						if (formattedPath) {
 							imagePath = formattedPath;
 							hasLocalPath = true;
-							console.log('✅ Using local path from message:', formattedPath);
 						}
 					}
 					
@@ -3279,7 +3762,18 @@ export class AIChatView extends ItemView {
 			const buffer = await vault.readBinary(file as any);
 			const extension = localPath.split('.').pop() || 'png';
 			const mimeType = this.getMimeType(extension);
-			const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+			
+			// Convert binary data to base64 in chunks to avoid stack overflow
+			const uint8Array = new Uint8Array(buffer);
+			let binary = '';
+			const chunkSize = 0x8000; // 32KB chunks
+			
+			for (let i = 0; i < uint8Array.length; i += chunkSize) {
+				const chunk = uint8Array.subarray(i, i + chunkSize);
+				binary += String.fromCharCode.apply(null, Array.from(chunk));
+			}
+			
+			const base64 = btoa(binary);
 			return `data:${mimeType};base64,${base64}`;
 			
 		} catch (error) {
@@ -3296,7 +3790,7 @@ export class AIChatView extends ItemView {
 					const dataUrl = await this.loadImageDataFromPath(imageData.localPath);
 					if (dataUrl) {
 						imageData.dataUrl = dataUrl;
-						console.log(`✅ Restored dataUrl for image: ${imageData.localPath}`);
+						getLogger().log(`✅ Restored dataUrl for image: ${imageData.localPath}`);
 					} else {
 						console.warn(`⚠️ Could not restore dataUrl for image: ${imageData.localPath}`);
 					}
@@ -3309,7 +3803,7 @@ export class AIChatView extends ItemView {
 			const dataUrl = await this.loadImageDataFromPath(message.imageData.localPath);
 			if (dataUrl) {
 				message.imageData.dataUrl = dataUrl;
-				console.log(`✅ Restored dataUrl for single image: ${message.imageData.localPath}`);
+				getLogger().log(`✅ Restored dataUrl for single image: ${message.imageData.localPath}`);
 			} else {
 				console.warn(`⚠️ Could not restore dataUrl for single image: ${message.imageData.localPath}`);
 			}
@@ -3319,17 +3813,18 @@ export class AIChatView extends ItemView {
 		if (message.image && !message.image.startsWith('data:') && !message.image.startsWith('http')) {
 			const dataUrl = await this.loadImageDataFromPath(message.image);
 			if (dataUrl) {
-				// Keep the original path info and add the dataUrl
-				if (!message.images) {
-					message.images = [{
+				// Create imageData structure to maintain both localPath and dataUrl
+				if (!message.imageData) {
+					message.imageData = {
 						localPath: message.image,
 						dataUrl: dataUrl,
 						fileName: message.image.split('/').pop() || 'image'
-					}];
+					};
 				}
-				// Also update the main image field for compatibility
+				// Keep message.image as dataUrl for display compatibility
+				const originalPath = message.image;
 				message.image = dataUrl;
-				console.log(`✅ Restored dataUrl for message image: ${message.image}`);
+				getLogger().log(`✅ Restored dataUrl for message image: ${originalPath}`);
 			} else {
 				console.warn(`⚠️ Could not restore dataUrl for message image: ${message.image}`);
 			}
@@ -3429,5 +3924,56 @@ export class AIChatView extends ItemView {
 				view.updateContent();
 			}
 		});
+	}
+
+	getCurrentMode(): import('../types').AIChatMode {
+		return this.currentMode;
+	}
+
+	private checkAndResetAutoSaveTracking(): void {
+		// Only check if we have a last saved content to compare against
+		if (!this.lastAutoSaveContent) {
+			return;
+		}
+
+		const conversation = this.aiManager.getCurrentConversationData();
+		if (!conversation || conversation.messages.length === 0) {
+			// No conversation or empty conversation - reset tracking to allow saving when content is added
+			this.lastAutoSaveContent = null;
+			return;
+		}
+
+		// Generate current conversation markdown to compare with last saved content
+		const currentMarkdownContent = this.generateConversationMarkdown(conversation);
+		
+		// If content has changed, reset the tracking so next auto-save will proceed
+		if (this.lastAutoSaveContent !== currentMarkdownContent) {
+			getLogger().log('Conversation content changed, resetting auto-save tracking');
+			this.lastAutoSaveContent = null;
+		}
+	}
+
+	private updateModeSelectorButtonContent(button: HTMLButtonElement, modeData: any) {
+		// Clear existing content (except dropdown arrow)
+		const dropdownArrow = button.querySelector('.mode-dropdown-arrow');
+		button.innerHTML = '';
+		
+		// Add mode name
+		const modeName = button.createEl('span', { text: this.getModeDisplayName(modeData.id), cls: 'mode-name' });
+		
+		// Re-add dropdown arrow
+		if (dropdownArrow) {
+			button.appendChild(dropdownArrow);
+		}
+	}
+
+	private getModeDisplayName(modeId: string): string {
+		const modeNames: { [key: string]: string } = {
+			'analyze': 'Analyze Image',
+			'ocr': 'Extract Text (OCR)',
+			'chat': 'Chat without Image',
+			'custom': 'Use Custom Prompt'
+		};
+		return modeNames[modeId] || modeId;
 	}
 }

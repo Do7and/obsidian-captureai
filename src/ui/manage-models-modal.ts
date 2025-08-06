@@ -65,12 +65,10 @@ export class ManageModelsModal extends Modal {
 		if (provider) {
 			let providerDisplayName = provider.displayName;
 			
-			// Use custom name for custom provider if available
+			// For custom providers, always show "Custom" as the source in the badge
+			// The actual provider name is stored in the model's display name
 			if (provider.id === 'custom') {
-				const customName = this.plugin.settings.providerCredentials[provider.id]?.customName;
-				if (customName && customName.trim()) {
-					providerDisplayName = customName.trim();
-				}
+				providerDisplayName = 'Custom';
 			}
 			
 			metaEl.createEl('span', { text: t('manageModels.providerBadge', { providerName: providerDisplayName }), cls: 'provider-badge' });
@@ -261,16 +259,16 @@ export class ManageModelsModal extends Modal {
 			
 			this.plugin.saveSettings();
 			new Notice(t('manageModels.deletedSuccessfully', { modelName: modelConfig.name }));
+			
+			// Only refresh other components after a delete operation (when it's necessary)
+			this.refreshModelDependentComponents();
 			this.refresh();
 		});
 		modal.open();
 	}
 
 	private refresh() {
-		// Refresh other components first
-		this.refreshModelDependentComponents();
-		
-		// Then refresh this modal
+		// Just refresh this modal without affecting other components
 		this.close();
 		setTimeout(() => {
 			const newModal = new ManageModelsModal(this.plugin);
@@ -291,16 +289,13 @@ export class ManageModelsModal extends Modal {
 			}
 		}
 
-		// Refresh AI chat views - force full update to ensure send button state is correct
+		// Refresh AI chat views - use gentle update without forcing full rebuild
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
 		aiChatLeaves.forEach(leaf => {
 			const view = leaf.view as any;
 			if (view && typeof view.updateContent === 'function') {
-				// Force full update by clearing existing structure first
-				const container = view.containerEl.children[1] as HTMLElement;
-				if (container) {
-					container.empty();
-				}
+				// Just call updateContent without clearing the container
+				// This will preserve existing structure and only update necessary parts
 				view.updateContent();
 			}
 		});
@@ -399,17 +394,17 @@ export class ManageModelsModal extends Modal {
 					margin-bottom: 12px;
 				}
 
-				.model-info {
+				.manage-models-modal .model-info {
 					flex: 1;
 				}
 
-				.model-name {
+				.manage-models-modal .model-name {
 					margin: 0 0 8px 0;
 					font-size: 16px;
 					color: var(--text-normal);
 				}
 
-				.model-meta {
+				.manage-models-modal .model-meta {
 					display: flex;
 					gap: 8px;
 					flex-wrap: wrap;
@@ -443,12 +438,12 @@ export class ManageModelsModal extends Modal {
 					color: white;
 				}
 
-				.model-actions {
+				.manage-models-modal .model-actions {
 					display: flex;
 					gap: 8px;
 				}
 
-				.manage-models-modal .default-btn, .manage-models-modal .delete-btn {
+				.manage-models-modal .default-btn, .manage-models-modal .delete-btn .reset-btn{
 					padding: 6px 12px;
 					border: 1px solid var(--background-modifier-border);
 					border-radius: 4px;
@@ -463,7 +458,7 @@ export class ManageModelsModal extends Modal {
 					color: var(--text-on-accent);
 				}
 
-				.manage-models-modal .delete-btn:hover {
+				.manage-models-modal .delete-btn .reset-btn:hover {
 					background: var(--interactive-critical);
 					color: white;
 				}
@@ -495,22 +490,6 @@ export class ManageModelsModal extends Modal {
 					gap: 8px;
 				}
 
-				.reset-btn {
-					padding: 8px 16px;
-					border: 1px solid var(--interactive-critical);
-					border-radius: 4px;
-					background: var(--background-primary);
-					color: var(--interactive-critical);
-					cursor: pointer;
-					font-size: 12px;
-					align-self: flex-start;
-					margin-top: 12px;
-				}
-
-				.reset-btn:hover {
-					background: var(--interactive-critical);
-					color: white;
-				}
 			`;
 			document.head.appendChild(style);
 		}
