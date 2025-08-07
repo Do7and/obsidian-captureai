@@ -20,6 +20,9 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 		// Add CSS styles for consistent setting item layout
 		this.addSettingsStyles(containerEl);
 
+		// Register listener for plugin settings changes
+		this.registerSettingsListener();
+
 		containerEl.createEl('h2', { text: t('settings.title') });
 
 		// 通用设置分类
@@ -448,6 +451,36 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				view.updateContent();
 			}
 		});
+	}
+
+	private registerSettingsListener() {
+		// Store the current model count to detect changes
+		if (!this.plugin.settings._modelConfigsLastCount) {
+			this.plugin.settings._modelConfigsLastCount = this.plugin.settings.modelConfigs.length;
+		}
+		
+		// Set up interval to check for model config changes
+		const checkForChanges = () => {
+			const currentCount = this.plugin.settings.modelConfigs.length;
+			if (currentCount !== this.plugin.settings._modelConfigsLastCount) {
+				this.plugin.settings._modelConfigsLastCount = currentCount;
+				// Refresh the settings display when model count changes
+				this.display();
+			}
+		};
+		
+		// Check every 500ms when settings tab is visible
+		const interval = setInterval(checkForChanges, 500);
+		
+		// Clean up interval when settings tab is closed
+		// This is a bit of a hack, but works for Obsidian's settings modal
+		const observer = new MutationObserver(() => {
+			if (!document.contains(this.containerEl)) {
+				clearInterval(interval);
+				observer.disconnect();
+			}
+		});
+		observer.observe(document.body, { childList: true, subtree: true });
 	}
 
 	private addStyles() {

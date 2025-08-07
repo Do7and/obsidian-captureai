@@ -146,21 +146,6 @@ export default class ImageCapturePlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	async sendImageToAI(imageDataUrl: string, textContent: string, fileName: string): Promise<void> {
-		if (!this.aiManager) {
-			throw new Error('AI Manager not initialized');
-		}
-		
-		return await this.aiManager.sendImageToAI(imageDataUrl, textContent, fileName);
-	}
-
-	async sendImagesToAI(images: { dataUrl: string, fileName: string, localPath?: string | null }[], textContent: string): Promise<void> {
-		if (!this.aiManager) {
-			throw new Error('AI Manager not initialized');
-		}
-		
-		return await this.aiManager.sendImagesToAI(images, textContent);
-	}
 
 	async addImageToAIQueue(imageDataUrl: string, fileName: string, localPath?: string | null): Promise<void> {
 		if (!this.aiManager) {

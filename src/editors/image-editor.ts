@@ -318,7 +318,7 @@ export class ImageEditor extends Modal {
 			{ name: 'rectangle', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>`, cursor: 'crosshair' },
 			{ name: 'ellipse', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg>`, cursor: 'crosshair' },
 			{ name: 'arrow', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7,7 17,7 17,17"/></svg>`, cursor: 'crosshair' },
-			{ name: 'hand', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10V6a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v6"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M6 14v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/></svg>`, cursor: 'crosshair' }
+			{ name: 'hand', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`, cursor: 'crosshair' }
 		];
 		
 		// Tool names for tooltips
@@ -1492,49 +1492,7 @@ export class ImageEditor extends Modal {
 		}
 	}
 
-	private async saveAndSendToAI() {
-		if (!this.canvas) return;
-		
-		try {
-			// Get the final cropped image
-			const dataUrl = this.getFinalCroppedImage();
-			
-			// Generate filename
-			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-			const fileName = `screenshot-${timestamp}.png`;
-			
-			// Show progress notice immediately
-			const notice = new Notice(t('imageEditor.savingAndSendingToAI'), 0);
-			
-			// Close the editor modal immediately to give user feedback
-			this.close();
-			
-			try {
-				// Save the image to vault first
-				await this.saveImageToVault(dataUrl, fileName);
-				getLogger().log('Image saved to vault:', fileName);
-				
-				// Send to AI for analysis
-				await this.plugin.sendImageToAI(dataUrl, '', fileName);
-				
-				notice.hide();
-				new Notice(t('imageEditor.imageSentToAI'));
-				
-			} catch (aiError: any) {
-				notice.hide();
-				console.error('AI analysis failed:', aiError);
-				new Notice(t('imageEditor.aiAnalysisFailed', { message: aiError.message }));
-			}
-			
-		} catch (error: any) {
-			console.error('Save and send to AI failed:', error);
-			new Notice(t('imageEditor.operationFailed', { message: error.message }));
-			
-			// Close the editor if it's still open
-			this.close();
-		}
-	}
-
+	
 
 
 

@@ -29,7 +29,8 @@ export class AIManager {
 		this.plugin = plugin;
 	}
 
-	async sendImagesToAI(images: { dataUrl: string, fileName: string, localPath?: string | null }[], userMessage: string): Promise<void> {
+
+	async sendImagesToAI(images: { dataUrl: string, fileName: string, localPath?: string | null }[], userMessage?: string): Promise<void> {
 		if (!this.plugin.settings.enableAIAnalysis) {
 			throw new Error('AI analysis is disabled');
 		}
@@ -61,10 +62,11 @@ export class AIManager {
 		}
 
 		// Add user message with all images
+		const defaultMessage = images.length === 1 ? 'Please analyze this image' : `Please analyze these ${images.length} images`;
 		const userMsg: AIMessage = {
 			id: this.generateMessageId(),
 			type: 'user',
-			content: userMessage || `Please analyze these ${images.length} images`,
+			content: userMessage || defaultMessage,
 			image: images[0].dataUrl, // Use first image for display compatibility
 			timestamp: new Date()
 		};
@@ -95,7 +97,7 @@ export class AIManager {
 			// Combine prompts for image analysis
 			const fullMessage = this.combinePromptsForImages(userMsg.content, images.length);
 			
-			// Call AI API with context support using multiple images
+			// Call AI API with context support using images array
 			const response = await this.callAIWithContext(
 				conversation, 
 				fullMessage, 
@@ -148,125 +150,39 @@ export class AIManager {
 		}
 	}
 
-	async sendImageToAI(imageDataUrl: string, userMessage: string, fileName: string): Promise<void> {
-		if (!this.plugin.settings.enableAIAnalysis) {
-			throw new Error('AI analysis is disabled');
-		}
-
-		// Get the default model config
-		const defaultModelConfig = this.plugin.settings.modelConfigs.find(
-			mc => mc.id === this.plugin.settings.defaultModelConfigId
-		);
+	// Convenience method for single image analysis
+	async sendSingleImageToAI(dataUrl: string, fileName: string, userMessage?: string, localPath?: string | null): Promise<void> {
+		const imageArray = [{
+			dataUrl: dataUrl,
+			fileName: fileName,
+			localPath: localPath || null
+		}];
 		
-		if (!defaultModelConfig) {
-			throw new Error('No default model configured. Please configure a model in Settings.');
-		}
-
-		if (!defaultModelConfig.isVisionCapable) {
-			throw new Error('Default model does not support vision analysis');
-		}
-
-		// Get provider credentials
-		const credentials = this.plugin.settings.providerCredentials[defaultModelConfig.providerId];
-		if (!credentials || !credentials.verified || !credentials.apiKey.trim()) {
-			throw new Error('Provider credentials not verified. Please verify API key in Settings.');
-		}
-
-		// Create or get current conversation
-		let conversation = this.getCurrentConversation();
-		if (!conversation) {
-			conversation = this.createNewConversation(`Image Analysis - ${fileName}`);
-		}
-
-		// Add user message with image
-		const userMsg: AIMessage = {
-			id: this.generateMessageId(),
-			type: 'user',
-			content: userMessage || 'Please analyze this image',
-			image: imageDataUrl,
-			timestamp: new Date()
-		};
-		conversation.messages.push(userMsg);
-
-		// Show the AI panel
-		await this.showAIPanel();
-		this.updateAIPanel();
-
-		// Add typing indicator
-		const typingMessage = {
-			id: 'typing_' + Date.now(),
-			type: 'assistant' as const,
-			content: '',
-			timestamp: new Date(),
-			isTyping: true
-		};
-		conversation.messages.push(typingMessage);
-		this.updateAIPanel();
-
-		try {
-			// Combine prompts for image analysis
-			const fullMessage = this.combinePromptsForImage(userMsg.content);
-			
-			// Call AI API using the configured model
-			const response = await this.callAIAPI(fullMessage, imageDataUrl, defaultModelConfig);
-
-			// Remove typing indicator
-			const typingIndex = conversation.messages.findIndex(m => m.id === typingMessage.id);
-			if (typingIndex > -1) {
-				conversation.messages.splice(typingIndex, 1);
-			}
-
-			// Add AI response
-			const assistantMsg: AIMessage = {
-				id: this.generateMessageId(),
-				type: 'assistant',
-				content: response,
-				timestamp: new Date()
-			};
-			conversation.messages.push(assistantMsg);
-
-			// Update last used timestamp
-			defaultModelConfig.lastUsed = new Date();
-			await this.plugin.saveSettings();
-
-			// Update panel
-			this.updateAIPanel();
-
-		} catch (error) {
-			console.error('AI API call failed:', error);
-			
-			// Remove typing indicator
-			const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
-			if (typingIndex > -1) {
-				conversation.messages.splice(typingIndex, 1);
-			}
-
-			// Add error message
-			const errorMsg: AIMessage = {
-				id: this.generateMessageId(),
-				type: 'assistant',
-				content: `Error: ${error.message}`,
-				timestamp: new Date()
-			};
-			conversation.messages.push(errorMsg);
-			this.updateAIPanel();
-			
-			throw error;
-		}
+		return await this.sendImagesToAI(imageArray, userMessage);
 	}
 
 	async callAIForFollowUp(message: string, imageDataUrl: string): Promise<string> {
-		// Use the current default model for follow-up
-		const defaultModelConfig = this.plugin.settings.modelConfigs.find(
-			mc => mc.id === this.plugin.settings.defaultModelConfigId
-		);
+		// Convert single image to array format and delegate to sendImagesToAI
+		const imageArray = [{
+			dataUrl: imageDataUrl,
+			fileName: 'follow-up-image.png',
+			localPath: null
+		}];
 		
-		if (!defaultModelConfig) {
-			throw new Error('No default model configured');
+		await this.sendImagesToAI(imageArray, message);
+		
+		// Get the latest response from conversation
+		const conversation = this.getCurrentConversation();
+		if (conversation && conversation.messages.length > 0) {
+			const lastMessage = conversation.messages[conversation.messages.length - 1];
+			if (lastMessage.type === 'assistant') {
+				return lastMessage.content;
+			}
 		}
 		
-		return await this.callAIAPI(message, imageDataUrl, defaultModelConfig);
+		throw new Error('No response received from AI');
 	}
+
 
 	async callAIForTextOnly(message: string): Promise<string> {
 		// Use the current default model for text-only conversation
@@ -282,7 +198,7 @@ export class AIManager {
 	}
 
 	// Context building function for conversation history
-	buildContextMessages(conversation: AIConversation | null, currentMessage: string, currentImages?: string[]): any[] {
+	buildContextMessages(conversation: AIConversation | null, currentMessage: string, currentImages?: string[], modelConfig?: ModelConfig): any[] {
 		const messages: any[] = [];
 		const contextSettings = this.plugin.settings.contextSettings || {
 			maxContextMessages: 20,
@@ -290,6 +206,13 @@ export class AIManager {
 			includeSystemPrompt: true,
 			contextStrategy: 'recent'
 		};
+
+		// Determine target model config to check vision capability
+		const targetModelConfig = modelConfig || this.plugin.settings.modelConfigs.find(
+			mc => mc.id === this.plugin.settings.defaultModelConfigId
+		);
+		
+		const isVisionCapable = targetModelConfig?.isVisionCapable || false;
 
 		// Add system prompt if enabled
 		if (contextSettings.includeSystemPrompt) {
@@ -303,6 +226,15 @@ export class AIManager {
 		if (conversation && conversation.messages.length > 0) {
 			let historicalMessages = conversation.messages.slice(); // Copy array
 			let imageCount = 0;
+
+			// Filter out error messages to prevent context pollution
+			historicalMessages = historicalMessages.filter(msg => {
+				// Skip error messages that start with "Error:"
+				if (msg.type === 'assistant' && msg.content.startsWith('Error:')) {
+					return false;
+				}
+				return true;
+			});
 
 			// Apply context strategy
 			if (contextSettings.contextStrategy === 'recent') {
@@ -332,15 +264,15 @@ export class AIManager {
 
 				const role = msg.type === 'user' ? 'user' : 'assistant';
 				
-				if (msg.image && imageCount < contextSettings.maxContextImages) {
-					// Message with image
+				if (msg.image && isVisionCapable && imageCount < contextSettings.maxContextImages) {
+					// Message with image - only include if model supports vision
 					const messageContent = [
 						{ type: 'text', text: msg.content }
 					];
 					
-					// Add image if within limit
+					// Add image if within limit and model supports vision
 					if (imageCount < contextSettings.maxContextImages) {
-						messageContent.push({
+						(messageContent as any).push({
 							type: 'image_url',
 							image_url: { url: msg.image }
 						});
@@ -352,7 +284,7 @@ export class AIManager {
 						content: messageContent
 					});
 				} else {
-					// Text-only message
+					// Text-only message (either no image or model doesn't support vision)
 					messages.push({
 						role: role,
 						content: msg.content
@@ -362,15 +294,15 @@ export class AIManager {
 		}
 
 		// Add current message
-		if (currentImages && currentImages.length > 0) {
-			// Current message with images
+		if (currentImages && currentImages.length > 0 && isVisionCapable) {
+			// Current message with images - only if model supports vision
 			const messageContent = [
 				{ type: 'text', text: currentMessage }
 			];
 			
 			// Add current images
 			for (const imageDataUrl of currentImages) {
-				messageContent.push({
+				(messageContent as any).push({
 					type: 'image_url',
 					image_url: { url: imageDataUrl }
 				});
@@ -381,7 +313,7 @@ export class AIManager {
 				content: messageContent
 			});
 		} else {
-			// Current text-only message
+			// Current text-only message (either no images or model doesn't support vision)
 			messages.push({
 				role: 'user',
 				content: currentMessage
@@ -403,7 +335,7 @@ export class AIManager {
 		}
 
 		// Build context messages
-		const contextMessages = this.buildContextMessages(conversation, message, images);
+		const contextMessages = this.buildContextMessages(conversation, message, images, targetModelConfig);
 		
 		// Call appropriate API with context
 		return await this.callAPIWithContextMessages(contextMessages, targetModelConfig);
@@ -411,29 +343,47 @@ export class AIManager {
 
 	// New function to call API with pre-built context messages
 	private async callAPIWithContextMessages(messages: any[], modelConfig: ModelConfig): Promise<string> {
+		// Import logger
+		const { getLogger } = require('../utils/logger');
+		const logger = getLogger();
+
 		// Get provider credentials
 		const credentials = this.plugin.settings.providerCredentials[modelConfig.providerId];
 		if (!credentials || !credentials.verified || !credentials.apiKey.trim()) {
 			throw new Error('Provider credentials not verified');
 		}
 
-		console.log(`Calling AI API with context - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
-		console.log(`Context messages count: ${messages.length}`);
+		logger.log(`🔄 Calling AI API with context - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
+		logger.log(`📊 Context messages count: ${messages.length}`);
+		logger.log(`⚙️ Current model config - ID: ${modelConfig.id}, MaxTokens: ${modelConfig.settings.maxTokens}`);
+
+		// Calculate safe maxTokens based on model's context window
+		const safeMaxTokens = this.calculateSafeMaxTokens(messages, modelConfig);
+		logger.log(`🔧 Adjusted maxTokens from ${modelConfig.settings.maxTokens} to ${safeMaxTokens}`);
+		
+		// Create a temporary model config with adjusted maxTokens
+		const adjustedModelConfig = {
+			...modelConfig,
+			settings: {
+				...modelConfig.settings,
+				maxTokens: safeMaxTokens
+			}
+		};
 
 		let response: Response;
 
 		if (modelConfig.providerId === 'openai') {
-			response = await this.callOpenAIWithContext(messages, modelConfig, credentials);
+			response = await this.callOpenAIWithContext(messages, adjustedModelConfig, credentials);
 		} else if (modelConfig.providerId === 'anthropic') {
-			response = await this.callClaudeWithContext(messages, modelConfig, credentials);
+			response = await this.callClaudeWithContext(messages, adjustedModelConfig, credentials);
 		} else if (modelConfig.providerId === 'google') {
-			response = await this.callGoogleWithContext(messages, modelConfig, credentials);
+			response = await this.callGoogleWithContext(messages, adjustedModelConfig, credentials);
 		} else if (modelConfig.providerId === 'cohere') {
-			response = await this.callCohereWithContext(messages, modelConfig, credentials);
+			response = await this.callCohereWithContext(messages, adjustedModelConfig, credentials);
 		} else if (modelConfig.providerId === 'openrouter') {
-			response = await this.callOpenRouterWithContext(messages, modelConfig, credentials);
+			response = await this.callOpenRouterWithContext(messages, adjustedModelConfig, credentials);
 		} else if (modelConfig.providerId === 'custom' || modelConfig.providerId.startsWith('custom_')) {
-			response = await this.callCustomAPIWithContext(messages, modelConfig, credentials);
+			response = await this.callCustomAPIWithContext(messages, adjustedModelConfig, credentials);
 		} else {
 			throw new Error(`Unsupported provider: ${modelConfig.providerId}`);
 		}
@@ -504,21 +454,18 @@ export class AIManager {
 
 		console.log(`Calling AI API with ${imageDataUrls.length} images - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
 
-		// Convert data URLs to base64
-		const base64Images = imageDataUrls.map(dataUrl => dataUrl.split(',')[1]);
-
 		let response: Response;
 
 		if (modelConfig.providerId === 'openai') {
-			response = await this.callOpenAIWithMultipleImages(message, base64Images, modelConfig, credentials);
+			response = await this.callOpenAIWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'anthropic') {
-			response = await this.callClaudeWithMultipleImages(message, base64Images, modelConfig, credentials);
+			response = await this.callClaudeWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'google') {
-			response = await this.callGoogleWithMultipleImages(message, base64Images, modelConfig, credentials);
+			response = await this.callGoogleWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'openrouter') {
-			response = await this.callOpenRouterWithMultipleImages(message, base64Images, modelConfig, credentials);
+			response = await this.callOpenRouterWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'custom' || modelConfig.providerId.startsWith('custom_')) {
-			response = await this.callCustomAPIWithMultipleImages(message, base64Images, modelConfig, credentials);
+			response = await this.callCustomAPIWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
 		} else {
 			// Fallback to single image for unsupported providers
 			return await this.callAIAPI(message, imageDataUrls[0], modelConfig);
@@ -563,23 +510,24 @@ export class AIManager {
 			console.log(`Base URL: ${credentials.baseUrl}`);
 		}
 
-		// Convert data URL to base64
+		// Extract base64 and MIME type from data URL
 		const base64Image = imageDataUrl.split(',')[1];
+		const mimeType = this.getMimeTypeFromDataUrl(imageDataUrl) || 'image/png';
 
 		let response: Response;
 
 		if (modelConfig.providerId === 'openai') {
-			response = await this.callOpenAI(message, base64Image, modelConfig, credentials);
+			response = await this.callOpenAI(message, imageDataUrl, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'anthropic') {
-			response = await this.callClaude(message, base64Image, modelConfig, credentials);
+			response = await this.callClaude(message, imageDataUrl, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'google') {
-			response = await this.callGoogle(message, base64Image, modelConfig, credentials);
+			response = await this.callGoogle(message, imageDataUrl, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'cohere') {
 			response = await this.callCohere(message, base64Image, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'openrouter') {
-			response = await this.callOpenRouter(message, base64Image, modelConfig, credentials);
+			response = await this.callOpenRouter(message, imageDataUrl, modelConfig, credentials);
 		} else if (modelConfig.providerId === 'custom' || modelConfig.providerId.startsWith('custom_')) {
-			response = await this.callCustomAPI(message, base64Image, modelConfig, credentials);
+			response = await this.callCustomAPI(message, imageDataUrl, modelConfig, credentials);
 		} else {
 			throw new Error(`Unsupported provider: ${modelConfig.providerId}`);
 		}
@@ -665,7 +613,7 @@ export class AIManager {
 		return this.extractResponseContent(data, modelConfig.providerId);
 	}
 
-	private async callOpenAI(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callOpenAI(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
 		return fetch('https://api.openai.com/v1/chat/completions', {
 			method: 'POST',
 			headers: {
@@ -686,7 +634,7 @@ export class AIManager {
 							{ 
 								type: 'image_url', 
 								image_url: { 
-									url: `data:image/png;base64,${base64Image}` 
+									url: imageDataUrl
 								} 
 							}
 						]
@@ -701,8 +649,11 @@ export class AIManager {
 		});
 	}
 
-	private async callClaude(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callClaude(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
 		const messages = [];
+		
+		const base64Data = imageDataUrl.split(',')[1];
+		const mimeType = this.getMimeTypeFromDataUrl(imageDataUrl) || 'image/png';
 		
 		messages.push({
 			role: 'user',
@@ -712,8 +663,8 @@ export class AIManager {
 					type: 'image',
 					source: {
 						type: 'base64',
-						media_type: 'image/png',
-						data: base64Image
+						media_type: mimeType,
+						data: base64Data
 					}
 				}
 			]
@@ -738,9 +689,12 @@ export class AIManager {
 		});
 	}
 
-	private async callGoogle(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callGoogle(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
 		// Gemini API implementation
 		const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`;
+		
+		const base64Data = imageDataUrl.split(',')[1];
+		const mimeType = this.getMimeTypeFromDataUrl(imageDataUrl) || 'image/png';
 		
 		return fetch(url, {
 			method: 'POST',
@@ -753,8 +707,8 @@ export class AIManager {
 						{ text: message },
 						{
 							inline_data: {
-								mime_type: 'image/png',
-								data: base64Image
+								mime_type: mimeType,
+								data: base64Data
 							}
 						}
 					]
@@ -773,7 +727,7 @@ export class AIManager {
 		throw new Error('Cohere vision models not yet supported');
 	}
 
-	private async callOpenRouter(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callOpenRouter(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
 		// OpenRouter uses OpenAI-compatible API format
 		return fetch('https://openrouter.ai/api/v1/chat/completions', {
 			method: 'POST',
@@ -797,7 +751,7 @@ export class AIManager {
 							{ 
 								type: 'image_url', 
 								image_url: { 
-									url: `data:image/png;base64,${base64Image}` 
+									url: imageDataUrl
 								} 
 							}
 						]
@@ -812,7 +766,7 @@ export class AIManager {
 		});
 	}
 
-	private async callCustomAPI(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callCustomAPI(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
 		// Use customProvider from modelConfig if available (new structure)
 		const customConfig = modelConfig.customProvider;
 		let baseUrl: string, apiPath: string, apiKey: string;
@@ -858,7 +812,7 @@ export class AIManager {
 							{ 
 								type: 'image_url', 
 								image_url: { 
-									url: `data:image/png;base64,${base64Image}` 
+									url: imageDataUrl
 								} 
 							}
 						]
@@ -1108,27 +1062,21 @@ export class AIManager {
 			return userMessage;
 		}
 		
-		// Combine mode prompt with user message naturally for multiple images
-		if (userMessage === `Please analyze these ${imageCount} images`) {
-			return `${modePrompt} (analyzing ${imageCount} images)`;
+		// Handle both single and multiple images uniformly
+		if (imageCount === 1) {
+			// Single image case
+			if (userMessage === 'Please analyze this image') {
+				return modePrompt;
+			} else {
+				return `${modePrompt}\n\nUser request: ${userMessage}`;
+			}
 		} else {
-			return `${modePrompt}\n\nUser request for ${imageCount} images: ${userMessage}`;
-		}
-	}
-
-	private combinePromptsForImage(userMessage: string): string {
-		const currentMode = this.getCurrentMode();
-		const modePrompt = this.getModePrompt(currentMode);
-		
-		if (!modePrompt.trim()) {
-			return userMessage;
-		}
-		
-		// Combine mode prompt with user message naturally
-		if (userMessage === 'Please analyze this image') {
-			return modePrompt;
-		} else {
-			return `${modePrompt}\n\nUser request: ${userMessage}`;
+			// Multiple images case
+			if (userMessage === `Please analyze these ${imageCount} images`) {
+				return `${modePrompt} (analyzing ${imageCount} images)`;
+			} else {
+				return `${modePrompt}\n\nUser request for ${imageCount} images: ${userMessage}`;
+			}
 		}
 	}
 
@@ -1160,13 +1108,17 @@ export class AIManager {
 	}
 
 	// Multi-image API methods
-	private async callOpenAIWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const imageContent = base64Images.map(base64 => ({
-			type: 'image_url',
-			image_url: {
-				url: `data:image/png;base64,${base64}`
-			}
-		}));
+	private async callOpenAIWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const imageContent = dataUrls.map(dataUrl => {
+			const base64Data = dataUrl.split(',')[1];
+			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
+			return {
+				type: 'image_url',
+				image_url: {
+					url: `data:${mimeType};base64,${base64Data}`
+				}
+			};
+		});
 
 		return fetch('https://api.openai.com/v1/chat/completions', {
 			method: 'POST',
@@ -1198,15 +1150,19 @@ export class AIManager {
 		});
 	}
 
-	private async callClaudeWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const imageContent = base64Images.map(base64 => ({
-			type: 'image',
-			source: {
-				type: 'base64',
-				media_type: 'image/png',
-				data: base64
-			}
-		}));
+	private async callClaudeWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const imageContent = dataUrls.map(dataUrl => {
+			const base64Data = dataUrl.split(',')[1];
+			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
+			return {
+				type: 'image',
+				source: {
+					type: 'base64',
+					media_type: mimeType,
+					data: base64Data
+				}
+			};
+		});
 
 		const messages = [{
 			role: 'user',
@@ -1235,13 +1191,17 @@ export class AIManager {
 		});
 	}
 
-	private async callGoogleWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const imageParts = base64Images.map(base64 => ({
-			inline_data: {
-				mime_type: 'image/png',
-				data: base64
-			}
-		}));
+	private async callGoogleWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const imageParts = dataUrls.map(dataUrl => {
+			const base64Data = dataUrl.split(',')[1];
+			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
+			return {
+				inline_data: {
+					mime_type: mimeType,
+					data: base64Data
+				}
+			};
+		});
 
 		const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`;
 		
@@ -1265,13 +1225,17 @@ export class AIManager {
 		});
 	}
 
-	private async callOpenRouterWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const imageContent = base64Images.map(base64 => ({
-			type: 'image_url',
-			image_url: {
-				url: `data:image/png;base64,${base64}`
-			}
-		}));
+	private async callOpenRouterWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		const imageContent = dataUrls.map(dataUrl => {
+			const base64Data = dataUrl.split(',')[1];
+			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
+			return {
+				type: 'image_url',
+				image_url: {
+					url: `data:${mimeType};base64,${base64Data}`
+				}
+			};
+		});
 
 		return fetch('https://openrouter.ai/api/v1/chat/completions', {
 			method: 'POST',
@@ -1305,7 +1269,7 @@ export class AIManager {
 		});
 	}
 
-	private async callCustomAPIWithMultipleImages(message: string, base64Images: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callCustomAPIWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
 		// Use customProvider from modelConfig if available (new structure)
 		const customConfig = modelConfig.customProvider;
 		let baseUrl: string, apiPath: string, apiKey: string;
@@ -1328,12 +1292,16 @@ export class AIManager {
 		// Use custom API path if provided, otherwise default to "/v1/chat/completions"
 		const fullUrl = `${baseUrl.replace(/\/+$/, '')}${apiPath}`;
 
-		const imageContent = base64Images.map(base64 => ({
-			type: 'image_url',
-			image_url: {
-				url: `data:image/png;base64,${base64}`
-			}
-		}));
+		const imageContent = dataUrls.map(dataUrl => {
+			const base64Data = dataUrl.split(',')[1];
+			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
+			return {
+				type: 'image_url',
+				image_url: {
+					url: `data:${mimeType};base64,${base64Data}`
+				}
+			};
+		});
 
 		// Default to OpenAI-compatible format for custom APIs
 		return fetch(fullUrl, {
@@ -1365,21 +1333,30 @@ export class AIManager {
 
 	// Context-aware API calls for different providers
 	private async callOpenAIWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		// Import logger
+		const { getLogger } = require('../utils/logger');
+		const logger = getLogger();
+
+		const requestBody = {
+			model: modelConfig.modelId,
+			messages: messages,
+			max_tokens: modelConfig.settings.maxTokens,
+			temperature: modelConfig.settings.temperature,
+			top_p: modelConfig.settings.topP,
+			frequency_penalty: modelConfig.settings.frequencyPenalty,
+			presence_penalty: modelConfig.settings.presencePenalty
+		};
+
+		logger.log(`📤 OpenAI API Request Body:`, JSON.stringify(requestBody, null, 2));
+		logger.log(`🔑 Using API Key: ${credentials.apiKey.substring(0, 10)}...`);
+
 		return fetch('https://api.openai.com/v1/chat/completions', {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				'Authorization': `Bearer ${credentials.apiKey}`
 			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: messages,
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature,
-				top_p: modelConfig.settings.topP,
-				frequency_penalty: modelConfig.settings.frequencyPenalty,
-				presence_penalty: modelConfig.settings.presencePenalty
-			})
+			body: JSON.stringify(requestBody)
 		});
 	}
 
@@ -1481,8 +1458,26 @@ export class AIManager {
 	}
 
 	private async callOpenRouterWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		// Import logger
+		const { getLogger } = require('../utils/logger');
+		const logger = getLogger();
+
 		const baseUrl = credentials.baseUrl || 'https://openrouter.ai/api/v1';
 		
+		const requestBody = {
+			model: modelConfig.modelId,
+			messages: messages,
+			max_tokens: modelConfig.settings.maxTokens,
+			temperature: modelConfig.settings.temperature,
+			top_p: modelConfig.settings.topP,
+			frequency_penalty: modelConfig.settings.frequencyPenalty,
+			presence_penalty: modelConfig.settings.presencePenalty
+		};
+
+		logger.log(`📤 OpenRouter API Request Body:`, JSON.stringify(requestBody, null, 2));
+		logger.log(`🔑 Using API Key: ${credentials.apiKey.substring(0, 10)}...`);
+		logger.log(`🌐 Base URL: ${baseUrl}`);
+
 		return fetch(`${baseUrl}/chat/completions`, {
 			method: 'POST',
 			headers: {
@@ -1491,35 +1486,143 @@ export class AIManager {
 				'HTTP-Referer': 'https://obsidian.md',
 				'X-Title': 'Obsidian Screenshot Capture'
 			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: messages,
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature,
-				top_p: modelConfig.settings.topP,
-				frequency_penalty: modelConfig.settings.frequencyPenalty,
-				presence_penalty: modelConfig.settings.presencePenalty
-			})
+			body: JSON.stringify(requestBody)
 		});
 	}
 
 	private async callCustomAPIWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+		// Import logger
+		const { getLogger } = require('../utils/logger');
+		const logger = getLogger();
+
+		const requestBody = {
+			model: modelConfig.modelId,
+			messages: messages,
+			max_tokens: modelConfig.settings.maxTokens,
+			temperature: modelConfig.settings.temperature,
+			top_p: modelConfig.settings.topP,
+			frequency_penalty: modelConfig.settings.frequencyPenalty,
+			presence_penalty: modelConfig.settings.presencePenalty
+		};
+
+		const fullUrl = `${credentials.baseUrl}${credentials.apiPath || '/v1/chat/completions'}`;
+
+		logger.log(`📤 Custom API Request Body:`, JSON.stringify(requestBody, null, 2));
+		logger.log(`🔑 Using API Key: ${credentials.apiKey.substring(0, 10)}...`);
+		logger.log(`🌐 Full URL: ${fullUrl}`);
+
 		// For custom APIs, we'll use OpenAI format as the default
-		return fetch(`${credentials.baseUrl}${credentials.apiPath || '/v1/chat/completions'}`, {
+		return fetch(fullUrl, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				'Authorization': `Bearer ${credentials.apiKey}`
 			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: messages,
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature,
-				top_p: modelConfig.settings.topP,
-				frequency_penalty: modelConfig.settings.frequencyPenalty,
-				presence_penalty: modelConfig.settings.presencePenalty
-			})
+			body: JSON.stringify(requestBody)
 		});
+	}
+
+	// Calculate safe maxTokens to avoid context window overflow
+	private calculateSafeMaxTokens(messages: any[], modelConfig: ModelConfig): number {
+		// Import logger
+		const { getLogger } = require('../utils/logger');
+		const logger = getLogger();
+
+		// Get model's context window from type definitions
+		const model = this.getModelInfo(modelConfig.providerId, modelConfig.modelId);
+		const contextWindow = model?.contextWindow || 4096; // Fallback to conservative estimate
+		
+		logger.log(`🔍 Model info for ${modelConfig.modelId}: contextWindow = ${contextWindow}, found = ${!!model}`);
+		
+		// Estimate tokens in messages (rough approximation)
+		const estimatedInputTokens = this.estimateTokens(messages);
+		
+		// Reserve space for input + safety margin (20% of context window)
+		const safetyMargin = Math.floor(contextWindow * 0.2);
+		const maxOutputTokens = contextWindow - estimatedInputTokens - safetyMargin;
+		
+		// Ensure we don't exceed the configured maxTokens or go below a minimum
+		const configuredMax = modelConfig.settings.maxTokens;
+		const minimumTokens = 512; // Minimum reasonable output
+		
+		const finalMaxTokens = Math.max(
+			minimumTokens,
+			Math.min(configuredMax, maxOutputTokens)
+		);
+		
+		logger.log(`🧮 Token calculation - Context Window: ${contextWindow}, Input: ${estimatedInputTokens}, Safety Margin: ${safetyMargin}, Final Max: ${finalMaxTokens}`);
+		
+		return finalMaxTokens;
+	}
+
+	// Get model information from type definitions
+	private getModelInfo(providerId: string, modelId: string): { contextWindow?: number } | null {
+		// Import the providers from types
+		const { LLM_PROVIDERS } = require('../types');
+		const provider = LLM_PROVIDERS.find((p: any) => p.id === providerId);
+		if (!provider) return null;
+		
+		const model = provider.models.find((m: any) => m.id === modelId);
+		if (model) return model;
+		
+		// Smart inference for unknown models based on model name patterns
+		const lowerModelId = modelId.toLowerCase();
+		
+		// Qwen models typically have 32K context window
+		if (lowerModelId.includes('qwen')) {
+			return { contextWindow: 32768 };  // 32K context window
+		}
+		
+		// GPT-4 models typically have large context
+		if (lowerModelId.includes('gpt-4')) {
+			return { contextWindow: 128000 }; // 128K context window
+		}
+		
+		// Claude models typically have large context
+		if (lowerModelId.includes('claude')) {
+			return { contextWindow: 200000 }; // 200K context window
+		}
+		
+		// Conservative fallback
+		return { contextWindow: 16384 }; // 16K context window
+	}
+
+	// Simple token estimation (rough approximation: 1 token ≈ 4 characters for text, special handling for images)
+	private estimateTokens(messages: any[]): number {
+		let totalTokens = 0;
+		
+		for (const message of messages) {
+			if (typeof message.content === 'string') {
+				// Simple text message
+				totalTokens += Math.ceil(message.content.length / 4);
+			} else if (Array.isArray(message.content)) {
+				// Multi-modal message
+				for (const content of message.content) {
+					if (content.type === 'text') {
+						totalTokens += Math.ceil((content.text || '').length / 4);
+					} else if (content.type === 'image_url') {
+						// Images typically cost ~1500 tokens for vision models
+						totalTokens += 1500;
+					}
+				}
+			}
+		}
+		
+		// Add some overhead for system prompts and formatting
+		totalTokens += 100;
+		
+		return totalTokens;
+	}
+
+	// Extract MIME type from data URL
+	private getMimeTypeFromDataUrl(dataUrl: string): string | null {
+		const match = dataUrl.match(/^data:([^;]+);base64,/);
+		return match ? match[1] : null;
+	}
+
+	// Create properly formatted image URL for API
+	private createImageDataUrl(dataUrl: string, base64: string): string {
+		const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
+		return `data:${mimeType};base64,${base64}`;
 	}
 }

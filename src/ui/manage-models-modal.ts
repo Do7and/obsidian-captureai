@@ -141,8 +141,10 @@ export class ManageModelsModal extends Modal {
 				.onChange(async (value) => {
 					const numValue = parseInt(value);
 					if (!isNaN(numValue) && numValue > 0) {
+						console.log(`Updating maxTokens for model ${modelConfig.id} from ${modelConfig.settings.maxTokens} to ${numValue}`);
 						modelConfig.settings.maxTokens = numValue;
 						await this.plugin.saveSettings();
+						console.log(`MaxTokens saved successfully for model ${modelConfig.id}`);
 					}
 				}));
 

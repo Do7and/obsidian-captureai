@@ -766,6 +766,42 @@ export class SetKeysModal extends Modal {
 		}
 	}
 
+	private getSmartMaxTokens(modelId: string, modelName: string, defaultMaxTokens?: number): number {
+		// If model has explicit maxTokens, use it
+		if (defaultMaxTokens) {
+			return defaultMaxTokens;
+		}
+		
+		// Smart inference based on model name patterns
+		const lowerModel = modelId.toLowerCase() + ' ' + modelName.toLowerCase();
+		
+		// Large context models (8K+ output)
+		if (lowerModel.includes('claude-3.5-sonnet') || lowerModel.includes('gemini-1.5-pro') || 
+			lowerModel.includes('gemini-1.5-flash') || lowerModel.includes('gemini-2')) {
+			return 8192;
+		}
+		
+		// Medium-large context models (4K output) - includes most modern models
+		if (lowerModel.includes('gpt-4') || lowerModel.includes('claude-3') || 
+			lowerModel.includes('llama') || lowerModel.includes('qwen')) {
+			return 4096;
+		}
+		
+		// Small context models (2K output)
+		if (lowerModel.includes('gemini-pro-vision') || lowerModel.includes('3.5-turbo')) {
+			return 2048;
+		}
+		
+		// For qwen/qwen2.5-vl-32b-instruct:free type models - use 2K as safe default
+		if (lowerModel.includes('qwen2.5') || lowerModel.includes('32b') || 
+			lowerModel.includes('instruct') || lowerModel.includes('free')) {
+			return 2048;  // Conservative for free tier models
+		}
+		
+		// Conservative default for unknown models
+		return 2048;
+	}
+
 	private addModelConfigWithCustomProvider(provider: LLMProvider, model: LLMModel, customProviderInfo: {name: string, baseUrl: string, apiPath: string, apiKey: string}) {
 		const modelConfig: ModelConfig = {
 			id: `${provider.id}-${model.id}-${Date.now()}`,
@@ -783,10 +819,9 @@ export class SetKeysModal extends Modal {
 			}
 		};
 
-		// Apply model-specific defaults
-		if (model.maxTokens) {
-			modelConfig.settings.maxTokens = Math.min(model.maxTokens, DEFAULT_MODEL_SETTINGS.maxTokens);
-		}
+		// Apply model-specific defaults with smart inference
+		const smartMaxTokens = this.getSmartMaxTokens(model.id, model.name, model.maxTokens);
+		modelConfig.settings.maxTokens = smartMaxTokens;
 
 		this.plugin.settings.modelConfigs.push(modelConfig);
 		
@@ -826,10 +861,9 @@ export class SetKeysModal extends Modal {
 			createdAt: new Date()
 		};
 
-		// Apply model-specific defaults
-		if (model.maxTokens) {
-			modelConfig.settings.maxTokens = Math.min(model.maxTokens, DEFAULT_MODEL_SETTINGS.maxTokens);
-		}
+		// Apply model-specific defaults with smart inference
+		const smartMaxTokens = this.getSmartMaxTokens(model.id, model.name, model.maxTokens);
+		modelConfig.settings.maxTokens = smartMaxTokens;
 
 		// For custom provider, don't test vision capability - trust user's checkbox setting
 		if (provider.id === 'custom') {
@@ -897,19 +931,8 @@ export class SetKeysModal extends Modal {
 	}
 
 	private refreshModelDependentComponents() {
-		// Refresh settings tab by finding the settings tab instance and calling display()
-		const app = this.plugin.app as any;
-		if (app.setting && app.setting.pluginTabs) {
-			const pluginTab = app.setting.pluginTabs.find((tab: any) => 
-				tab.id === this.plugin.manifest.id
-			);
-			if (pluginTab && typeof pluginTab.display === 'function') {
-				// Refresh the settings tab if it's currently active
-				pluginTab.display();
-			}
-		}
-
-		// Refresh AI chat views
+		// The settings tab now has an auto-refresh mechanism
+		// We just need to refresh AI chat views here
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
 		aiChatLeaves.forEach(leaf => {
 			const view = leaf.view as any;

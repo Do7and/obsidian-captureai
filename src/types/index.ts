@@ -124,6 +124,8 @@ export interface ImageCaptureSettings {
 	};
 	// Debug settings
 	enableDebugLogging: boolean;        // Enable debug logging to console
+	// Internal tracking for UI refresh
+	_modelConfigsLastCount?: number;   // Internal: tracks model count for settings refresh
 }
 
 export interface CustomProvider {
@@ -163,10 +165,10 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 		requiresBaseUrl: false,
 		apiKeyLink: 'https://console.anthropic.com/',
 		models: [
-			{ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 200000 },
-			{ id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
-			{ id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
-			{ id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', hasVision: true, maxTokens: 4096, contextWindow: 200000 }
+			{ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 199988 },
+			{ id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', hasVision: true, maxTokens: 4096, contextWindow: 199988 },
+			{ id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', hasVision: true, maxTokens: 4096, contextWindow: 199988 },
+			{ id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', hasVision: true, maxTokens: 4096, contextWindow: 199988 }
 		]
 	},
 	{
@@ -177,7 +179,7 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 		requiresBaseUrl: false,
 		apiKeyLink: 'https://makersuite.google.com/app/apikey',
 		models: [
-			{ id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 2000000 },
+			{ id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 19998 },
 			{ id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
 			{ id: 'gemini-pro-vision', name: 'Gemini Pro Vision', hasVision: true, maxTokens: 2048, contextWindow: 32768 }
 		]
@@ -210,14 +212,14 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 			{ id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
 			
 			// Anthropic models via OpenRouter
-			{ id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 200000 },
-			{ id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
-			{ id: 'anthropic/claude-3-sonnet', name: 'Claude 3 Sonnet', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
-			{ id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
+			{ id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 199988 },
+			{ id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', hasVision: true, maxTokens: 4096, contextWindow: 199988 },
+			{ id: 'anthropic/claude-3-sonnet', name: 'Claude 3 Sonnet', hasVision: true, maxTokens: 4096, contextWindow: 199988 },
+			{ id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', hasVision: true, maxTokens: 4096, contextWindow: 199988 },
 			
 			// Google models via OpenRouter
 			{ id: 'google/gemini-pro-vision', name: 'Gemini Pro Vision', hasVision: true, maxTokens: 2048, contextWindow: 32768 },
-			{ id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 2000000 },
+			{ id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 1999880 },
 			{ id: 'google/gemini-1.5-flash', name: 'Gemini 1.5 Flash', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
 			
 			// Other popular vision models
@@ -243,8 +245,8 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 			// Placeholder models - will be dynamically populated
 			{ id: 'gpt-4o', name: 'GPT-4o', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
 			{ id: 'gpt-4o-mini', name: 'GPT-4o Mini', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
-			{ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 200000 },
-			{ id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 2000000 },
+			{ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 199988 },
+			{ id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 1999880 },
 			{ id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
 			{ id: 'deepseek-chat', name: 'DeepSeek Chat', hasVision: false, maxTokens: 4096, contextWindow: 64000 },
 			{ id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', hasVision: false, maxTokens: 4096, contextWindow: 64000 },
@@ -252,14 +254,14 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 			{ id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
 			{ id: 'gpt-4.1', name: 'GPT-4.1', hasVision: true, maxTokens: 4096, contextWindow: 1000000 },
 			{ id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', hasVision: true, maxTokens: 4096, contextWindow: 1000000 },
-			{ id: 'o3', name: 'O3', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
-			{ id: 'o4-mini', name: 'O4 Mini', hasVision: true, maxTokens: 4096, contextWindow: 200000 },
+			{ id: 'o3', name: 'O3', hasVision: true, maxTokens: 4096, contextWindow: 199988 },
+			{ id: 'o4-mini', name: 'O4 Mini', hasVision: true, maxTokens: 4096, contextWindow: 199988 },
 			{ id: 'qwen3-235b-a22b', name: 'Qwen3 235B', hasVision: false, maxTokens: 4096, contextWindow: 128000 },
 			{ id: 'llama-4-maverick', name: 'Llama 4 Maverick', hasVision: false, maxTokens: 4096, contextWindow: 128000 },
 			{ id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
 			{ id: 'gemini-2.5-flash-nothink', name: 'Gemini 2.5 Flash NoThink', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
-			{ id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', hasVision: true, maxTokens: 8192, contextWindow: 200000 },
-			{ id: 'claude-opus-4-20250514', name: 'Claude Opus 4', hasVision: true, maxTokens: 8192, contextWindow: 200000 },
+			{ id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', hasVision: true, maxTokens: 8192, contextWindow: 199988 },
+			{ id: 'claude-opus-4-20250514', name: 'Claude Opus 4', hasVision: true, maxTokens: 8192, contextWindow: 199988 },
 			{ id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', hasVision: true, maxTokens: 8192, contextWindow: 1000000 },
 			{ id: 'doubao-1.5-vision-pro-250328', name: 'Doubao 1.5 Vision Pro', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
 			{ id: 'grok-4', name: 'Grok 4', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
@@ -269,7 +271,7 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 ];
 
 export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
-	maxTokens: 20000,
+	maxTokens: 4096,  // 更安全的默认值，适合大多数模型
 	temperature: 0.7,
 	topP: 1,
 	frequencyPenalty: 0,

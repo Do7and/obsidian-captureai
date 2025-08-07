@@ -563,16 +563,46 @@ export class AIChatView extends ItemView {
 					// Make the image draggable and set drag data for proper Obsidian integration
 					imageEl.draggable = true;
 					imageEl.addEventListener('dragstart', (e) => {
-						if (imageData.localPath) {
-							// Use the local path for dragging so it gets properly inserted as markdown
-							e.dataTransfer?.setData('text/plain', imageData.localPath);
-							// Also set the image path for Obsidian's internal drag handling
-							e.dataTransfer?.setData('application/x-obsidian-drag', JSON.stringify({
-								type: 'file',
-								file: imageData.localPath
-							}));
+						getLogger().log('Message image drag started:', imageData.fileName, 'localPath:', imageData.localPath);
+						
+						if (imageData.localPath && imageData.localPath.trim()) {
+							// Try multiple dataTransfer formats for maximum compatibility
+							const localPath = imageData.localPath;
+							
+							// Verify the file exists before drag
+							const vault = this.plugin.app.vault;
+							const file = vault.getAbstractFileByPath(localPath);
+							
+							if (file) {
+								getLogger().log('✅ Message image file exists in vault:', localPath);
+								
+								// 1. Standard text/plain with wikilink format for internal links
+								e.dataTransfer?.setData('text/plain', `![[${file.name}]]`);
+								
+								// 2. Alternative: full path
+								e.dataTransfer?.setData('text/uri-list', localPath);
+								
+								// 3. Try Obsidian's wikilink format in HTML
+								e.dataTransfer?.setData('text/html', `![[${localPath}]]`);
+								
+								// 4. File reference format
+								e.dataTransfer?.setData('application/x-obsidian-file', JSON.stringify({
+									type: 'file',
+									path: localPath,
+									name: imageData.fileName
+								}));
+								
+								getLogger().log('Set drag data for existing vault message image:', file.name);
+							} else {
+								getLogger().log('⚠️ Message image file not found in vault, using path:', localPath);
+								// Fallback to original behavior
+								e.dataTransfer?.setData('text/plain', localPath);
+							}
+							
+							getLogger().log('Set multiple drag data formats for message image:', localPath);
 						} else {
 							// Fallback to data URL if no local path
+							getLogger().log('No localPath for message image, using fallback');
 							e.dataTransfer?.setData('text/plain', imageData.dataUrl || imageSrc);
 						}
 					});
@@ -615,16 +645,46 @@ export class AIChatView extends ItemView {
 				imageEl.draggable = true;
 				imageEl.addEventListener('dragstart', (e) => {
 					const imageData = singleImageData || ((message as any).images && (message as any).images[0]);
-					if (imageData && imageData.localPath) {
-						// Use the local path for dragging so it gets properly inserted as markdown
-						e.dataTransfer?.setData('text/plain', imageData.localPath);
-						// Also set the image path for Obsidian's internal drag handling
-						e.dataTransfer?.setData('application/x-obsidian-drag', JSON.stringify({
-							type: 'file',
-							file: imageData.localPath
-						}));
+					getLogger().log('Single message image drag started, imageData:', imageData);
+					
+					if (imageData && imageData.localPath && imageData.localPath.trim()) {
+						// Try multiple dataTransfer formats for maximum compatibility
+						const localPath = imageData.localPath;
+						
+						// Verify the file exists before drag
+						const vault = this.plugin.app.vault;
+						const file = vault.getAbstractFileByPath(localPath);
+						
+						if (file) {
+							getLogger().log('✅ Single message image file exists in vault:', localPath);
+							
+							// 1. Standard text/plain with wikilink format for internal links
+							e.dataTransfer?.setData('text/plain', `![[${file.name}]]`);
+							
+							// 2. Alternative: full path
+							e.dataTransfer?.setData('text/uri-list', localPath);
+							
+							// 3. Try Obsidian's wikilink format in HTML
+							e.dataTransfer?.setData('text/html', `![[${localPath}]]`);
+							
+							// 4. File reference format
+							e.dataTransfer?.setData('application/x-obsidian-file', JSON.stringify({
+								type: 'file',
+								path: localPath,
+								name: imageData.fileName || 'Image'
+							}));
+							
+							getLogger().log('Set drag data for existing vault single message image:', file.name);
+						} else {
+							getLogger().log('⚠️ Single message image file not found in vault, using path:', localPath);
+							// Fallback to original behavior
+							e.dataTransfer?.setData('text/plain', localPath);
+						}
+						
+						getLogger().log('Set multiple drag data formats for single message image:', localPath);
 					} else {
-						// Fallback to data URL if no local path
+						// Fallback to using imageSrc
+						getLogger().log('No localPath for single message image, using fallback:', imageSrc);
 						e.dataTransfer?.setData('text/plain', imageSrc);
 					}
 				});
@@ -1094,7 +1154,7 @@ export class AIChatView extends ItemView {
 				if (imageDataList.length > 0 && isVisionCapable) {
 					// Send all images with optional text for vision-capable models
 					this.clearImagePreview(inputArea);
-					await this.plugin.sendImagesToAI(imageDataList.map((img: any) => ({
+					await this.plugin.aiManager.sendImagesToAI(imageDataList.map((img: any) => ({
 						dataUrl: img.dataUrl,
 						fileName: img.fileName,
 						localPath: img.localPath
@@ -1408,17 +1468,50 @@ export class AIChatView extends ItemView {
 			// Make the image draggable and set drag data for proper Obsidian integration
 			img.draggable = true;
 			img.addEventListener('dragstart', (e) => {
-				if (imageData.localPath) {
-					// Use the local path for dragging so it gets properly inserted as markdown
-					e.dataTransfer?.setData('text/plain', imageData.localPath);
-					// Also set the image path for Obsidian's internal drag handling
-					e.dataTransfer?.setData('application/x-obsidian-drag', JSON.stringify({
-						type: 'file',
-						file: imageData.localPath
-					}));
+				getLogger().log('Image drag started:', imageData.fileName, 'localPath:', imageData.localPath);
+				
+				if (imageData.localPath && imageData.localPath.trim()) {
+					// Try multiple dataTransfer formats for maximum compatibility
+					const localPath = imageData.localPath;
+					
+					// Verify the file exists before drag
+					const vault = this.plugin.app.vault;
+					const file = vault.getAbstractFileByPath(localPath);
+					
+					if (file) {
+						getLogger().log('✅ File exists in vault:', localPath);
+						
+						// 1. Standard text/plain with just filename for internal links
+						e.dataTransfer?.setData('text/plain', `![[${file.name}]]`);
+						
+						// 2. Alternative: full path
+						e.dataTransfer?.setData('text/uri-list', localPath);
+						
+						// 3. Try Obsidian's wikilink format
+						e.dataTransfer?.setData('text/html', `![[${localPath}]]`);
+						
+						// 4. File reference format
+						e.dataTransfer?.setData('application/x-obsidian-file', JSON.stringify({
+							type: 'file',
+							path: localPath,
+							name: imageData.fileName
+						}));
+						
+						getLogger().log('Set drag data for existing vault file:', file.name);
+					} else {
+						getLogger().log('⚠️ File not found in vault, using path:', localPath);
+						// Fallback to original behavior
+						e.dataTransfer?.setData('text/plain', localPath);
+					}
+					
+					getLogger().log('Set multiple drag data formats for vault path:', localPath);
 				} else {
-					// Fallback to data URL if no local path
+					// Fallback: if no local path, still try to handle gracefully
+					getLogger().log('No localPath found, using dataUrl fallback for:', imageData.fileName);
 					e.dataTransfer?.setData('text/plain', imageData.dataUrl);
+					
+					// Log warning about missing local path
+					console.warn('⚠️ Image dragged without local path - this will result in pasted image behavior:', imageData);
 				}
 			});
 			
@@ -1533,14 +1626,30 @@ export class AIChatView extends ItemView {
 				getLogger().log('Drag data received:', dragData);
 				
 				if (dragData) {
-					// Check if it's a vault file reference
+					// First, check if this is already a vault file by extracting the path
+					const filePath = this.extractFilePathFromDragData(dragData);
+					if (filePath) {
+						// Check if file exists in vault
+						const vault = this.plugin.app.vault;
+						const abstractFile = vault.getAbstractFileByPath(filePath);
+						
+						if (abstractFile && abstractFile instanceof TFile && abstractFile.extension.match(/^(png|jpe?g|gif|webp|bmp|svg)$/i)) {
+							// This is a vault image file - use it directly without re-saving
+							getLogger().log('Found existing vault image file:', filePath);
+							const dataUrl = await this.fileToDataUrl(await this.getFileFromVault(abstractFile));
+							this.showImagePreview(dataUrl, abstractFile.name, filePath);
+							return; // Successfully handled as existing vault file
+						}
+					}
+					
+					// If not found in vault, try to handle as vault file drop (for other formats)
 					const vaultFile = await this.handleVaultFileDrop(dragData);
 					if (vaultFile && vaultFile.type.startsWith('image/')) {
 						getLogger().log('Successfully processed vault file:', vaultFile.name);
 						const dataUrl = await this.fileToDataUrl(vaultFile);
 						// Extract the file path from the vault file processing
-						const filePath = this.extractFilePathFromDragData(dragData);
-						this.showImagePreview(dataUrl, vaultFile.name, filePath);
+						const extractedPath = this.extractFilePathFromDragData(dragData);
+						this.showImagePreview(dataUrl, vaultFile.name, extractedPath);
 						return; // Successfully handled as vault file, exit early
 					}
 				}
@@ -1605,9 +1714,11 @@ export class AIChatView extends ItemView {
 			
 			// Use plugin's other source save location
 			const saveLocation = this.plugin.settings.otherSourceImageLocation || 'screenshots-capture/othersourceimage';
+			getLogger().log('Saving external image to location:', saveLocation);
 			
 			// Ensure save directory exists
 			if (!await adapter.exists(saveLocation)) {
+				getLogger().log('Creating directory:', saveLocation);
 				await vault.createFolder(saveLocation);
 			}
 			
@@ -1633,6 +1744,7 @@ export class AIChatView extends ItemView {
 	private extractFilePathFromDragData(dragData: string): string | null {
 		if (!dragData) return null;
 		
+		getLogger().log('Extracting file path from drag data:', dragData);
 		let filePath = dragData;
 		
 		// Handle obsidian:// protocol URLs
@@ -1644,22 +1756,31 @@ export class AIChatView extends ItemView {
 				getLogger().log('Extracted file path from obsidian URL:', filePath);
 			}
 		}
-		// Remove any other URL encoding or special formatting
+		// Handle file:// URLs  
 		else if (filePath.startsWith('file://')) {
 			filePath = decodeURIComponent(filePath.replace('file://', ''));
 		}
-		
-		// Remove any markdown link formatting like [[filename]] or ![[filename]]
-		filePath = filePath.replace(/^!?\[\[/, '').replace(/\]\]$/, '');
+		// Handle direct image file paths (most common case from vault)
+		else if (filePath.match(/\.(png|jpe?g|gif|webp|bmp|svg)$/i)) {
+			getLogger().log('Direct image file path detected:', filePath);
+		}
+		// Handle markdown link formats
+		else if (filePath.includes('[[') && filePath.includes(']]')) {
+			filePath = filePath.replace(/^!?\[\[/, '').replace(/\]\]$/, '');
+			getLogger().log('Extracted from markdown link:', filePath);
+		}
 		
 		// Clean up the path
 		filePath = filePath.trim();
+		
+		getLogger().log('Cleaned file path:', filePath);
 		
 		// Try to find the file in the vault to get the correct path
 		const vault = this.plugin.app.vault;
 		const abstractFile = vault.getAbstractFileByPath(filePath);
 		
 		if (abstractFile) {
+			getLogger().log('Found file in vault by path:', abstractFile.path);
 			return abstractFile.path;
 		}
 		
@@ -1673,7 +1794,13 @@ export class AIChatView extends ItemView {
 			file.path.endsWith(filePath)
 		);
 		
-		return foundFile ? foundFile.path : filePath;
+		if (foundFile) {
+			getLogger().log('Found file in vault by name/path search:', foundFile.path);
+			return foundFile.path;
+		}
+		
+		getLogger().log('File not found in vault, returning original path:', filePath);
+		return filePath;
 	}
 
 	private async handleVaultFileDrop(data: string): Promise<File | null> {
@@ -1747,6 +1874,14 @@ export class AIChatView extends ItemView {
 			console.error('Failed to handle vault file drop:', error);
 			return null;
 		}
+	}
+
+	private async getFileFromVault(tFile: TFile): Promise<File> {
+		const vault = this.plugin.app.vault;
+		const buffer = await vault.readBinary(tFile);
+		const mimeType = this.getMimeType(tFile.extension);
+		const blob = new Blob([buffer], { type: mimeType });
+		return new File([blob], tFile.name, { type: mimeType });
 	}
 
 	private getMimeType(extension: string): string {
@@ -1932,7 +2067,7 @@ export class AIChatView extends ItemView {
 						if (isCollapsed) {
 							toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
 						} else {
-							toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-9.29 2.5 2.5 0 0 1 4.44-.01Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-9.29 2.5 2.5 0 0 0-4.44-.01Z"/></svg>`;
+							toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`;
 						}
 						thinkingBlock.classList.toggle('collapsed', isCollapsed);
 					});
@@ -2354,6 +2489,32 @@ export class AIChatView extends ItemView {
 					cursor: pointer;
 					margin-bottom: 8px;
 					object-fit: contain;
+					transition: all 0.2s ease;
+					border: 2px solid transparent;
+				}
+
+				/* Image selection and hover effects */
+				.ai-chat-message-image::selection {
+					background: rgba(0, 123, 255, 0.4);
+					outline: 3px solid rgba(0, 123, 255, 0.6);
+					border-radius: 6px;
+				}
+
+				.ai-chat-message-image::-moz-selection {
+					background: rgba(0, 123, 255, 0.4);
+					outline: 3px solid rgba(0, 123, 255, 0.6);
+					border-radius: 6px;
+				}
+
+				.ai-chat-message-image:hover {
+					border-color: rgba(0, 123, 255, 0.3);
+					transform: scale(1.02);
+				}
+
+				/* Enhance selection visibility when part of text selection */
+				.ai-chat-message-content:has(*::selection) .ai-chat-message-image {
+					outline: 2px solid rgba(0, 123, 255, 0.5);
+					outline-offset: 2px;
 				}
 
 				.ai-chat-message-images-grid {
@@ -2375,6 +2536,26 @@ export class AIChatView extends ItemView {
 					max-width: 180px;
 					max-height: 180px;
 					margin-bottom: 0;
+					transition: all 0.2s ease;
+					border: 2px solid transparent;
+				}
+
+				/* Grid image selection and hover effects */
+				.ai-chat-message-image-wrapper .ai-chat-message-image::selection {
+					background: rgba(0, 123, 255, 0.4);
+					outline: 3px solid rgba(0, 123, 255, 0.6);
+					border-radius: 6px;
+				}
+
+				.ai-chat-message-image-wrapper .ai-chat-message-image::-moz-selection {
+					background: rgba(0, 123, 255, 0.4);
+					outline: 3px solid rgba(0, 123, 255, 0.6);
+					border-radius: 6px;
+				}
+
+				.ai-chat-message-image-wrapper .ai-chat-message-image:hover {
+					border-color: rgba(0, 123, 255, 0.3);
+					transform: scale(1.02);
 				}
 
 				.ai-chat-message-image-filename {
