@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, Component, MarkdownView, Modal, Editor } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIManager, AIMessage, AIConversation } from './ai-manager';
 import { ChatHistoryModal } from '../ui/chat-history-modal';
@@ -10,6 +10,7 @@ export const AI_CHAT_VIEW_TYPE = 'ai-chat';
 export class AIChatView extends ItemView {
 	private plugin: ImageCapturePlugin;
 	private aiManager: AIManager;
+	private markdownComponent: Component;
 	
 	// Auto-save management
 	private autoSaveTimer: NodeJS.Timeout | null = null;
@@ -26,6 +27,7 @@ export class AIChatView extends ItemView {
 		super(leaf);
 		this.plugin = plugin;
 		this.aiManager = plugin.aiManager;
+		this.markdownComponent = new Component();
 		
 		// Initialize current mode from settings
 		this.currentMode = plugin.settings.defaultAIChatMode || 'analyze';
@@ -44,10 +46,10 @@ export class AIChatView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		this.updateContent();
+		await this.updateContent();
 	}
 
-	updateContent(): void {
+	async updateContent(): Promise<void> {
 		const container = this.containerEl.children[1] as HTMLElement;
 		
 		// Check if conversation content has changed and reset auto-save tracking if so
@@ -64,14 +66,14 @@ export class AIChatView extends ItemView {
 		
 		if (!hasExistingStructure) {
 			// First time setup - need to create full structure
-			this.fullRender(container);
+			await this.fullRender(container);
 		} else {
 			// Partial update - only update model selector and chat area
-			this.partialUpdate(container);
+			await this.partialUpdate(container);
 		}
 	}
 
-	private fullRender(container: HTMLElement): void {
+	private async fullRender(container: HTMLElement): Promise<void> {
 		// Save current image queue before clearing container
 		let savedImageQueue: any[] = [];
 		const oldInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
@@ -103,7 +105,7 @@ export class AIChatView extends ItemView {
 			this.clearAutoSaveTimer();
 		} else {
 			// Show conversation
-			this.renderConversation(chatArea, conversation);
+			await this.renderConversation(chatArea, conversation);
 			
 			// Start auto-save timer for active conversations
 			this.startAutoSaveTimer();
@@ -130,7 +132,7 @@ export class AIChatView extends ItemView {
 		}
 	}
 
-	private partialUpdate(container: HTMLElement): void {
+	private async partialUpdate(container: HTMLElement): Promise<void> {
 		// Update the model selector in-place to maintain consistent styling
 		const modelSelectorContainer = container.querySelector('.model-selector-container');
 		if (modelSelectorContainer) {
@@ -153,7 +155,7 @@ export class AIChatView extends ItemView {
 				this.renderEmptyState(chatArea);
 				this.clearAutoSaveTimer();
 			} else {
-				this.renderConversation(chatArea, conversation);
+				await this.renderConversation(chatArea, conversation);
 				this.startAutoSaveTimer();
 				this.currentConversationId = conversation.id;
 			}
@@ -384,7 +386,7 @@ export class AIChatView extends ItemView {
 		// Clear current conversation and start fresh
 		this.aiManager.cleanup();
 		this.currentConversationId = null;
-		this.updateContent();
+		await this.updateContent();
 	}
 
 	private async sendTextMessage(message: string): Promise<void> {
@@ -392,8 +394,8 @@ export class AIChatView extends ItemView {
 			// Create or get current conversation
 			let conversation = this.aiManager.getCurrentConversationData();
 			if (!conversation) {
-				// Create a new text-only conversation
-				conversation = this.aiManager.createNewConversation('Text Chat');
+				// Create a new text-only conversation with temporary title
+				conversation = this.aiManager.createNewConversation('新对话');
 			}
 
 			// Add user message
@@ -404,7 +406,7 @@ export class AIChatView extends ItemView {
 				timestamp: new Date()
 			};
 			conversation.messages.push(userMessage);
-			this.updateContent();
+			await this.updateContent();
 
 			// Add typing indicator
 			const typingMessage = {
@@ -415,7 +417,7 @@ export class AIChatView extends ItemView {
 				isTyping: true
 			};
 			conversation.messages.push(typingMessage);
-			this.updateContent();
+			await this.updateContent();
 
 			// Call AI API for text-only response with context
 			const response = await this.callAIForText(message, conversation);
@@ -434,7 +436,11 @@ export class AIChatView extends ItemView {
 				timestamp: new Date()
 			};
 			conversation.messages.push(assistantMessage);
-			this.updateContent();
+			
+			// Update conversation title with smart title based on content
+			this.aiManager.updateConversationTitle(conversation.id);
+			
+			await this.updateContent();
 
 		} catch (error) {
 			console.error('Failed to send text message:', error);
@@ -453,22 +459,24 @@ export class AIChatView extends ItemView {
 					timestamp: new Date()
 				};
 				conversation.messages.push(errorMessage);
-				this.updateContent();
+				await this.updateContent();
 			}
 		}
 	}
 
 	private async callAIForText(message: string, conversation: AIConversation): Promise<string> {
 		// Use the new context-aware API for text-only conversations
-		return await this.aiManager.callAIWithContext(conversation, message);
+		// Include modeprompt since this is from the send area
+		return await this.aiManager.callAIWithContext(conversation, message, undefined, undefined, true);
 	}
 
-	private renderConversation(container: HTMLElement, conversation: AIConversation): void {
+	private async renderConversation(container: HTMLElement, conversation: AIConversation): Promise<void> {
 		const messagesContainer = container.createEl('div', { cls: 'ai-chat-messages' });
 
-		conversation.messages.forEach(message => {
-			this.renderMessage(messagesContainer, message);
-		});
+		// Render messages sequentially to maintain order
+		for (const message of conversation.messages) {
+			await this.renderMessage(messagesContainer, message);
+		}
 
 		// Scroll to bottom
 		messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -505,28 +513,134 @@ export class AIChatView extends ItemView {
 		return null;
 	}
 
-	private renderMessage(container: HTMLElement, message: AIMessage): void {
+	private async renderMessage(container: HTMLElement, message: AIMessage): Promise<void> {
 		const messageEl = container.createEl('div', { 
-			cls: `ai-chat-message ai-chat-message-${message.type}` 
+			cls: `ai-chat-message ai-chat-message-block` 
 		});
 
-		// Message header with timestamp and copy button
-		const messageHeader = messageEl.createEl('div', { cls: 'ai-chat-message-header' });
-		messageHeader.createEl('span', { 
-			text: message.type === 'user' ? 'You' : 'AI Assistant',
-			cls: 'ai-chat-message-sender'
-		});
+		// Message block with avatar on left and content on right
+		const messageRow = messageEl.createEl('div', { cls: 'ai-chat-message-row' });
 		
-		const headerRight = messageHeader.createEl('div', { cls: 'ai-chat-message-header-right' });
-		headerRight.createEl('span', { 
+		// Avatar section (always on left)
+		const avatarSection = messageRow.createEl('div', { cls: 'ai-chat-message-avatar' });
+		const avatarIcon = avatarSection.createEl('div', { cls: 'ai-chat-avatar-icon' });
+		
+		if (message.type === 'user') {
+			// User icon
+			avatarIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+			avatarIcon.addClass('user-avatar');
+		} else {
+			// AI Assistant icon
+			avatarIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><circle cx="12" cy="5" r="2"/><path d="m12 7-2 4 2 4 2-4-2-4z"/></svg>`;
+			avatarIcon.addClass('ai-avatar');
+		}
+
+		// Content section (full width minus avatar)
+		const contentSection = messageRow.createEl('div', { cls: 'ai-chat-message-content-section' });
+		
+		// Header with timestamp on left and action buttons on right
+		const messageHeader = contentSection.createEl('div', { cls: 'ai-chat-message-header' });
+		messageHeader.createEl('span', { 
 			text: this.formatTime(message.timestamp),
 			cls: 'ai-chat-message-time'
 		});
+		
+		// Action buttons (4 buttons as requested) - moved to header right
+		const actionButtons = messageHeader.createEl('div', { cls: 'ai-chat-message-actions' });
 
 		// Message content with text selection support
-		const messageContent = messageEl.createEl('div', { 
+		const messageContent = contentSection.createEl('div', { 
 			cls: 'ai-chat-message-content',
 			attr: { 'data-message-id': message.id }
+		});
+		
+		// Check if message is currently being typed (AI response in progress)
+		const isTyping = (message as any).isTyping || false;
+		
+		// 1. Insert at cursor button
+		const insertBtn = actionButtons.createEl('button', { 
+			cls: 'message-action-btn',
+			attr: { 
+				title: t('aiChat.insertToCursorButton'),
+				'data-tooltip': t('aiChat.insertToCursorButton')
+			}
+
+		});
+		insertBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
+		if (isTyping) {
+			insertBtn.disabled = true;
+			insertBtn.style.opacity = '0.4';
+			insertBtn.style.cursor = 'not-allowed';
+		}
+		
+		// 2. Copy button  
+		const copyBtn = actionButtons.createEl('button', { 
+			cls: 'message-action-btn',
+			attr: { 
+				title: t('aiChat.copyMessageButton'),
+				'data-tooltip': t('aiChat.copyMessageButton')
+			}
+		});
+		copyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+		if (isTyping) {
+			copyBtn.disabled = true;
+			copyBtn.style.opacity = '0.4';
+			copyBtn.style.cursor = 'not-allowed';
+		}
+		
+		// 3. Toggle edit/read view button
+		const editBtn = actionButtons.createEl('button', { 
+			cls: 'message-action-btn',
+			attr: { 
+				title: t('aiChat.switchEditViewButton'),
+				'data-tooltip': t('aiChat.switchEditViewButton')
+			}
+
+		});
+		editBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+		if (isTyping) {
+			editBtn.disabled = true;
+			editBtn.style.opacity = '0.4';
+			editBtn.style.cursor = 'not-allowed';
+		}
+		
+		// 4. Delete button
+		const deleteBtn = actionButtons.createEl('button', { 
+			cls: 'message-action-btn delete-btn',
+			attr: { 
+				title: t('aiChat.deleteMessageButton'),
+				'data-tooltip': t('aiChat.deleteMessageButton')
+			}
+		});
+		deleteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c0 1 1 2 2 2v2"/></svg>`;
+		if (isTyping) {
+			deleteBtn.disabled = true;
+			deleteBtn.style.opacity = '0.4';
+			deleteBtn.style.cursor = 'not-allowed';
+		}
+
+		// Add click handlers for buttons
+		copyBtn.addEventListener('click', async () => {
+			if (copyBtn.disabled) return; // Prevent action if button is disabled
+			await this.copyMessage(message);
+		});
+
+		// Insert to cursor handler
+		insertBtn.addEventListener('click', async () => {
+			if (insertBtn.disabled) return; // Prevent action if button is disabled
+			await this.insertMessageAtCursor(message);
+		});
+
+		// Toggle edit/read view handler
+		editBtn.addEventListener('click', async () => {
+			if (editBtn.disabled) return; // Prevent action if button is disabled
+			await this.toggleMessageEditMode(messageContent, message, editBtn);
+		});
+
+		// Delete message handler
+		deleteBtn.addEventListener('click', async () => {
+			if (deleteBtn.disabled) return; // Prevent action if button is disabled
+			await this.deleteMessage(message.id);
 		});
 
 		// Enable text selection for the entire message area
@@ -537,168 +651,6 @@ export class AIChatView extends ItemView {
 		});
 		messageEl.setAttribute('tabindex', '0'); // Make it focusable for keyboard events
 
-		// Show image if present
-		if (message.image) {
-			// Check if there are multiple images
-			const allImages = (message as any).images;
-			if (allImages && allImages.length > 1) {
-				// Display all images in a grid
-				const imagesContainer = messageContent.createEl('div', { cls: 'ai-chat-message-images-grid' });
-				
-				allImages.forEach((imageData: any, index: number) => {
-					const imageWrapper = imagesContainer.createEl('div', { cls: 'ai-chat-message-image-wrapper' });
-					
-					// Use dataUrl for display in chat, as local paths need special handling in Obsidian
-					let imageSrc = imageData.dataUrl;
-					if (!imageSrc && imageData.localPath) {
-						// If no dataUrl available, try to get vault resource URL
-						imageSrc = this.getVaultResourceUrl(imageData.localPath) || imageData.localPath;
-					}
-					
-					const imageEl = imageWrapper.createEl('img', { 
-						cls: 'ai-chat-message-image',
-						attr: { src: imageSrc, alt: imageData.fileName || 'Image' }
-					});
-					
-					// Make the image draggable and set drag data for proper Obsidian integration
-					imageEl.draggable = true;
-					imageEl.addEventListener('dragstart', (e) => {
-						getLogger().log('Message image drag started:', imageData.fileName, 'localPath:', imageData.localPath);
-						
-						if (imageData.localPath && imageData.localPath.trim()) {
-							// Try multiple dataTransfer formats for maximum compatibility
-							const localPath = imageData.localPath;
-							
-							// Verify the file exists before drag
-							const vault = this.plugin.app.vault;
-							const file = vault.getAbstractFileByPath(localPath);
-							
-							if (file) {
-								getLogger().log('✅ Message image file exists in vault:', localPath);
-								
-								// 1. Standard text/plain with wikilink format for internal links
-								e.dataTransfer?.setData('text/plain', `![[${file.name}]]`);
-								
-								// 2. Alternative: full path
-								e.dataTransfer?.setData('text/uri-list', localPath);
-								
-								// 3. Try Obsidian's wikilink format in HTML
-								e.dataTransfer?.setData('text/html', `![[${localPath}]]`);
-								
-								// 4. File reference format
-								e.dataTransfer?.setData('application/x-obsidian-file', JSON.stringify({
-									type: 'file',
-									path: localPath,
-									name: imageData.fileName
-								}));
-								
-								getLogger().log('Set drag data for existing vault message image:', file.name);
-							} else {
-								getLogger().log('⚠️ Message image file not found in vault, using path:', localPath);
-								// Fallback to original behavior
-								e.dataTransfer?.setData('text/plain', localPath);
-							}
-							
-							getLogger().log('Set multiple drag data formats for message image:', localPath);
-						} else {
-							// Fallback to data URL if no local path
-							getLogger().log('No localPath for message image, using fallback');
-							e.dataTransfer?.setData('text/plain', imageData.dataUrl || imageSrc);
-						}
-					});
-					
-					// For modal display, prefer dataUrl, fallback to local path
-					imageEl.addEventListener('click', () => {
-						const modalSrc = imageData.dataUrl || imageSrc;
-						this.showImageModal(modalSrc);
-					});
-					
-					// Add filename label
-					const fileNameEl = imageWrapper.createEl('div', { 
-						cls: 'ai-chat-message-image-filename',
-						text: imageData.fileName || `Image ${index + 1}`
-					});
-				});
-			} else {
-				// Single image - prioritize dataUrl for display
-				const singleImageData = (message as any).imageData;
-				let imageSrc = message.image;
-				
-				// Prefer dataUrl if available in imageData or images array
-				if (singleImageData && singleImageData.dataUrl) {
-					imageSrc = singleImageData.dataUrl;
-				} else if ((message as any).images && (message as any).images[0] && (message as any).images[0].dataUrl) {
-					imageSrc = (message as any).images[0].dataUrl;
-				} else if (message.image && message.image.startsWith('data:')) {
-					imageSrc = message.image;
-				} else {
-					// Try to get vault resource URL for local paths
-					imageSrc = this.getVaultResourceUrl(message.image) || message.image;
-				}
-					
-				const imageEl = messageContent.createEl('img', { 
-					cls: 'ai-chat-message-image',
-					attr: { src: imageSrc, alt: 'Screenshot' }
-				});
-				
-				// Make the image draggable and set drag data for proper Obsidian integration
-				imageEl.draggable = true;
-				imageEl.addEventListener('dragstart', (e) => {
-					const imageData = singleImageData || ((message as any).images && (message as any).images[0]);
-					getLogger().log('Single message image drag started, imageData:', imageData);
-					
-					if (imageData && imageData.localPath && imageData.localPath.trim()) {
-						// Try multiple dataTransfer formats for maximum compatibility
-						const localPath = imageData.localPath;
-						
-						// Verify the file exists before drag
-						const vault = this.plugin.app.vault;
-						const file = vault.getAbstractFileByPath(localPath);
-						
-						if (file) {
-							getLogger().log('✅ Single message image file exists in vault:', localPath);
-							
-							// 1. Standard text/plain with wikilink format for internal links
-							e.dataTransfer?.setData('text/plain', `![[${file.name}]]`);
-							
-							// 2. Alternative: full path
-							e.dataTransfer?.setData('text/uri-list', localPath);
-							
-							// 3. Try Obsidian's wikilink format in HTML
-							e.dataTransfer?.setData('text/html', `![[${localPath}]]`);
-							
-							// 4. File reference format
-							e.dataTransfer?.setData('application/x-obsidian-file', JSON.stringify({
-								type: 'file',
-								path: localPath,
-								name: imageData.fileName || 'Image'
-							}));
-							
-							getLogger().log('Set drag data for existing vault single message image:', file.name);
-						} else {
-							getLogger().log('⚠️ Single message image file not found in vault, using path:', localPath);
-							// Fallback to original behavior
-							e.dataTransfer?.setData('text/plain', localPath);
-						}
-						
-						getLogger().log('Set multiple drag data formats for single message image:', localPath);
-					} else {
-						// Fallback to using imageSrc
-						getLogger().log('No localPath for single message image, using fallback:', imageSrc);
-						e.dataTransfer?.setData('text/plain', imageSrc);
-					}
-				});
-				
-				imageEl.addEventListener('click', () => {
-					// For modal, prefer dataUrl if available, otherwise use current src
-					const modalSrc = singleImageData?.dataUrl || 
-									((message as any).images && (message as any).images[0]?.dataUrl) || 
-									imageSrc;
-					this.showImageModal(modalSrc!);
-				});
-			}
-		}
-
 		// Show text content or typing indicator
 		if ((message as any).isTyping) {
 			const typingEl = messageContent.createEl('div', { cls: 'ai-chat-typing-indicator' });
@@ -708,9 +660,8 @@ export class AIChatView extends ItemView {
 				<span class="typing-dot"></span>
 			`;
 		} else if (message.content) {
-			const textEl = messageContent.createEl('div', { cls: 'ai-chat-message-text' });
-			// Support basic markdown rendering
-			this.renderMarkdown(textEl, message.content);
+			// Use new markdown rendering that handles both images and text
+			await this.renderMessageContentFromMarkdown(messageContent, message);
 		}
 	}
 
@@ -1957,6 +1908,10 @@ export class AIChatView extends ItemView {
 				timestamp: new Date()
 			};
 			conversation.messages.push(assistantMessage);
+			
+			// Update conversation title with smart title based on content
+			this.aiManager.updateConversationTitle(conversation.id);
+			
 			this.updateContent();
 
 		} catch (error) {
@@ -1982,41 +1937,129 @@ export class AIChatView extends ItemView {
 
 	private async callAIForFollowUp(message: string, imageDataUrl: string, conversation: AIConversation): Promise<string> {
 		// Use the new context-aware API for follow-up questions
-		return await this.aiManager.callAIWithContext(conversation, message, [imageDataUrl]);
+		// Don't include modeprompt for follow-up calls (only initial send area calls should have it)
+		return await this.aiManager.callAIWithContext(conversation, message, [imageDataUrl], undefined, false);
 	}
 
-	private renderMarkdown(container: HTMLElement, content: string): void {
+	private async renderMarkdown(container: HTMLElement, content: string): Promise<void> {
 		// First, extract and render thinking blocks
-		const processedContent = this.extractAndRenderThinkingBlocks(container, content);
+		let processedContent = this.extractAndRenderThinkingBlocks(container, content);
 		
-		// Then render the rest as normal markdown
-		const lines = processedContent.split('\n');
+		// LaTeX delimiter conversion - be very precise about what we capture
+		// \[ ... \] -> $$...$$  (capture content inside brackets)
+		processedContent = processedContent.replace(/\\\(\s*([^]*?)\s*\\\)/g, function(match, formula) {
+			return ' $' + formula.trim() + '$ ';
+		});
 		
-		for (const line of lines) {
-			if (line.startsWith('# ')) {
-				container.createEl('h1', { text: line.substring(2) });
-			} else if (line.startsWith('## ')) {
-				container.createEl('h2', { text: line.substring(3) });
-			} else if (line.startsWith('### ')) {
-				container.createEl('h3', { text: line.substring(4) });
-			} else if (line.startsWith('- ') || line.startsWith('* ')) {
-				const ul = container.querySelector('ul:last-child') as HTMLElement || container.createEl('ul');
-				ul.createEl('li', { text: line.substring(2) });
-			} else if (line.match(/^\d+\. /)) {
-				const ol = container.querySelector('ol:last-child') as HTMLElement || container.createEl('ol');
-				ol.createEl('li', { text: line.replace(/^\d+\. /, '') });
-			} else if (line.trim() === '') {
-				container.createEl('br');
-			} else {
-				const p = container.createEl('p');
-				// Handle bold and italic
-				let text = line;
-				text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-				text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-				text = text.replace(/`(.*?)`/g, '<code>$1</code>');
-				p.innerHTML = text;
-			}
+		// \( ... \) -> $...$ (capture content inside parentheses, exclude the parentheses themselves)
+		processedContent = processedContent.replace(/\\\[\s*([^]*?)\s*\\\]/g, function(match, formula) {
+			return ' $$' + formula.trim() + '$$ ';
+		});
+		
+		
+		// Create a simple container with minimal interference
+		const markdownContainer = container.createEl('div', { cls: 'markdown-rendered' });
+		
+		try {
+			// Let Obsidian handle everything naturally
+			await MarkdownRenderer.renderMarkdown(
+				processedContent,
+				markdownContainer,
+				'', 
+				this.markdownComponent
+			);
+			
+		} catch (error) {
+			console.error('Failed to render markdown:', error);
+			markdownContainer.createEl('div', { text: processedContent });
 		}
+	}
+
+	private styleRenderedMarkdown(container: HTMLElement): void {
+		// Add custom CSS classes for better integration with the chat interface
+		container.addClass('ai-chat-markdown-content');
+		
+		// Ensure proper spacing for elements
+		const elements = container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table');
+		elements.forEach((el) => {
+			(el as HTMLElement).style.marginBottom = '8px';
+			(el as HTMLElement).style.marginTop = '0';
+		});
+		
+		// Style code blocks
+		const codeBlocks = container.querySelectorAll('pre');
+		codeBlocks.forEach((block) => {
+			(block as HTMLElement).style.background = 'var(--background-secondary)';
+			(block as HTMLElement).style.border = '1px solid var(--background-modifier-border)';
+			(block as HTMLElement).style.borderRadius = '4px';
+			(block as HTMLElement).style.padding = '8px';
+			(block as HTMLElement).style.fontSize = '14px';
+			(block as HTMLElement).style.fontFamily = 'var(--font-monospace)';
+		});
+		
+		// Style inline code
+		const inlineCodes = container.querySelectorAll('code:not(pre code)');
+		inlineCodes.forEach((code) => {
+			(code as HTMLElement).style.background = 'var(--background-secondary)';
+			(code as HTMLElement).style.padding = '2px 4px';
+			(code as HTMLElement).style.borderRadius = '3px';
+			(code as HTMLElement).style.fontSize = '0.9em';
+			(code as HTMLElement).style.fontFamily = 'var(--font-monospace)';
+		});
+		
+		// Style tables
+		const tables = container.querySelectorAll('table');
+		tables.forEach((table) => {
+			(table as HTMLElement).style.borderCollapse = 'collapse';
+			(table as HTMLElement).style.width = '100%';
+			(table as HTMLElement).style.fontSize = '14px';
+		});
+		
+		// Style table cells
+		const tableCells = container.querySelectorAll('td, th');
+		tableCells.forEach((cell) => {
+			(cell as HTMLElement).style.border = '1px solid var(--background-modifier-border)';
+			(cell as HTMLElement).style.padding = '6px 8px';
+		});
+		
+		// Style table headers
+		const tableHeaders = container.querySelectorAll('th');
+		tableHeaders.forEach((header) => {
+			(header as HTMLElement).style.background = 'var(--background-secondary)';
+			(header as HTMLElement).style.fontWeight = '600';
+		});
+		
+		// Style blockquotes
+		const blockquotes = container.querySelectorAll('blockquote');
+		blockquotes.forEach((quote) => {
+			(quote as HTMLElement).style.borderLeft = '4px solid var(--interactive-accent)';
+			(quote as HTMLElement).style.paddingLeft = '12px';
+			(quote as HTMLElement).style.marginLeft = '0';
+			(quote as HTMLElement).style.fontStyle = 'italic';
+			(quote as HTMLElement).style.color = 'var(--text-muted)';
+		});
+		
+		// Ensure LaTeX math renders properly
+		const mathElements = container.querySelectorAll('.math, .math-block, .math-inline');
+		mathElements.forEach((math) => {
+			(math as HTMLElement).style.fontSize = '16px';
+			(math as HTMLElement).style.lineHeight = '1.4';
+		});
+		
+		// Handle links
+		const links = container.querySelectorAll('a');
+		links.forEach((link) => {
+			(link as HTMLElement).style.color = 'var(--interactive-accent)';
+			(link as HTMLElement).style.textDecoration = 'none';
+			
+			// Add hover effect
+			link.addEventListener('mouseenter', () => {
+				(link as HTMLElement).style.textDecoration = 'underline';
+			});
+			link.addEventListener('mouseleave', () => {
+				(link as HTMLElement).style.textDecoration = 'none';
+			});
+		});
 	}
 
 	private extractAndRenderThinkingBlocks(container: HTMLElement, content: string): string {
@@ -2118,7 +2161,22 @@ export class AIChatView extends ItemView {
 	}
 
 	private formatTime(date: Date): string {
-		return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		const today = new Date();
+		const yesterday = new Date(today);
+		yesterday.setDate(yesterday.getDate() - 1);
+		
+		// Check if the date is today
+		if (date.toDateString() === today.toDateString()) {
+			return '今天 ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		}
+		// Check if the date is yesterday
+		else if (date.toDateString() === yesterday.toDateString()) {
+			return '昨天 ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		}
+		// For other dates, show full date and time
+		else {
+			return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		}
 	}
 
 	private showImageModal(imageSrc: string): void {
@@ -2220,8 +2278,10 @@ export class AIChatView extends ItemView {
 
 				.ai-chat-area {
 					flex: 1;
-					overflow-y: auto;
+					overflow-y: scroll;
 					padding: 16px 0;
+					/* Always reserve space for scrollbar to prevent layout shifts */
+					scrollbar-gutter: stable;
 				}
 
 				.ai-chat-empty {
@@ -2414,26 +2474,94 @@ export class AIChatView extends ItemView {
 				}
 
 				.ai-chat-messages {
+					flex: 1;
 					display: flex;
 					flex-direction: column;
 					gap: 16px;
 					padding: 0 16px;
 					max-height: 100%;
-					overflow-y: auto;
+					overflow-y: scroll; /* Always show scrollbar to prevent width jumping */
+					scrollbar-gutter: stable; /* Reserve space for scrollbar */
+				}
+				
+				/* Custom scrollbar styling for better appearance */
+				.ai-chat-messages::-webkit-scrollbar {
+					width: 8px;
+				}
+				
+				.ai-chat-messages::-webkit-scrollbar-track {
+					background: var(--background-secondary);
+					border-radius: 4px;
+				}
+				
+				.ai-chat-messages::-webkit-scrollbar-thumb {
+					background: var(--background-modifier-border);
+					border-radius: 4px;
+				}
+				
+				.ai-chat-messages::-webkit-scrollbar-thumb:hover {
+					background: var(--background-modifier-border-hover);
 				}
 
+				/* New message block layout */
 				.ai-chat-message {
 					display: flex;
 					flex-direction: column;
+					width: 100%;
+					background: var(--background-secondary);
+					border: 2px solid var(--background-modifier-border);
+					border-radius: 6px;
+					padding: 6px;
+					transition: all 0.2s ease;
+					margin-bottom: 8px;
+				}
+
+				.ai-chat-message:hover {
+					border-color: var(--background-modifier-hover);
+					box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+				}
+
+				.ai-chat-message-row {
+					display: flex;
 					gap: 8px;
+					width: 100%;
 				}
 
-				.ai-chat-message-user {
-					align-items: flex-end;
+				/* Avatar section */
+				.ai-chat-message-avatar {
+					flex-shrink: 0;
+					width: 32px;
+					display: flex;
+					flex-direction: column;
+					align-items: center;
 				}
 
-				.ai-chat-message-assistant {
-					align-items: flex-start;
+				.ai-chat-avatar-icon {
+					width: 28px;
+					height: 28px;
+					border-radius: 50%;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+				}
+
+				.ai-chat-avatar-icon.user-avatar {
+					background: var(--background-secondary);
+					color: var(--text-muted);
+				}
+
+				.ai-chat-avatar-icon.ai-avatar {
+					background: var(--background-secondary);
+					color: var(--text-muted);
+				}
+
+				/* Content section takes remaining width */
+				.ai-chat-message-content-section {
+					flex: 1;
+					display: flex;
+					flex-direction: column;
+					gap: 4px;
+					min-width: 0;
 				}
 
 				.ai-chat-message-header {
@@ -2442,44 +2570,113 @@ export class AIChatView extends ItemView {
 					align-items: center;
 					font-size: 12px;
 					color: var(--text-muted);
-					margin-bottom: 8px;
-					padding-bottom: 4px;
-					border-bottom: 1px solid var(--background-modifier-border);
-					gap: 16px; /* Add consistent gap between sender and time */
-				}
-
-				.ai-chat-message-header-right {
-					display: flex;
-					align-items: center;
-					gap: 12px; /* Increase gap between elements in header right */
-				}
-
-				.ai-chat-message-sender {
-					font-weight: 600;
-					flex-shrink: 0; /* Prevent shrinking */
+					margin-bottom: 6px;
+					padding: 4px 0;
+					min-height: 24px;
 				}
 
 				.ai-chat-message-time {
-					flex-shrink: 0; /* Prevent shrinking */
 					opacity: 0.8;
+					font-size: 11px;
+					font-weight: 500;
 				}
 
 				.ai-chat-message-content {
-					background: var(--background-primary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 8px;
-					padding: 12px;
-					max-width: 80%;
+					background: transparent;
+					border: none;
+					padding: 0;
+					width: 100%;
+					line-height: 1.3;
+					font-size: 14px;
 				}
 
-				.ai-chat-message-user .ai-chat-message-content {
-					background: var(--interactive-accent);
-					color: var(--text-on-accent);
-					align-self: flex-end;
+				/* Action buttons - now in header on right */
+				.ai-chat-message-actions {
+					display: flex;
+					gap: 2px;
+					opacity: 0.6;
+					transition: opacity 0.2s ease;
 				}
 
-				.ai-chat-message-assistant .ai-chat-message-content {
-					align-self: flex-start;
+				.ai-chat-message:hover .ai-chat-message-actions {
+					opacity: 1;
+				}
+
+				.message-action-btn {
+					background: transparent !important;
+					border: none !important;
+					padding: 6px !important;
+					border-radius: 4px !important;
+					color: #9CA3AF !important;
+					cursor: pointer !important;
+					transition: all 0.2s ease !important;
+					display: flex !important;
+					align-items: center !important;
+					justify-content: center !important;
+					width: 24px !important;
+					height: 24px !important;
+					position: relative !important;
+					outline: none !important;
+					box-shadow: none !important;
+				}
+
+				.message-action-btn:hover {
+					background: transparent !important;
+					color: #1F2937 !important;
+					border: none !important;
+					outline: none !important;
+					box-shadow: none !important;
+				}
+
+				.theme-dark .message-action-btn {
+					color: #6B7280 !important;
+				}
+
+				.theme-dark .message-action-btn:hover {
+					color: #F9FAFB !important;
+				}
+
+				.message-action-btn:disabled {
+					opacity: 0.4 !important;
+					cursor: not-allowed !important;
+					pointer-events: auto !important;
+				}
+
+				.message-action-btn:disabled:hover {
+					background: transparent !important;
+					color: #9CA3AF !important;
+				}
+
+				.theme-dark .message-action-btn:disabled:hover {
+					color: #6B7280 !important;
+				}
+
+				.message-action-btn.delete-btn:hover {
+					color: var(--text-error) !important;
+				}
+
+				/* Enhanced tooltip styles */
+				.message-action-btn::after {
+					content: attr(data-tooltip);
+					position: absolute;
+					left: 50%;
+					top: 100%;
+					margin-top: 8px;
+					transform: translateX(-50%);
+					background: #374151;
+					color: white;
+					padding: 6px 8px;
+					border-radius: 4px;
+					font-size: 12px;
+					white-space: nowrap;
+					opacity: 0;
+					pointer-events: none;
+					transition: opacity 0.2s ease;
+					z-index: 1000;
+				}
+
+				.message-action-btn:hover::after {
+					opacity: 1;
 				}
 
 				.ai-chat-message-image {
@@ -2578,11 +2775,13 @@ export class AIChatView extends ItemView {
 				}
 
 				.ai-chat-message-text {
-					line-height: 1.4;
+					line-height: 1.3;
+					font-size: 14px;
 				}
 
 				.ai-chat-message-text p {
-					margin: 0 0 8px 0;
+					margin: 0 0 4px 0;
+					line-height: 1.3;
 				}
 
 				.ai-chat-message-text p:last-child {
@@ -2592,19 +2791,25 @@ export class AIChatView extends ItemView {
 				.ai-chat-message-text h1,
 				.ai-chat-message-text h2,
 				.ai-chat-message-text h3 {
-					margin: 8px 0 4px 0;
+					margin: 6px 0 3px 0;
+					line-height: 1.2;
 				}
 
 				.ai-chat-message-text ul,
 				.ai-chat-message-text ol {
-					margin: 8px 0;
-					padding-left: 20px;
+					margin: 4px 0;
+					padding-left: 16px;
+					line-height: 1.3;
+				}
+
+				.ai-chat-message-text li {
+					margin: 2px 0;
 				}
 
 				.ai-chat-message-text code {
 					background: var(--background-secondary);
-					padding: 2px 4px;
-					border-radius: 3px;
+					padding: 1px 3px;
+					border-radius: 2px;
 					font-family: var(--font-monospace);
 					font-size: 0.9em;
 				}
@@ -2716,8 +2921,9 @@ export class AIChatView extends ItemView {
 				.ai-chat-action-btn::after {
 					content: attr(data-tooltip);
 					position: absolute;
-					bottom: 100%;
 					left: 50%;
+					bottom: 100%;
+					margin-bottom: 8px;
 					transform: translateX(-50%);
 					background: #374151;
 					color: white;
@@ -2728,7 +2934,6 @@ export class AIChatView extends ItemView {
 					opacity: 0;
 					pointer-events: none;
 					transition: opacity 0.2s ease;
-					margin-bottom: 8px;
 					z-index: 1000;
 				}
 
@@ -2826,76 +3031,7 @@ export class AIChatView extends ItemView {
 					color: #6B7280; /* Appropriate gray for dark theme */
 				}
 
-				/* Send button - completely borderless */
-				.ai-chat-send-button-embedded {
-					position: absolute;
-					right: 8px;
-					bottom: 8px;
-					background: transparent !important;
-					border: none !important;
-					outline: none !important;
-					box-shadow: none !important;
-					color: #D1D5DB; /* Lighter gray default */
-					font-size: 16px;
-					padding: 6px;
-					border-radius: 0;
-					cursor: pointer;
-					transition: color 0.2s ease;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					width: 32px;
-					height: 32px;
-				}
-
-				.ai-chat-send-button-embedded:hover:not(:disabled) {
-					color: #1F2937 !important; /* Darker black on hover */
-					background: transparent !important;
-					border: none !important;
-					outline: none !important;
-					box-shadow: none !important;
-				}
-
-				.ai-chat-send-button-embedded:focus {
-					outline: none !important;
-					border: none !important;
-					box-shadow: none !important;
-				}
-
-				.theme-dark .ai-chat-send-button-embedded {
-					color: #6B7280; /* Lighter gray for dark theme */
-				}
-
-				.theme-dark .ai-chat-send-button-embedded:hover:not(:disabled) {
-					color: #F9FAFB; /* Light color on hover in dark theme */
-				}
-
-				.ai-chat-send-button-embedded:disabled {
-					color: #9CA3AF; /* Slightly darker when disabled */
-					cursor: not-allowed;
-				}
-
-				/* Send button tooltip - remove content to allow dynamic tooltips */
-				.ai-chat-send-button-embedded .send-tooltip {
-					position: absolute;
-					bottom: 100%;
-					right: 0;
-					background: #374151;
-					color: white;
-					padding: 6px 8px;
-					border-radius: 4px;
-					font-size: 12px;
-					white-space: nowrap;
-					opacity: 0;
-					pointer-events: none;
-					transition: opacity 0.2s ease;
-					margin-bottom: 8px;
-					z-index: 1000;
-				}
-
-				.ai-chat-send-button-embedded:hover .send-tooltip {
-					opacity: 1;
-				}
+				
 
 				/* Bottom row - revised layout */
 				.ai-chat-bottom-row {
@@ -3457,6 +3593,12 @@ export class AIChatView extends ItemView {
 					-webkit-user-select: text;
 					-moz-user-select: text;
 					-ms-user-select: text;
+					word-wrap: break-word;
+					overflow-wrap: break-word;
+					word-break: break-word;
+					white-space: pre-wrap;
+					max-width: 100%;
+					overflow-x: hidden;
 				}
 
 				/* Improve text selection visibility */
@@ -3565,13 +3707,144 @@ export class AIChatView extends ItemView {
 					color: var(--text-accent);
 				}
 
-				.ai-thinking-text code {
+				/* Markdown rendering with extremely compact spacing */
+				.markdown-rendered p {
+					margin: 0.1em 0 !important;
+					line-height: 1.3 !important;
+				}
+				
+				.markdown-rendered h1 { 
+					margin: 0.3em 0 0.05em 0 !important;
+					line-height: 1.1 !important;
+					font-size: 1.4em !important;
+				}
+				
+				.markdown-rendered h2 { 
+					margin: 0.25em 0 0.05em 0 !important;
+					line-height: 1.1 !important;
+					font-size: 1.25em !important;
+				}
+				
+				.markdown-rendered h3 { 
+					margin: 0.2em 0 0.03em 0 !important;
+					line-height: 1.1 !important;
+					font-size: 1.15em !important;
+				}
+				
+				.markdown-rendered h4,
+				.markdown-rendered h5,
+				.markdown-rendered h6 {
+					margin: 0.15em 0 0.03em 0 !important;
+					line-height: 1.1 !important;
+					font-size: 1.05em !important;
+				}
+				
+				/* Extremely compact lists */
+				.markdown-rendered ul,
+				.markdown-rendered ol {
+					margin: 0.1em 0 !important;
+					padding-left: 1.5em !important; /* Increased to prevent bullet cutoff */
+					margin-left: 0 !important;
+				}
+				
+				.markdown-rendered li {
+					margin: 0 !important;
+					padding: 0 !important;
+					line-height: 1.3 !important;
+					list-style-position: outside !important; /* Ensure bullets are outside */
+				}
+				
+				.markdown-rendered li p {
+					margin: 0 !important;
+					padding: 0 !important;
+				}
+				
+				/* Nested lists even more compact */
+				.markdown-rendered li ul,
+				.markdown-rendered li ol {
+					margin: 0 !important;
+					padding-left: 1.2em !important; /* Slightly less for nested */
+				}
+				
+				.markdown-rendered blockquote {
+					margin: 0.1em 0 !important;
+					padding: 0.2em 0.6em !important;
+				}
+				
+				.markdown-rendered pre {
+					margin: 0.1em 0 !important;
+					padding: 0.3em !important;
+				}
+				
+				.markdown-rendered hr {
+					margin: 0.2em 0 !important;
+				}
+				
+				.markdown-rendered table {
+					margin: 0.1em 0 !important;
+				}
+				
+				/* Compact LaTeX formulas */
+				.markdown-rendered .math-block,
+				.markdown-rendered .math {
+					margin: 0.1em 0 !important;
+					line-height: 1.2 !important;
+				}
+				
+				.markdown-rendered mjx-container {
+					margin: 0.05em 0 !important;
+				}
+				
+				.markdown-rendered mjx-container[display="block"] {
+					margin: 0.15em 0 !important;
+				}
+				
+				/* Remove extra spacing from math elements */
+				.markdown-rendered .MathJax {
+					margin: 0 !important;
+				}
+				
+				.markdown-rendered .MathJax_Display {
+					margin: 0.1em 0 !important;
+				}
+
+				.ai-chat-thinking-text code {
 					background: var(--background-primary);
 					padding: 2px 4px;
 					border-radius: 3px;
 					font-family: var(--font-monospace);
 					font-size: 0.9em;
 					color: var(--text-normal);
+				}
+
+				/* Message editing styles */
+				.message-edit-textarea {
+					width: 100%;
+					border: 1px solid var(--background-modifier-border);
+					border-radius: 4px;
+					padding: 8px;
+					background: var(--background-primary);
+					color: var(--text-normal);
+					font-family: inherit;
+					font-size: 14px;
+					line-height: 1.5;
+					resize: vertical;
+					min-height: 100px;
+					outline: none;
+				}
+
+				.message-edit-textarea:focus {
+					border-color: var(--interactive-accent);
+					box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+				}
+
+				.ai-chat-message.editing-mode {
+					background: var(--background-primary);
+					border-color: var(--interactive-accent);
+				}
+
+				.ai-chat-message.editing-mode .ai-chat-message-content {
+					margin: 4px 0;
 				}
 			`;
 			document.head.appendChild(style);
@@ -3757,9 +4030,9 @@ export class AIChatView extends ItemView {
 				return;
 			}
 
-			// Generate filename with timestamp
-			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-			const fileName = `ai-conversation-${timestamp}.md`;
+			// Generate or use existing conversation ID
+			const conversationId = conversation.id.startsWith('loaded_') ? 
+				this.generateConversationId(conversation) : conversation.id;
 
 			// Generate markdown content
 			const markdownContent = this.generateConversationMarkdown(conversation);
@@ -3767,27 +4040,105 @@ export class AIChatView extends ItemView {
 			// Get save location from settings
 			const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
 
-			// Ensure the directory exists
-			const vault = this.plugin.app.vault;
-			const adapter = vault.adapter;
+			// Search for existing file with this conversationID
+			const existingFile = await this.findFileByConversationId(conversationId, saveLocation);
+			
+			if (existingFile) {
+				// Update existing file
+				await this.plugin.app.vault.modify(existingFile, markdownContent);
+				new Notice(`✅ 会话已更新: ${existingFile.basename}`);
+				getLogger().log('Conversation updated at:', existingFile.path);
+			} else {
+				// Create new file
+				// Ensure the directory exists
+				const vault = this.plugin.app.vault;
+				const adapter = vault.adapter;
 
-			if (saveLocation && !await adapter.exists(saveLocation)) {
-				await vault.createFolder(saveLocation);
+				if (saveLocation && !await adapter.exists(saveLocation)) {
+					await vault.createFolder(saveLocation);
+				}
+
+				// Create filename based on sanitized conversation title
+				const sanitizedTitle = this.sanitizeFileName(conversation.title || 'Untitled Conversation');
+				const fileName = `${sanitizedTitle}.md`;
+				const fullPath = saveLocation ? `${saveLocation}/${fileName}` : fileName;
+
+				await vault.create(fullPath, markdownContent);
+				new Notice(`✅ 会话已保存为 ${fileName}`);
+				getLogger().log('Conversation saved to:', fullPath);
 			}
-
-			// Construct full path
-			const fullPath = saveLocation ? `${saveLocation}/${fileName}` : fileName;
-
-			// Save the file
-			await vault.create(fullPath, markdownContent);
-
-			new Notice(`✅ Conversation saved as ${fileName}`);
-			getLogger().log('Conversation saved to:', fullPath);
 
 		} catch (error: any) {
 			console.error('Failed to save conversation:', error);
 			new Notice(`❌ Failed to save conversation: ${error.message}`);
 		}
+	}
+
+	private async findFileByConversationId(conversationId: string, searchLocation: string): Promise<TFile | null> {
+		try {
+			const vault = this.plugin.app.vault;
+			
+			// Get all markdown files in the specified location
+			const allFiles = vault.getMarkdownFiles();
+			const filesInLocation = allFiles.filter(file => file.path.startsWith(searchLocation));
+			
+			const matchingFiles: TFile[] = [];
+			
+			// Search for files with matching conversationID
+			for (const file of filesInLocation) {
+				const content = await vault.read(file);
+				const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
+				if (yamlMatch) {
+					const yamlContent = yamlMatch[1];
+					const idMatch = yamlContent.match(/conversationID:\s*(.+)/);
+					if (idMatch && idMatch[1].trim() === conversationId) {
+						matchingFiles.push(file);
+					}
+				}
+			}
+			
+			// Handle multiple matches
+			if (matchingFiles.length > 1) {
+				new Notice(`⚠️ 找到${matchingFiles.length}个相同ID的文件，使用最新的一个`);
+				// Return the most recently modified one
+				return matchingFiles.sort((a, b) => b.stat.mtime - a.stat.mtime)[0];
+			}
+			
+			return matchingFiles.length > 0 ? matchingFiles[0] : null;
+			
+		} catch (error: any) {
+			console.error('Failed to search for existing conversation file:', error);
+			return null;
+		}
+	}
+
+	/**
+	 * Sanitize filename by removing or replacing invalid characters
+	 */
+	private sanitizeFileName(title: string): string {
+		// Replace invalid filename characters with underscores
+		// Common invalid characters: \ / : * ? " < > |
+		let sanitized = title
+			.replace(/[\\/:*?"<>|]/g, '_')  // Replace invalid characters with underscores
+			.replace(/\s+/g, '_')          // Replace spaces with underscores
+			.replace(/_{2,}/g, '_')        // Replace multiple consecutive underscores with single
+			.replace(/^_+|_+$/g, '');      // Remove leading/trailing underscores
+		
+		// Ensure the filename is not empty and not too long
+		if (!sanitized || sanitized.length === 0) {
+			sanitized = 'untitled_conversation';
+		}
+		
+		// Limit filename length (keeping some buffer for .md extension)
+		const maxLength = 200;
+		if (sanitized.length > maxLength) {
+			sanitized = sanitized.substring(0, maxLength);
+		}
+		
+		// Remove trailing periods and spaces (Windows compatibility)
+		sanitized = sanitized.replace(/[.\s]+$/, '');
+		
+		return sanitized;
 	}
 
 	private async cleanupOldAutoSavedConversations(): Promise<void> {
@@ -3821,30 +4172,67 @@ export class AIChatView extends ItemView {
 		}
 	}
 
-	private generateConversationMarkdown(conversation: AIConversation): string {
-		// Use conversation creation time instead of current time for consistent content
+	private generateConversationId(conversation: AIConversation): string {
+		// Use creation time timestamp
 		const firstMessage = conversation.messages[0];
 		const creationTime = firstMessage ? firstMessage.timestamp : new Date();
-		const timestamp = creationTime.toLocaleString();
+		const timestamp = Math.floor(creationTime.getTime() / 1000);
 		
-		let markdown = `# AI Conversation\n\n`;
-		markdown += `**Created:** ${timestamp}\n`;
-		markdown += `**Title:** ${conversation.title}\n\n`;
-		markdown += `---\n\n`;
+		// Create content hash from first few messages
+		let contentForHash = '';
+		const messagesToHash = conversation.messages.slice(0, 3); // First 3 messages
+		messagesToHash.forEach(msg => {
+			contentForHash += msg.type + ':' + (msg.content || '').substring(0, 100);
+		});
+		
+		// Simple hash function
+		let hash = 0;
+		for (let i = 0; i < contentForHash.length; i++) {
+			const char = contentForHash.charCodeAt(i);
+			hash = ((hash << 5) - hash) + char;
+			hash = hash & hash; // Convert to 32-bit integer
+		}
+		
+		// Combine timestamp with hash (make hash positive and short)
+		const shortHash = Math.abs(hash).toString(36).substring(0, 6);
+		return `${timestamp}_${shortHash}`;
+	}
 
-		conversation.messages.forEach((message, index) => {
-			const sender = message.type === 'user' ? '👤 **User**' : '🤖 **AI Assistant**';
-			const messageTime = message.timestamp.toLocaleTimeString();
+	private generateConversationMarkdown(conversation: AIConversation): string {
+		// Generate or use existing conversation ID
+		const conversationId = conversation.id.startsWith('loaded_') ? 
+			this.generateConversationId(conversation) : conversation.id;
 			
-			markdown += `## ${sender} (${messageTime})\n\n`;
+		// Format title similar to BestNote style
+		let markdown = ``;
+		
+		// Properties section (similar to BestNote)
+		markdown += `---
+conversationID: ${conversationId}
+model: ${this.plugin.settings.defaultModelConfigId || 'default'}
+tags:
+  - ai-conversation
+---`;
+		markdown += `\n`
+		// Generate messages in BestNote style
+		conversation.messages.forEach((message, index) => {
+			const messageType = message.type === 'user' ? 'user' : 'ai';
+			const timestamp = message.timestamp.toISOString().replace('T', ' ').split('.')[0].replace(/-/g, '/');
+			
+			// Message header with BestNote format
+			markdown += `${messageType}: \n`;
+			
+			// Add text content first if present
+			if (message.content) {
+				markdown += message.content + '\n';
+			}
 
-			// Add image if present
+			// Add image content if present - inline with content
 			if (message.image) {
 				const allImages = (message as any).images;
 				if (allImages && allImages.length > 1) {
-					// Multiple images - display all of them
-					markdown += `*[Sent ${allImages.length} images]*\n\n`;
-					allImages.forEach((imageData: any, index: number) => {
+					// Multiple images
+					allImages.forEach((imageData: any, imgIndex: number) => {
 						// Prioritize local path over dataUrl
 						let imagePath = imageData.dataUrl; // fallback
 						if (imageData.localPath) {
@@ -3854,11 +4242,8 @@ export class AIChatView extends ItemView {
 							}
 						}
 						
-						const fileName = imageData.fileName || `image-${index + 1}`;
+						const fileName = imageData.fileName || `image-${imgIndex + 1}`;
 						markdown += `![${fileName}](${imagePath})\n`;
-						if (imageData.fileName) {
-							markdown += `*${imageData.fileName}*\n\n`;
-						}
 					});
 				} else {
 					// Single image - check for local path in multiple places
@@ -3866,14 +4251,12 @@ export class AIChatView extends ItemView {
 					const firstImageFromArray = allImages && allImages.length > 0 ? allImages[0] : null;
 					
 					let imagePath = message.image; // fallback to base64
-					let hasLocalPath = false;
 					
 					// Priority 1: Check images array first
 					if (firstImageFromArray && firstImageFromArray.localPath) {
 						const formattedPath = this.formatImagePath(firstImageFromArray.localPath);
 						if (formattedPath) {
 							imagePath = formattedPath;
-							hasLocalPath = true;
 						}
 					}
 					// Priority 2: Check imageData property
@@ -3881,7 +4264,6 @@ export class AIChatView extends ItemView {
 						const formattedPath = this.formatImagePath(singleImageData.localPath);
 						if (formattedPath) {
 							imagePath = formattedPath;
-							hasLocalPath = true;
 						}
 					}
 					// Priority 3: Check if the message itself has localPath metadata
@@ -3889,32 +4271,26 @@ export class AIChatView extends ItemView {
 						const formattedPath = this.formatImagePath((message as any).localPath);
 						if (formattedPath) {
 							imagePath = formattedPath;
-							hasLocalPath = true;
 						}
 					}
 					
-					if (!hasLocalPath && imagePath.startsWith('data:')) {
-						console.warn('⚠️ Still using base64 for image, local path not found. Message data:', {
-							hasImages: !!allImages,
-							hasImageData: !!singleImageData,
-							hasDirectLocalPath: !!(message as any).localPath,
-							messageKeys: Object.keys(message)
-						});
-					}
-					
-					markdown += `![Screenshot](${imagePath})\n\n`;
+					markdown += `![Screenshot](${imagePath})\n`;
 				}
 			}
-
-			// Add text content
-			if (message.content) {
-				markdown += `${message.content}\n\n`;
+			
+			// If this is not the last message, add timestamp and spacing
+			if (index < conversation.messages.length - 1) {
+				markdown += `[Timestamp: ${timestamp}]\n\n`;
 			}
-
-			markdown += `---\n\n`;
 		});
-
-		markdown += `\n*Generated by Obsidian Screenshot Capture Plugin*\n`;
+		
+		// Add final timestamp for the last message
+		if (conversation.messages.length > 0) {
+			const lastMessage = conversation.messages[conversation.messages.length - 1];
+			const lastTimestamp = lastMessage.timestamp.toISOString().replace('T', ' ').split('.')[0].replace(/-/g, '/');
+			markdown += `[Timestamp: ${lastTimestamp}]\n`;
+		}
+		
 		return markdown;
 	}
 
@@ -4017,36 +4393,31 @@ export class AIChatView extends ItemView {
 			// Create a new conversation in the AI manager based on the loaded one
 			const newConversation = this.aiManager.createNewConversation(conversation.title);
 			
-			// Copy all messages from the loaded conversation and restore image data
+			// Copy all messages from the loaded conversation
 			for (const message of conversation.messages) {
 				const newMessage: AIMessage = {
 					id: 'loaded_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
 					type: message.type,
-					content: message.content,
-					timestamp: new Date(), // Use current time for loaded messages
-					...(message.image && { image: message.image })
+					content: message.content, // Markdown content includes image references
+					timestamp: new Date() // Use current time for loaded messages
 				};
 				
-				// Preserve any additional image data if present
-				if ((message as any).images) {
-					(newMessage as any).images = (message as any).images;
+				// Preserve image data if it exists
+				if ((message as any).image) {
+					(newMessage as any).image = (message as any).image;
 				}
 				if ((message as any).imageData) {
 					(newMessage as any).imageData = (message as any).imageData;
 				}
-				// Also preserve any other image-related metadata
-				if ((message as any).localPath) {
-					(newMessage as any).localPath = (message as any).localPath;
+				if ((message as any).images) {
+					(newMessage as any).images = (message as any).images;
 				}
-				
-				// Restore image dataUrl from local paths
-				await this.restoreImageDataForMessage(newMessage);
 				
 				newConversation.messages.push(newMessage);
 			}
 
 			// Update the chat view to show the loaded conversation
-			this.updateContent();
+			await this.updateContent();
 			
 			// Reset last saved content for loaded conversation to allow initial auto-save
 			this.lastAutoSaveContent = null;
@@ -4156,5 +4527,530 @@ export class AIChatView extends ItemView {
 			'custom': 'Use Custom Prompt'
 		};
 		return modeNames[modeId] || modeId;
+	}
+
+	/**
+	 * Toggle between edit and read mode for a message
+	 */
+	private async toggleMessageEditMode(messageContent: HTMLElement, message: AIMessage, editBtn: HTMLButtonElement): Promise<void> {
+		const isCurrentlyEditing = messageContent.hasClass('editing-mode');
+		
+		if (isCurrentlyEditing) {
+			// Switch from edit to read mode
+			const textarea = messageContent.querySelector('textarea.message-edit-textarea') as HTMLTextAreaElement;
+			if (textarea) {
+				// Update the message content with edited markdown text
+				const editedContent = textarea.value;
+				message.content = editedContent;
+				
+				// Update the conversation in AI manager to persist changes
+				this.saveEditedMessageToConversation(message.id, editedContent);
+				
+				// Re-render the complete message content from markdown
+				await this.renderMessageContentFromMarkdown(messageContent, message);
+				
+				// Update button icon to edit icon
+				editBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+				editBtn.setAttribute('data-tooltip', t('aiChat.switchEditViewButton'));
+				
+				messageContent.removeClass('editing-mode');
+			}
+		} else {
+			// Switch from read to edit mode - use message.content directly (it's already markdown)
+			this.renderMessageContentAsEditor(messageContent, message.content || '');
+			
+			// Update button icon to view icon
+			editBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+			editBtn.setAttribute('data-tooltip', 'Switch to Read View');
+			
+			messageContent.addClass('editing-mode');
+		}
+	}
+
+	/**
+	 * Render message content from markdown (parse images and text)
+	 */
+	private async renderMessageContentFromMarkdown(container: HTMLElement, message: AIMessage): Promise<void> {
+		container.empty();
+		
+		if (!message.content) return;
+		
+		// Parse markdown content to extract images and text
+		const { textContent, imageReferences } = this.parseMarkdownContent(message.content);
+		
+		// Render images first
+		if (imageReferences.length > 0) {
+			if (imageReferences.length === 1) {
+				// Single image
+				const imageRef = imageReferences[0];
+				await this.renderSingleImage(container, imageRef);
+			} else {
+				// Multiple images in a grid
+				const imagesContainer = container.createEl('div', { cls: 'ai-chat-message-images-grid' });
+				for (const imageRef of imageReferences) {
+					const imageWrapper = imagesContainer.createEl('div', { cls: 'ai-chat-message-image-wrapper' });
+					await this.renderSingleImage(imageWrapper, imageRef);
+				}
+			}
+		}
+		
+		// Render text content if present
+		if (textContent.trim()) {
+			const textEl = container.createEl('div', { cls: 'ai-chat-message-text' });
+			await this.renderMarkdown(textEl, textContent);
+		}
+	}
+
+	/**
+	 * Parse markdown content to separate images and text
+	 */
+	private parseMarkdownContent(markdown: string): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }> } {
+		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
+		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
+		let textContent = markdown;
+		
+		// Extract all image references
+		let match;
+		while ((match = imageRegex.exec(markdown)) !== null) {
+			const alt = match[1] || 'Image';
+			const path = match[2];
+			const fileName = path.split('/').pop() || alt;
+			
+			imageReferences.push({
+				alt: alt,
+				path: path,
+				fileName: fileName
+			});
+			
+			// Remove the image markdown from text content
+			textContent = textContent.replace(match[0], '').trim();
+		}
+		
+		// Clean up extra whitespace
+		textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
+		
+		return { textContent, imageReferences };
+	}
+
+	/**
+	 * Render a single image from path reference
+	 */
+	private async renderSingleImage(container: HTMLElement, imageRef: { alt: string; path: string; fileName: string }): Promise<void> {
+		const { alt, path, fileName } = imageRef;
+		
+		// Try to get vault resource URL first, fallback to direct path
+		let imageSrc = this.getVaultResourceUrl(path) || path;
+		
+		// If that fails, try to load as data URL
+		if (!imageSrc.startsWith('app://') && !imageSrc.startsWith('data:')) {
+			const dataUrl = await this.loadImageDataFromPath(path);
+			if (dataUrl) {
+				imageSrc = dataUrl;
+			}
+		}
+		
+		const imageEl = container.createEl('img', { 
+			cls: 'ai-chat-message-image',
+			attr: { src: imageSrc, alt: alt }
+		});
+		
+		// Make the image draggable with proper Obsidian integration
+		imageEl.draggable = true;
+		imageEl.addEventListener('dragstart', (e) => {
+			getLogger().log('Image drag started:', fileName, 'path:', path);
+			
+			// Verify the file exists before drag
+			const vault = this.plugin.app.vault;
+			const file = vault.getAbstractFileByPath(path);
+			
+			if (file) {
+				getLogger().log('✅ Image file exists in vault:', path);
+				
+				// Use multiple dataTransfer formats for maximum compatibility
+				e.dataTransfer?.setData('text/plain', `![[${file.name}]]`);
+				e.dataTransfer?.setData('text/uri-list', path);
+				e.dataTransfer?.setData('text/html', `![[${path}]]`);
+				e.dataTransfer?.setData('application/x-obsidian-file', JSON.stringify({
+					type: 'file',
+					path: path,
+					name: fileName
+				}));
+				
+				getLogger().log('Set drag data for vault image:', file.name);
+			} else {
+				getLogger().log('⚠️ Image file not found in vault, using path:', path);
+				e.dataTransfer?.setData('text/plain', path);
+			}
+		});
+		
+		// Click to show modal
+		imageEl.addEventListener('click', () => {
+			this.showImageModal(imageSrc);
+		});
+		
+		// Add filename label if in grid
+		if (container.hasClass('ai-chat-message-image-wrapper')) {
+			const fileNameEl = container.createEl('div', { 
+				cls: 'ai-chat-message-image-filename',
+				text: fileName
+			});
+		}
+	}
+
+	/**
+	 * Render message content as editable textarea
+	 */
+	private renderMessageContentAsEditor(container: HTMLElement, content: string): void {
+		container.empty();
+		
+		const textarea = container.createEl('textarea', {
+			cls: 'message-edit-textarea',
+			attr: { placeholder: 'Edit message content...' }
+		});
+		
+		textarea.value = content;
+		
+		// Auto-resize textarea
+		textarea.style.minHeight = '100px';
+		textarea.addEventListener('input', () => {
+			textarea.style.height = 'auto';
+			textarea.style.height = Math.min(textarea.scrollHeight, 400) + 'px';
+		});
+		
+		// Focus and auto-resize initially
+		setTimeout(() => {
+			textarea.focus();
+			textarea.style.height = 'auto';
+			textarea.style.height = Math.min(textarea.scrollHeight, 400) + 'px';
+		}, 10);
+	}
+
+	/**
+	 * Render message content as markdown (read mode)
+	 */
+	private async renderMessageContentAsMarkdown(container: HTMLElement, content: string): Promise<void> {
+		container.empty();
+		
+		if (content) {
+			const textEl = container.createEl('div', { cls: 'ai-chat-message-text' });
+			await this.renderMarkdown(textEl, content);
+		}
+	}
+
+	/**
+	 * Save edited message content to the conversation
+	 */
+	private saveEditedMessageToConversation(messageId: string, newContent: string): void {
+		const conversation = this.aiManager.getCurrentConversationData();
+		if (conversation) {
+			const messageIndex = conversation.messages.findIndex(m => m.id === messageId);
+			if (messageIndex > -1) {
+				conversation.messages[messageIndex].content = newContent;
+				conversation.lastUpdated = new Date();
+				
+				// Update conversation title if this affects the title
+				this.aiManager.updateConversationTitle(conversation.id);
+			}
+		}
+	}
+
+	/**
+	 * Insert message content at cursor position in active editor
+	 */
+	private async insertMessageAtCursor(message: AIMessage): Promise<void> {
+		try {
+			// Try multiple methods to get active editor
+			let activeView: MarkdownView | null = null;
+			let editor: Editor | null = null;
+			
+			// Method 1: Get active view of type MarkdownView
+			activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+			if (activeView && activeView.editor) {
+				editor = activeView.editor;
+			}
+			
+			// Method 2: Get active leaf and check if it's a markdown view
+			if (!editor) {
+				const activeLeaf = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+				if (activeLeaf && activeLeaf instanceof MarkdownView && activeLeaf.editor) {
+					editor = activeLeaf.editor;
+					activeView = activeLeaf;
+				}
+			}
+			
+			// Method 3: Get the most recent active file and try to get its editor
+			if (!editor) {
+				const activeFile = this.plugin.app.workspace.getActiveFile();
+				if (activeFile && activeFile.extension === 'md') {
+					// Find any open markdown view for this file
+					const leaves = this.plugin.app.workspace.getLeavesOfType('markdown');
+					for (const leaf of leaves) {
+						const view = leaf.view as MarkdownView;
+						if (view.file === activeFile && view.editor) {
+							editor = view.editor;
+							activeView = view;
+							break;
+						}
+					}
+				}
+			}
+			
+			if (!editor || !activeView) {
+				new Notice('请在markdown笔记中打开光标位置再使用此功能');
+				return;
+			}
+
+			// Get the content to insert
+			let contentToInsert = '';
+			
+			// Handle images first
+			if (message.image) {
+				const allImages = (message as any).images;
+				if (allImages && allImages.length > 1) {
+					// Multiple images
+					allImages.forEach((imageData: any, index: number) => {
+						const fileName = imageData.fileName || `image-${index + 1}`;
+						let imagePath = imageData.dataUrl; // fallback
+						if (imageData.localPath) {
+							const formattedPath = this.formatImagePath(imageData.localPath);
+							if (formattedPath) {
+								imagePath = formattedPath;
+							}
+						}
+						contentToInsert += `![${fileName}](${imagePath})\n\n`;
+					});
+				} else {
+					// Single image
+					const singleImageData = (message as any).imageData;
+					const firstImageFromArray = allImages && allImages.length > 0 ? allImages[0] : null;
+					
+					let imagePath = message.image; // fallback
+					
+					// Priority 1: Check images array first
+					if (firstImageFromArray && firstImageFromArray.localPath) {
+						const formattedPath = this.formatImagePath(firstImageFromArray.localPath);
+						if (formattedPath) {
+							imagePath = formattedPath;
+						}
+					}
+					// Priority 2: Check imageData property
+					else if (singleImageData && singleImageData.localPath) {
+						const formattedPath = this.formatImagePath(singleImageData.localPath);
+						if (formattedPath) {
+							imagePath = formattedPath;
+						}
+					}
+					
+					contentToInsert += `![Screenshot](${imagePath})\n\n`;
+				}
+			}
+
+			// Add text content
+			if (message.content) {
+				contentToInsert += message.content;
+			}
+
+			// Insert at cursor position
+			const cursor = editor.getCursor();
+			editor.replaceRange(contentToInsert, cursor);
+			
+			// Move cursor to end of inserted content
+			const lines = contentToInsert.split('\n');
+			const newCursor = {
+				line: cursor.line + lines.length - 1,
+				ch: lines[lines.length - 1].length
+			};
+			if (lines.length === 1) {
+				newCursor.ch = cursor.ch + contentToInsert.length;
+				newCursor.line = cursor.line;
+			}
+			editor.setCursor(newCursor);
+
+			new Notice('Content inserted at cursor');
+			
+		} catch (error) {
+			console.error('Failed to insert content at cursor:', error);
+			new Notice('Failed to insert content');
+		}
+	}
+
+	/**
+	 * Delete a message from the conversation
+	 */
+	private async deleteMessage(messageId: string): Promise<void> {
+		try {
+			const conversation = this.aiManager.getCurrentConversationData();
+			if (!conversation) {
+				new Notice('No active conversation');
+				return;
+			}
+
+			// Find message index
+			const messageIndex = conversation.messages.findIndex(m => m.id === messageId);
+			if (messageIndex === -1) {
+				new Notice('Message not found');
+				return;
+			}
+
+			// Show custom confirmation modal
+			const message = conversation.messages[messageIndex];
+			const confirmed = await this.showDeleteConfirmation(message);
+			
+			if (confirmed) {
+				// Remove message from conversation
+				conversation.messages.splice(messageIndex, 1);
+				conversation.lastUpdated = new Date();
+				
+				// Update conversation title after deletion
+				this.aiManager.updateConversationTitle(conversation.id);
+				
+				// Refresh the view
+				await this.updateContent();
+				
+				new Notice('Message deleted');
+			}
+			
+		} catch (error) {
+			console.error('Failed to delete message:', error);
+			new Notice('Failed to delete message');
+		}
+	}
+
+	/**
+	 * Show custom delete confirmation modal
+	 */
+	private showDeleteConfirmation(message: AIMessage): Promise<boolean> {
+		return new Promise((resolve) => {
+			const modal = new Modal(this.app);
+			
+			// Set modal styles
+			modal.contentEl.style.cssText = `
+				width: 400px;
+				padding: 20px;
+				text-align: center;
+			`;
+			
+			// Title
+			const title = modal.contentEl.createEl('h3', { 
+				text: 'Delete Message',
+				cls: 'modal-title'
+			});
+			title.style.cssText = `
+				margin: 0 0 16px 0;
+				color: var(--text-normal);
+				font-size: 18px;
+				font-weight: 600;
+			`;
+			
+			// Message preview
+			const isUserMessage = message.type === 'user';
+			const messagePreview = (message.content || 'Image message').substring(0, 100);
+			const truncated = messagePreview.length < (message.content || '').length;
+			
+			const description = modal.contentEl.createEl('p', {
+				text: `Are you sure you want to delete this ${isUserMessage ? 'user' : 'AI'} message?`
+			});
+			description.style.cssText = `
+				margin: 0 0 12px 0;
+				color: var(--text-normal);
+				font-size: 14px;
+				line-height: 1.4;
+			`;
+			
+			const preview = modal.contentEl.createEl('div', {
+				text: `"${messagePreview}${truncated ? '...' : ''}"`,
+			});
+			preview.style.cssText = `
+				background: var(--background-secondary);
+				border: 1px solid var(--background-modifier-border);
+				border-radius: 4px;
+				padding: 12px;
+				margin: 0 0 20px 0;
+				font-size: 13px;
+				color: var(--text-muted);
+				font-style: italic;
+				max-height: 80px;
+				overflow-y: auto;
+				text-align: left;
+			`;
+			
+			// Button container
+			const buttonContainer = modal.contentEl.createEl('div');
+			buttonContainer.style.cssText = `
+				display: flex;
+				justify-content: center;
+				gap: 12px;
+				margin-top: 20px;
+			`;
+			
+			// Cancel button
+			const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
+			cancelBtn.style.cssText = `
+				padding: 8px 16px;
+				border: 1px solid var(--background-modifier-border);
+				background: var(--background-primary);
+				color: var(--text-normal);
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 14px;
+				transition: all 0.2s ease;
+				min-width: 80px;
+			`;
+			
+			// Delete button
+			const deleteBtn = buttonContainer.createEl('button', { text: 'Delete' });
+			deleteBtn.style.cssText = `
+				padding: 8px 16px;
+				border: 1px solid var(--color-red);
+				background: var(--color-red);
+				color: white;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 14px;
+				transition: all 0.2s ease;
+				min-width: 80px;
+			`;
+			
+			// Hover effects
+			cancelBtn.addEventListener('mouseenter', () => {
+				cancelBtn.style.background = 'var(--background-modifier-hover)';
+			});
+			cancelBtn.addEventListener('mouseleave', () => {
+				cancelBtn.style.background = 'var(--background-primary)';
+			});
+			
+			deleteBtn.addEventListener('mouseenter', () => {
+				deleteBtn.style.background = '#dc2626';
+			});
+			deleteBtn.addEventListener('mouseleave', () => {
+				deleteBtn.style.background = 'var(--color-red)';
+			});
+			
+			// Event handlers
+			cancelBtn.addEventListener('click', () => {
+				modal.close();
+				resolve(false);
+			});
+			
+			deleteBtn.addEventListener('click', () => {
+				modal.close();
+				resolve(true);
+			});
+			
+			// Handle escape key
+			modal.contentEl.addEventListener('keydown', (e) => {
+				if (e.key === 'Escape') {
+					modal.close();
+					resolve(false);
+				}
+			});
+			
+			// Focus delete button by default
+			setTimeout(() => {
+				cancelBtn.focus();
+			}, 100);
+			
+			modal.open();
+		});
 	}
 }

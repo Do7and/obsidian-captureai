@@ -1,4 +1,4 @@
-import { Notice, WorkspaceLeaf } from 'obsidian';
+import { Notice, WorkspaceLeaf, TFile } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, ModelConfig } from '../types';
 import { AI_CHAT_VIEW_TYPE } from './ai-chat-view';
@@ -57,25 +57,30 @@ export class AIManager {
 		// Create or get current conversation
 		let conversation = this.getCurrentConversation();
 		if (!conversation) {
-			const fileNames = images.map(img => img.fileName).join(', ');
-			conversation = this.createNewConversation(`Multi-Image Analysis - ${fileNames}`);
+			// Create conversation with temporary title
+			conversation = this.createNewConversation('新对话');
 		}
 
-		// Add user message with all images
+		// Create user message content in markdown format
+		let markdownContent = '';
+		
+		// Add images as markdown references
+		images.forEach((img, index) => {
+			const imagePath = img.localPath || `[Data URL Image ${index + 1}]`;
+			markdownContent += `![${img.fileName}](${imagePath})\n\n`;
+		});
+		
+		// Add text content
 		const defaultMessage = images.length === 1 ? 'Please analyze this image' : `Please analyze these ${images.length} images`;
+		markdownContent += userMessage || defaultMessage;
+		
+		// Add user message with markdown content
 		const userMsg: AIMessage = {
 			id: this.generateMessageId(),
 			type: 'user',
-			content: userMessage || defaultMessage,
-			image: images[0].dataUrl, // Use first image for display compatibility
+			content: markdownContent.trim(),
 			timestamp: new Date()
 		};
-		// Store all images with both dataUrl and localPath for display and saving
-		(userMsg as any).images = images.map(img => ({
-			dataUrl: img.dataUrl,
-			fileName: img.fileName,
-			localPath: img.localPath
-		}));
 		conversation.messages.push(userMsg);
 
 		// Show the AI panel
@@ -94,15 +99,17 @@ export class AIManager {
 		this.updateAIPanel();
 
 		try {
-			// Combine prompts for image analysis
-			const fullMessage = this.combinePromptsForImages(userMsg.content, images.length);
+			// Extract text content from user message (without images)
+			const { textContent } = this.parseMarkdownContent(userMsg.content);
 			
 			// Call AI API with context support using images array
+			// Include modeprompt since this is from the send area
 			const response = await this.callAIWithContext(
 				conversation, 
-				fullMessage, 
+				textContent || (images.length === 1 ? 'Please analyze this image' : `Please analyze these ${images.length} images`), 
 				images.map(img => img.dataUrl), 
-				defaultModelConfig
+				defaultModelConfig,
+				true // Include modeprompt for send area calls
 			);
 
 			// Remove typing indicator
@@ -119,6 +126,9 @@ export class AIManager {
 				timestamp: new Date()
 			};
 			conversation.messages.push(assistantMsg);
+
+			// Update conversation title with smart title based on content
+			this.updateConversationTitle(conversation.id);
 
 			// Update last used timestamp
 			defaultModelConfig.lastUsed = new Date();
@@ -198,7 +208,7 @@ export class AIManager {
 	}
 
 	// Context building function for conversation history
-	buildContextMessages(conversation: AIConversation | null, currentMessage: string, currentImages?: string[], modelConfig?: ModelConfig): any[] {
+	async buildContextMessages(conversation: AIConversation | null, currentMessage: string, currentImages?: string[], modelConfig?: ModelConfig, includeModeprompt?: boolean): Promise<any[]> {
 		const messages: any[] = [];
 		const contextSettings = this.plugin.settings.contextSettings || {
 			maxContextMessages: 20,
@@ -214,7 +224,7 @@ export class AIManager {
 		
 		const isVisionCapable = targetModelConfig?.isVisionCapable || false;
 
-		// Add system prompt if enabled
+		// 1. Add system prompt (global, no modeprompt here)
 		if (contextSettings.includeSystemPrompt) {
 			messages.push({
 				role: 'system',
@@ -242,8 +252,14 @@ export class AIManager {
 				historicalMessages = historicalMessages.slice(-contextSettings.maxContextMessages);
 			} else if (contextSettings.contextStrategy === 'smart') {
 				// Smart selection: prioritize messages with images and recent messages
-				const messagesWithImages = historicalMessages.filter(m => m.image);
-				const messagesWithoutImages = historicalMessages.filter(m => !m.image);
+				const messagesWithImages = historicalMessages.filter(m => {
+					const { imageReferences } = this.parseMarkdownContent(m.content || '');
+					return imageReferences.length > 0;
+				});
+				const messagesWithoutImages = historicalMessages.filter(m => {
+					const { imageReferences } = this.parseMarkdownContent(m.content || '');
+					return imageReferences.length === 0;
+				});
 				
 				// Take recent image messages first (up to maxContextImages)
 				const recentImageMessages = messagesWithImages.slice(-contextSettings.maxContextImages);
@@ -264,19 +280,41 @@ export class AIManager {
 
 				const role = msg.type === 'user' ? 'user' : 'assistant';
 				
-				if (msg.image && isVisionCapable && imageCount < contextSettings.maxContextImages) {
-					// Message with image - only include if model supports vision
+				// Parse message content to separate images and text
+				const { textContent, imageReferences } = this.parseMarkdownContent(msg.content || '');
+				
+				// Check if message has images from markdown content
+				if (imageReferences.length > 0 && isVisionCapable && imageCount < contextSettings.maxContextImages) {
+					// Message with images - only include if model supports vision
 					const messageContent = [
-						{ type: 'text', text: msg.content }
+						{ type: 'text', text: textContent }
 					];
 					
-					// Add image if within limit and model supports vision
-					if (imageCount < contextSettings.maxContextImages) {
-						(messageContent as any).push({
-							type: 'image_url',
-							image_url: { url: msg.image }
-						});
-						imageCount++;
+					// Add images from references (load them as needed)
+					for (const imageRef of imageReferences) {
+						if (imageCount >= contextSettings.maxContextImages) break;
+						
+						// Try to load image from path or use data URL
+						let imageDataUrl: string | null = null;
+						
+						// If path looks like a data URL, use it directly
+						if (imageRef.path.startsWith('data:')) {
+							imageDataUrl = imageRef.path;
+						} else if (imageRef.path.startsWith('[') && imageRef.path.endsWith(']')) {
+							// Skip placeholder paths
+							continue;
+						} else {
+							// Try to load from vault path
+							imageDataUrl = await this.loadImageDataFromPath(imageRef.path);
+						}
+						
+						if (imageDataUrl) {
+							(messageContent as any).push({
+								type: 'image_url',
+								image_url: { url: imageDataUrl }
+							});
+							imageCount++;
+						}
 					}
 					
 					messages.push({
@@ -284,20 +322,29 @@ export class AIManager {
 						content: messageContent
 					});
 				} else {
-					// Text-only message (either no image or model doesn't support vision)
+					// Text-only message (either no images or model doesn't support vision)
 					messages.push({
 						role: role,
-						content: msg.content
+						content: textContent || msg.content || ''
 					});
 				}
 			}
 		}
 
-		// Add current message
+		// Add current message with modeprompt if needed
+		let finalCurrentMessage = currentMessage;
+		if (includeModeprompt) {
+			const currentMode = this.getCurrentMode();
+			const modePrompt = this.getModePrompt(currentMode);
+			if (modePrompt && modePrompt.trim()) {
+				finalCurrentMessage = modePrompt + '\n\n' + currentMessage;
+			}
+		}
+		
 		if (currentImages && currentImages.length > 0 && isVisionCapable) {
 			// Current message with images - only if model supports vision
 			const messageContent = [
-				{ type: 'text', text: currentMessage }
+				{ type: 'text', text: finalCurrentMessage }
 			];
 			
 			// Add current images
@@ -316,7 +363,7 @@ export class AIManager {
 			// Current text-only message (either no images or model doesn't support vision)
 			messages.push({
 				role: 'user',
-				content: currentMessage
+				content: finalCurrentMessage
 			});
 		}
 
@@ -324,7 +371,7 @@ export class AIManager {
 	}
 
 	// New API call with context support
-	async callAIWithContext(conversation: AIConversation | null, message: string, images?: string[], modelConfig?: ModelConfig): Promise<string> {
+	async callAIWithContext(conversation: AIConversation | null, message: string, images?: string[], modelConfig?: ModelConfig, includeModeprompt?: boolean): Promise<string> {
 		// Use provided model config or default
 		const targetModelConfig = modelConfig || this.plugin.settings.modelConfigs.find(
 			mc => mc.id === this.plugin.settings.defaultModelConfigId
@@ -335,7 +382,7 @@ export class AIManager {
 		}
 
 		// Build context messages
-		const contextMessages = this.buildContextMessages(conversation, message, images, targetModelConfig);
+		const contextMessages = await this.buildContextMessages(conversation, message, images, targetModelConfig, includeModeprompt);
 		
 		// Call appropriate API with context
 		return await this.callAPIWithContextMessages(contextMessages, targetModelConfig);
@@ -856,6 +903,84 @@ export class AIManager {
 		return conversation;
 	}
 
+	/**
+	 * Generate a meaningful conversation title based on message content
+	 */
+	generateSmartTitle(conversation: AIConversation): string {
+		if (!conversation.messages || conversation.messages.length === 0) {
+			return '新对话';
+		}
+
+		// Collect text content from the first few messages
+		let titleText = '';
+		let imageCount = 0;
+		const maxLength = 50; // Maximum title length
+		
+		for (const message of conversation.messages.slice(0, 3)) {
+			// Collect text content and parse for images
+			if (message.content && message.content.trim()) {
+				// Parse markdown content to separate images and text
+				const { textContent, imageReferences } = this.parseMarkdownContent(message.content);
+				
+				// Count images from markdown content
+				imageCount += imageReferences.length;
+				
+				// Clean text content for title
+				const cleanContent = textContent
+					.replace(/[#*`_~\[\]]/g, '') // Remove markdown formatting
+					.replace(/\n+/g, ' ') // Replace line breaks with spaces
+					.replace(/\s+/g, ' ') // Replace multiple spaces with single space
+					.trim();
+				
+				if (cleanContent) {
+					if (titleText) titleText += ' ';
+					titleText += cleanContent;
+				}
+			}
+		}
+
+		// If we have images, add image indicator
+		let title = '';
+		if (imageCount > 0) {
+			title = `[图片]`;
+		}
+
+		// Add text content
+		if (titleText) {
+			if (title) title += ' ';
+			// Truncate if too long
+			if (titleText.length > maxLength) {
+				title += titleText.substring(0, maxLength - 3) + '...';
+			} else {
+				title += titleText;
+			}
+		} else if (imageCount > 0) {
+			// Only images, no text
+			if (imageCount === 1) {
+				title = '[图片]';
+			} else {
+				title = `[${imageCount}张图片]`;
+			}
+		} else {
+			// Fallback
+			title = '新对话';
+		}
+
+		return title;
+	}
+
+	/**
+	 * Update conversation title based on its content
+	 */
+	updateConversationTitle(conversationId: string): void {
+		const conversation = this.conversations.get(conversationId);
+		if (conversation && conversation.messages.length > 0) {
+			const newTitle = this.generateSmartTitle(conversation);
+			conversation.title = newTitle;
+			conversation.lastUpdated = new Date();
+		}
+	}
+
 	private getCurrentConversation(): AIConversation | null {
 		if (!this.currentConversationId) return null;
 		return this.conversations.get(this.currentConversationId) || null;
@@ -895,6 +1020,91 @@ export class AIManager {
 
 	getCurrentConversationData(): AIConversation | null {
 		return this.getCurrentConversation();
+	}
+
+	/**
+	 * Parse markdown content to separate images and text
+	 */
+	private parseMarkdownContent(markdown: string): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }> } {
+		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
+		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
+		let textContent = markdown;
+		
+		// Extract all image references
+		let match;
+		while ((match = imageRegex.exec(markdown)) !== null) {
+			const alt = match[1] || 'Image';
+			const path = match[2];
+			const fileName = path.split('/').pop() || alt;
+			
+			imageReferences.push({
+				alt: alt,
+				path: path,
+				fileName: fileName
+			});
+			
+			// Remove the image markdown from text content
+			textContent = textContent.replace(match[0], '').trim();
+		}
+		
+		// Clean up extra whitespace
+		textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
+		
+		return { textContent, imageReferences };
+	}
+
+	/**
+	 * Load image data from vault path
+	 */
+	private async loadImageDataFromPath(path: string): Promise<string | null> {
+		try {
+			const vault = this.plugin.app.vault;
+			const abstractFile = vault.getAbstractFileByPath(path);
+			
+			// Check if it's a file (not a folder)
+			if (abstractFile && 'extension' in abstractFile) {
+				const file = abstractFile as TFile;
+				const arrayBuffer = await vault.readBinary(file);
+				const uint8Array = new Uint8Array(arrayBuffer);
+				
+				// Determine MIME type based on file extension
+				const extension = file.extension?.toLowerCase();
+				let mimeType = 'image/png'; // default
+				
+				switch (extension) {
+					case 'jpg':
+					case 'jpeg':
+						mimeType = 'image/jpeg';
+						break;
+					case 'png':
+						mimeType = 'image/png';
+						break;
+					case 'gif':
+						mimeType = 'image/gif';
+						break;
+					case 'webp':
+						mimeType = 'image/webp';
+						break;
+					case 'svg':
+						mimeType = 'image/svg+xml';
+						break;
+				}
+				
+				// Convert to base64
+				let binary = '';
+				const len = uint8Array.byteLength;
+				for (let i = 0; i < len; i++) {
+					binary += String.fromCharCode(uint8Array[i]);
+				}
+				const base64 = btoa(binary);
+				
+				return `data:${mimeType};base64,${base64}`;
+			}
+		} catch (error) {
+			console.warn('Failed to load image from path:', path, error);
+		}
+		
+		return null;
 	}
 
 	private generateMessageId(): string {
@@ -1054,31 +1264,6 @@ export class AIManager {
 		});
 	}
 
-	private combinePromptsForImages(userMessage: string, imageCount: number): string {
-		const currentMode = this.getCurrentMode();
-		const modePrompt = this.getModePrompt(currentMode);
-		
-		if (!modePrompt.trim()) {
-			return userMessage;
-		}
-		
-		// Handle both single and multiple images uniformly
-		if (imageCount === 1) {
-			// Single image case
-			if (userMessage === 'Please analyze this image') {
-				return modePrompt;
-			} else {
-				return `${modePrompt}\n\nUser request: ${userMessage}`;
-			}
-		} else {
-			// Multiple images case
-			if (userMessage === `Please analyze these ${imageCount} images`) {
-				return `${modePrompt} (analyzing ${imageCount} images)`;
-			} else {
-				return `${modePrompt}\n\nUser request for ${imageCount} images: ${userMessage}`;
-			}
-		}
-	}
 
 	private getEffectiveSystemPrompt(): string {
 		const globalPrompt = this.plugin.settings.globalSystemPrompt?.trim();

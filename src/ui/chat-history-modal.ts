@@ -263,148 +263,31 @@ export class ChatHistoryModal extends Modal {
 				lastUpdated: new Date()
 			};
 
-			// Extract title from content
-			const titleMatch = content.match(/\*\*Title:\*\* (.+)/);
-			if (titleMatch) {
-				conversation.title = titleMatch[1];
+			// Extract conversationID from YAML frontmatter
+			const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
+			if (yamlMatch) {
+				const yamlContent = yamlMatch[1];
+				const conversationIdMatch = yamlContent.match(/conversationID:\s*(.+)/);
+				if (conversationIdMatch) {
+					conversation.id = conversationIdMatch[1].trim();
+				}
 			}
 
-			// Parse messages using regex to find message blocks
-			const messageBlocks = content.split(/## (👤 \*\*User\*\*|🤖 \*\*AI Assistant\*\*)/);
+			// Extract title from the first line (BestNote style) or legacy format
+			const titleMatch = content.match(/^#\s*(.+)$/m);
+			if (titleMatch) {
+				conversation.title = titleMatch[1].replace(/^AI Conversation - /, ''); // Clean up legacy prefix
+			}
+
+			// Check if this is the new BestNote format or old format
+			const isBestNoteFormat = content.includes('user:') || content.includes('ai:');
 			
-			for (let i = 1; i < messageBlocks.length; i += 2) {
-				const sender = messageBlocks[i];
-				const messageContent = messageBlocks[i + 1];
-				
-				if (!messageContent) continue;
-
-				const isUser = sender.includes('User');
-				const messageId = 'loaded_' + Date.now() + '_' + i;
-
-				// Extract timestamp
-				const timeMatch = messageContent.match(/\((\d{1,2}:\d{2}:\d{2}[^)]*)\)/);
-				const timestamp = timeMatch ? new Date() : new Date(); // Use current time as fallback
-
-				// Extract content (remove timestamp line and separators)
-				let textContent = messageContent
-					.replace(/^\s*\([^)]+\)\s*\n\n/, '') // Remove timestamp line
-					.replace(/\n---\s*\n*$/, '') // Remove separator at end
-					.trim();
-
-				// Extract images and try to load them
-				let imageDataUrl: string | null = null;
-				let imageData: any = null;
-				let allImages: any[] = [];
-				const imageMatches = textContent.match(/!\[([^\]]*)\]\(([^)]+)\)/g);
-				
-				if (imageMatches) {
-					console.log('Found images in message:', imageMatches);
-					
-					// Process each image
-					for (const match of imageMatches) {
-						const imageMatch = match.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-						if (imageMatch) {
-							const altText = imageMatch[1];
-							const imagePath = imageMatch[2];
-							
-							// Try to load the image from vault if it's a local path
-							if (!imagePath.startsWith('data:') && !imagePath.startsWith('http')) {
-								try {
-									const vault = this.plugin.app.vault;
-									const file = vault.getAbstractFileByPath(imagePath);
-									if (file) {
-										// Store the local path and create image info
-										const imageInfo = {
-											localPath: imagePath,
-											fileName: altText || file.name,
-											dataUrl: null // Will be loaded later by AI chat view
-										};
-										allImages.push(imageInfo);
-										
-										// Set the first image as the main image
-										if (!imageDataUrl) {
-											imageDataUrl = imagePath; // Use path as placeholder
-											imageData = imageInfo;
-										}
-									} else {
-										console.warn('Image file not found in vault:', imagePath);
-										// Still add the image info even if file not found, for fallback handling
-										const imageInfo = {
-											localPath: imagePath,
-											fileName: altText || imagePath.split('/').pop() || 'image',
-											dataUrl: null
-										};
-										allImages.push(imageInfo);
-										
-										if (!imageDataUrl) {
-											imageDataUrl = imagePath;
-											imageData = imageInfo;
-										}
-									}
-								} catch (error) {
-									console.warn('Could not load image from path:', imagePath, error);
-									// Add image info for fallback handling
-									const imageInfo = {
-										localPath: imagePath,
-										fileName: altText || imagePath.split('/').pop() || 'image',
-										dataUrl: null
-									};
-									allImages.push(imageInfo);
-									
-									if (!imageDataUrl) {
-										imageDataUrl = imagePath;
-										imageData = imageInfo;
-									}
-								}
-							} else {
-								// Handle data URLs or external URLs
-								const imageInfo = {
-									localPath: null,
-									fileName: altText,
-									dataUrl: imagePath.startsWith('data:') ? imagePath : null
-								};
-								allImages.push(imageInfo);
-								
-								if (!imageDataUrl) {
-									imageDataUrl = imagePath;
-									imageData = imageInfo;
-								}
-							}
-						}
-					}
-				}
-
-				// Remove image markdown from text content for cleaner text
-				textContent = textContent.replace(/!\[[^\]]*\]\([^)]+\)\s*/g, '').trim();
-				
-				// Remove image filename lines
-				textContent = textContent.replace(/^\*[^*]+\*\s*$/gm, '').trim();
-
-				// Skip empty messages
-				if (!textContent && !imageDataUrl) continue;
-
-				const message = {
-					id: messageId,
-					type: isUser ? 'user' as const : 'assistant' as const,
-					content: textContent,
-					timestamp: timestamp
-				};
-
-				if (imageDataUrl) {
-					(message as any).image = imageDataUrl;
-					
-					// Store image data for proper restoration
-					if (imageData) {
-						(message as any).imageData = imageData;
-					}
-					
-					// Store all images if multiple
-					if (allImages.length > 0) {
-						(message as any).images = allImages;
-					}
-				}
-
-				conversation.messages.push(message);
+			if (isBestNoteFormat) {
+				// Parse BestNote format
+				await this.parseBestNoteFormat(content, conversation);
+			} else {
+				// Parse old Message Block format for backward compatibility
+				await this.parseLegacyFormat(content, conversation);
 			}
 
 			return conversation.messages.length > 0 ? conversation : null;
@@ -412,6 +295,122 @@ export class ChatHistoryModal extends Modal {
 		} catch (error: any) {
 			console.error('Failed to parse conversation from markdown:', error);
 			return null;
+		}
+	}
+
+	private async parseBestNoteFormat(content: string, conversation: AIConversation): Promise<void> {
+		// Split content by lines to parse line by line
+		const lines = content.split('\n');
+		let currentMessage: any = null;
+		let currentContent: string[] = [];
+		
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			
+			// Check if this line starts a new message
+			const messageMatch = line.match(/^(user|ai):\s*(.*)?$/);
+			if (messageMatch) {
+				// Save previous message if exists
+				if (currentMessage) {
+					await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation);
+				}
+				
+				// Start new message
+				const messageType = messageMatch[1] === 'user' ? 'user' : 'assistant';
+				const initialContent = messageMatch[2] || '';
+				
+				currentMessage = {
+					id: 'loaded_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+					type: messageType as 'user' | 'assistant',
+					timestamp: new Date()
+				};
+				
+				currentContent = initialContent ? [initialContent] : [];
+				continue;
+			}
+			
+			// Check for timestamp lines
+			const timestampMatch = line.match(/^\[Timestamp:\s*(.+)\]$/);
+			if (timestampMatch && currentMessage) {
+				// Parse timestamp and finalize current message
+				const timestampStr = timestampMatch[1];
+				try {
+					// Convert from "2025/08/07 01:27:20" format
+					const parsedTime = new Date(timestampStr.replace(/\//g, '-'));
+					if (!isNaN(parsedTime.getTime())) {
+						currentMessage.timestamp = parsedTime;
+					}
+				} catch (e) {
+					console.warn('Could not parse timestamp:', timestampStr);
+				}
+				
+				await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation);
+				currentMessage = null;
+				currentContent = [];
+				continue;
+			}
+			
+			// Check for Properties section or other metadata - skip these
+			if (line.startsWith('Properties') || line.match(/^[📅🤖🏷️]\s+\w+\s+/) || line.match(/^---\s*$/)) {
+				continue;
+			}
+			
+			// Accumulate content lines
+			if (currentMessage && line.trim()) {
+				currentContent.push(line);
+			}
+		}
+		
+		// Finalize the last message if exists
+		if (currentMessage) {
+			await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation);
+		}
+	}
+
+	private async finalizeBestNoteMessage(message: any, contentLines: string[], conversation: AIConversation): Promise<void> {
+		const fullContent = contentLines.join('\n').trim();
+		
+		// Only add message if it has content
+		if (fullContent) {
+			// Keep the full content including image markdown - let the renderer handle it
+			message.content = fullContent;
+			conversation.messages.push(message);
+		}
+	}
+
+	private async parseLegacyFormat(content: string, conversation: AIConversation): Promise<void> {
+		// Parse old Message Block format for backward compatibility
+		const messageBlocks = content.split(/## Message Block \d+/);
+		
+		for (let i = 1; i < messageBlocks.length; i++) {
+			const blockContent = messageBlocks[i];
+			
+			// Extract sender
+			const senderMatch = blockContent.match(/\*\*Sender:\*\*\s*[🤖👤]\s*(User|AI Assistant)/);
+			if (!senderMatch) continue;
+			
+			const isUser = senderMatch[1] === 'User';
+			const messageId = 'loaded_' + Date.now() + '_' + i;
+			
+			// Extract timestamp
+			const timeMatch = blockContent.match(/\*\*Time:\*\*\s*(.+)/);
+			const timestamp = timeMatch ? new Date() : new Date(); // Use current time as fallback
+			
+			// Extract content - keep everything including images
+			const contentMatch = blockContent.match(/\*\*Content:\*\*\s*\n\n([\s\S]*?)(?=\n\n---|\n---|\s*$)/);
+			const fullContent = contentMatch ? contentMatch[1].trim() : '';
+			
+			// Skip empty messages
+			if (!fullContent) continue;
+			
+			const message = {
+				id: messageId,
+				type: isUser ? 'user' as const : 'assistant' as const,
+				content: fullContent, // Keep full content including images
+				timestamp: timestamp
+			};
+			
+			conversation.messages.push(message);
 		}
 	}
 
