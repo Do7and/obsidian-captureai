@@ -801,7 +801,7 @@ export class AIManager {
 				'Content-Type': 'application/json',
 				'Authorization': `Bearer ${credentials.apiKey}`,
 				'HTTP-Referer': 'https://obsidian.md', // Optional: for analytics
-				'X-Title': 'Obsidian Screenshot Capture Plugin' // Optional: for analytics
+				'X-Title': 'Obsidian CaptureAI Plugin' // Optional: for analytics
 			},
 			body: JSON.stringify({
 				model: modelConfig.modelId,
@@ -1296,7 +1296,7 @@ export class AIManager {
 				'Content-Type': 'application/json',
 				'Authorization': `Bearer ${credentials.apiKey}`,
 				'HTTP-Referer': 'https://obsidian.md',
-				'X-Title': 'Obsidian Screenshot Capture Plugin'
+				'X-Title': 'Obsidian CaptureAI Plugin'
 			},
 			body: JSON.stringify({
 				model: modelConfig.modelId,
@@ -1530,7 +1530,7 @@ export class AIManager {
 				'Content-Type': 'application/json',
 				'Authorization': `Bearer ${credentials.apiKey}`,
 				'HTTP-Referer': 'https://obsidian.md',
-				'X-Title': 'Obsidian Screenshot Capture Plugin'
+				'X-Title': 'Obsidian CaptureAI Plugin'
 			},
 			body: JSON.stringify({
 				model: modelConfig.modelId,
@@ -1771,7 +1771,7 @@ export class AIManager {
 				'Content-Type': 'application/json',
 				'Authorization': `Bearer ${credentials.apiKey}`,
 				'HTTP-Referer': 'https://obsidian.md',
-				'X-Title': 'Obsidian Screenshot Capture'
+				'X-Title': 'Obsidian CaptureAI'
 			},
 			body: JSON.stringify(requestBody)
 		});

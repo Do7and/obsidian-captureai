@@ -33,7 +33,7 @@ export default class ImageCapturePlugin extends Plugin {
 			(leaf) => new AIChatView(leaf, this)
 		);
 
-		this.addRibbonIcon('camera', t('ui.screenshotCapture'), (evt: MouseEvent) => {
+		this.addRibbonIcon('camera', t('ui.captureAI'), (evt: MouseEvent) => {
 			this.screenshotManager.startRegionCapture();
 		});
 

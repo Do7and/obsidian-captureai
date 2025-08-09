@@ -1341,7 +1341,7 @@ export class SetKeysModal extends Modal {
 				'Content-Type': 'application/json',
 				'Authorization': `Bearer ${credentials.apiKey}`,
 				'HTTP-Referer': 'https://obsidian.md',
-				'X-Title': 'Obsidian Screenshot Capture Plugin'
+				'X-Title': 'Obsidian CaptureAI Plugin'
 			},
 			body: JSON.stringify({
 				model: modelConfig.modelId,

@@ -1,21 +1,21 @@
 {
-	"id": "obsidian-screenshot-capture",
-	"name": "Screenshot Capture",
+	"id": "obsidian-captureai",
+	"name": "CaptureAI",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Capture screenshots with region selection and built-in editing tools. Perfect for creating annotated images and snippets.",
+	"description": "Capture screenshots and gain insights from visual content with AI in Obsidian.",
 	"author": "Screenshot Plugin Developer",
-	"authorUrl": "https://github.com/obsidian-screenshot-capture",
-	"fundingUrl": "https://github.com/obsidian-screenshot-capture",
+	"authorUrl": "https://github.com/obsidian-captureai",
+	"fundingUrl": "https://github.com/obsidian-captureai",
 	"isDesktopOnly": true,
 	"i18n": {
 		"en": {
-			"name": "Screenshot Capture",
-			"description": "Capture screenshots with region selection and built-in editing tools. And use LLM to analyze them."
+			"name": "CaptureAI",
+			"description": "Capture screenshots, and organize visual content seamlessly with AI in Obsidian."
 		},
 		"zh": {
-			"name": "截图捕获",
-			"description": "通过区域选择和内置编辑工具捕获屏幕截图。使用LLM分析它们。"
+			"name": "CaptureAI",
+			"description": "捕捉截图，并使用AI进行分析视觉内容"
 		}
 	}
 }

@@ -13,31 +13,31 @@ export class Logger {
 
 	log(...args: any[]): void {
 		if (this.isDebugEnabled) {
-			console.log('[Screenshot Capture]', ...args);
+			console.log('[CaptureAI]', ...args);
 		}
 	}
 
 	info(...args: any[]): void {
 		if (this.isDebugEnabled) {
-			console.info('[Screenshot Capture]', ...args);
+			console.info('[CaptureAI]', ...args);
 		}
 	}
 
 	warn(...args: any[]): void {
 		if (this.isDebugEnabled) {
-			console.warn('[Screenshot Capture]', ...args);
+			console.warn('[CaptureAI]', ...args);
 		}
 	}
 
 	error(...args: any[]): void {
 		if (this.isDebugEnabled) {
-			console.error('[Screenshot Capture]', ...args);
+			console.error('[CaptureAI]', ...args);
 		}
 	}
 
 	debug(...args: any[]): void {
 		if (this.isDebugEnabled) {
-			console.debug('[Screenshot Capture]', ...args);
+			console.debug('[CaptureAI]', ...args);
 		}
 	}
 }

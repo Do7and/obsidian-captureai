@@ -179,7 +179,7 @@ export default {
   "ui.done": "完成",
   "ui.add": "添加",
   "ui.remove": "移除",
-  "ui.screenshotCapture": "截图捕获",
+  "ui.captureAI": "截图捕获",
   "ui.aiChatPanel": "AI 会话面板",
   
   // Chat History Modal

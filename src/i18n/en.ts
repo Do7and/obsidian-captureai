@@ -179,7 +179,7 @@ export default {
   "ui.done": "Done",
   "ui.add": "Add",
   "ui.remove": "Remove",
-  "ui.screenshotCapture": "Screenshot Capture",
+  "ui.captureAI": "CaptureAI",
   "ui.aiChatPanel": "AI Chat Panel",
   
   // Chat History Modal
@@ -399,7 +399,7 @@ export default {
   "chatHistory.failedToLoad": "❌ Failed to load conversation: {{message}}",
 
   // AI Chat View
-  "aiChat.title": "AI Chat - from ScreenshotCapture",
+  "aiChat.title": "AI Chat - from captureAI",
   "aiChat.assistantTitle": "AI Assistant",
   "aiChat.howToUseTitle": "How to Use",
   "aiChat.instruction.screenshot": "Take a screenshot and it will be automatically analyzed",
@@ -464,7 +464,7 @@ export default {
 
   // Settings tab - hardcoded content that needs i18n
   "settings.usage.helpContent": `
-    <p>How to use the screenshot capture plugin:</p>
+    <p>How to use the CaptureAI plugin:</p>
     <ol>
       <li>Click the camera icon in the ribbon or use the command palette</li>
       <li>Select "Capture selected area" or "Capture full screen"</li>
