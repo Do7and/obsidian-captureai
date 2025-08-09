@@ -1,94 +1,166 @@
-# Obsidian Sample Plugin
+# CaptureAI - Obsidian Plugin
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+<p align="center">
+  <img src="captureai-logo.svg" width="120" height="120" alt="CaptureAI Logo" />
+  <h3 align="center">Capture, Analyze, and Organize Visual Information with AI</h3>
+</p>
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+[![GitHub release](https://img.shields.io/github/release/Do7and/captureai.svg)](https://github.com/Do7and/captureai/releases)
+[![AGPL License 3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.en.html)
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open Sample Modal" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+---
 
-## First time developing plugins?
+**CaptureAI** is a powerful Obsidian plugin that supports screenshot capture and AI-powered analysis, transforming the way you interact with visual content and improving your knowledge management efficiency.
 
-Quick starting guide for new plugin devs:
+---
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+[English](README.md) | 简体中文
 
-## Releasing new releases
+## Features
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+### 📸 Advanced Screenshot Capture
+- Region capture with intuitive selection tool
+- In-preview editing: pen, highlighter, shape tools
+- Direct edge dragging to adjust screenshot area without separate crop tool
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+### 🤖 AI Integration & Analysis
+- Supports multiple AI models (OpenAI, Anthropic, Google, Custom)
+- Automatically detects vision model capabilities and chooses intelligently
+- Four modes: Analyze, OCR, Chat, Custom
+- Supports image context-aware conversations
+- System prompt customization for diverse scenarios
+- Special styling and handling for thinking/reasoning blocks
 
-## Adding your plugin to the community plugin list
+### 💬 Enhanced Chat Interface
+- Message block design with operation buttons
+- Supports insert at cursor, copy, edit/read view toggle, delete
+- Supports LaTeX and Markdown rendering
+- Maintains context when switching models
+- Session-to-note correspondence model
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+### 🖼️ Intelligent Image Management
+- Multi-source image management:
+  - From screenshots
+  - Dragged from markdown files
+  - Dragged from Vault images
+  - Dragged from external file browser/web
+  - Selected from file browser
+- Supports Base64 temporary images without Vault storage
+- Automatically saves images to configured locations when saving sessions
+- Smart copy behavior with automatic path handling
 
-## How to use
+### 📝 Smart Conversation Management
+- Auto-save conversations with change detection
+- Manual save with custom naming
+- Tracks creation and modification timestamps
+- Bidirectional synchronization between sessions and notes
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+---
 
-## Manually installing the plugin
+## How It Works
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+1. **Capture**: Select any area on your screen with the region capture tool  
+2. **Edit**: Annotate your screenshot using various drawing tools  
+3. **Analyze**: Send it to AI with one of four modes  
+4. **Converse**: Engage in intelligent dialogue based on image context  
+5. **Organize**: Save conversations as notes or access them from history
 
-## Improve code quality with eslint (optional)
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- To use eslint with this project, make sure to install eslint from terminal:
-  - `npm install -g eslint`
-- To use eslint to analyze this project use this command:
-  - `eslint main.ts`
-  - eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder:
-  - `eslint .\src\`
+---
 
-## Funding URL
+## Installation
 
-You can include funding URLs where people who use your plugin can financially support it.
+### From Obsidian Community Plugins (Coming Soon)
+1. Open Obsidian  
+2. Go to Settings > Community Plugins  
+3. Disable "Safe Mode"  
+4. Click "Browse" and search for CaptureAI  
+5. Click "Install"  
+6. Enable the plugin after installation  
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+### Manual Installation
+1. Download the latest release archive  
+2. Extract into your Vault's `.obsidian/plugins/captureai` folder  
+3. Restart Obsidian  
+4. Enable CaptureAI in Settings > Community Plugins  
 
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
-```
+---
 
-If you have multiple URLs, you can also do:
+## Configuration
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
-```
+### AI Model Setup
+1. Go to Settings > CaptureAI  
+2. Configure API keys for AI services  
+3. Manage and add models with vision capability  
+4. Set default models for each operation mode
 
-## API Documentation
+### Image Handling
+- Configure screenshot save locations  
+- Set temporary image size limits  
+- Define other source image storage paths  
+- Customize copy format
 
-See https://github.com/obsidianmd/obsidian-api
+### UI Customization
+- Adjust hotkeys  
+- Configure display preferences  
+- Set auto-save parameters
+
+---
+
+## Usage Examples
+
+### Academic Research
+- Capture textbook pages and extract text with OCR  
+- Analyze charts for insights  
+- Generate annotated study notes with AI assistance  
+
+### Programming Assistance
+- Capture code snippets for explanation and suggestions  
+- Get UI design feedback  
+- Document debugging sessions with visual references  
+
+### Creative Work
+- Annotate design mockups with feedback  
+- Analyze visual content for creative inspiration  
+- Organize visual ideas with AI tagging  
+
+---
+
+## Roadmap
+
+- [ ] Bug fixes  
+
+---
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository  
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)  
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)  
+4. Push to the branch (`git push origin feature/AmazingFeature`)  
+5. Open a Pull Request  
+
+---
+
+## Support
+
+- 🐛 Report bugs on [GitHub Issues](https://github.com/Do7and/captureai/issues)  
+- 💡 Suggest features on [GitHub Discussions](https://github.com/Do7and/captureai/discussions)  
+
+---
+
+## License
+
+Copyright © 2025 Do7and
+
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).  
+See the full license at [AGPL v3.0 License](https://www.gnu.org/licenses/agpl-3.0.en.html)
+
+---
+
+## Acknowledgments
+
+- Thanks to the Obsidian team for creating an excellent knowledge management platform  
+- Inspired by the intersection of AI and personal knowledge management  
+- Icons from the Lucide Icons library

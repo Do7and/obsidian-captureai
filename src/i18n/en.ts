@@ -322,7 +322,7 @@ export default {
   "addCustomProvider.description": "Add a new custom AI provider with your own API configuration.",
   "addCustomProvider.providerNameLabel": "Provider Name",
   "addCustomProvider.providerNameDescription": "Enter a name for this provider (e.g., 'My Company API')",
-  "addCustomProvider.providerNamePlaceholder": "302.AI",
+  "addCustomProvider.providerNamePlaceholder": "My Company API",
   "addCustomProvider.baseUrlLabel": "Base URL",
   "addCustomProvider.baseUrlDescription": "Enter the base URL for the API endpoint",
   "addCustomProvider.baseUrlPlaceholder": "https://api.302.ai",
