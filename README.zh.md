@@ -13,7 +13,7 @@
 **CaptureAI** 是一款强大的 Obsidian 插件，支持截图捕获和 AI 智能分析，改变你与视觉内容的交互方式，提升你的知识管理效率。
 
 ---
-English | [简体中文](README.zh-CN.md) 
+[English](README.md) | 简体中文
 
 
 ## Features
