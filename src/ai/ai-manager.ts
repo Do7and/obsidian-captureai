@@ -8,6 +8,7 @@ export interface AIMessage {
 	type: 'user' | 'assistant';
 	content: string;
 	image?: string;
+	tempImages?: { [key: string]: string }; // 临时图片: {id: base64}
 	timestamp: Date;
 	isTyping?: boolean;
 }
@@ -61,27 +62,30 @@ export class AIManager {
 			conversation = this.createNewConversation('新对话');
 		}
 
-		// Create user message content in markdown format
-		let markdownContent = '';
+		// Set default message based on number of images
+		// const defaultMessage = images.length === 1 ? 
+		// 	'Please analyze this image' : 
+		// 	`Please analyze these ${images.length} images`;
 		
-		// Add images as markdown references
-		images.forEach((img, index) => {
-			const imagePath = img.localPath || `[Data URL Image ${index + 1}]`;
-			markdownContent += `![${img.fileName}](${imagePath})\n\n`;
-		});
+		// Set default message to null
+		const defaultMessage = ''
+
+		// Create user message content with temporary images
+		const tempImageData = this.createTempImagePlaceholders(images.map(img => img.dataUrl));
+		const messageData = this.mergeTempImagesWithContent(userMessage || defaultMessage, tempImageData);
 		
-		// Add text content
-		const defaultMessage = images.length === 1 ? 'Please analyze this image' : `Please analyze these ${images.length} images`;
-		markdownContent += userMessage || defaultMessage;
-		
-		// Add user message with markdown content
+		// Add user message with markdown content and temporary images
 		const userMsg: AIMessage = {
 			id: this.generateMessageId(),
 			type: 'user',
-			content: markdownContent.trim(),
+			content: messageData.content.trim(),
+			tempImages: messageData.tempImages,
 			timestamp: new Date()
 		};
 		conversation.messages.push(userMsg);
+
+		// Check temporary image limit and notify user
+		this.checkTempImageLimit(conversation);
 
 		// Show the AI panel
 		await this.showAIPanel();
@@ -100,7 +104,7 @@ export class AIManager {
 
 		try {
 			// Extract text content from user message (without images)
-			const { textContent } = this.parseMarkdownContent(userMsg.content);
+			const { textContent } = this.parseMarkdownContent(userMsg.content, userMsg.tempImages);
 			
 			// Call AI API with context support using images array
 			// Include modeprompt since this is from the send area
@@ -161,6 +165,8 @@ export class AIManager {
 	}
 
 	// Convenience method for single image analysis
+	// WARNING: This method should NOT be used for screenshot capture auto-send functionality!
+	// Screenshots should be added to queue first, letting users decide when to send
 	async sendSingleImageToAI(dataUrl: string, fileName: string, userMessage?: string, localPath?: string | null): Promise<void> {
 		const imageArray = [{
 			dataUrl: dataUrl,
@@ -253,12 +259,12 @@ export class AIManager {
 			} else if (contextSettings.contextStrategy === 'smart') {
 				// Smart selection: prioritize messages with images and recent messages
 				const messagesWithImages = historicalMessages.filter(m => {
-					const { imageReferences } = this.parseMarkdownContent(m.content || '');
-					return imageReferences.length > 0;
+					const { imageReferences, tempImageRefs } = this.parseMarkdownContent(m.content || '', m.tempImages);
+					return imageReferences.length > 0 || tempImageRefs.length > 0;
 				});
 				const messagesWithoutImages = historicalMessages.filter(m => {
-					const { imageReferences } = this.parseMarkdownContent(m.content || '');
-					return imageReferences.length === 0;
+					const { imageReferences, tempImageRefs } = this.parseMarkdownContent(m.content || '', m.tempImages);
+					return imageReferences.length === 0 && tempImageRefs.length === 0;
 				});
 				
 				// Take recent image messages first (up to maxContextImages)
@@ -281,16 +287,18 @@ export class AIManager {
 				const role = msg.type === 'user' ? 'user' : 'assistant';
 				
 				// Parse message content to separate images and text
-				const { textContent, imageReferences } = this.parseMarkdownContent(msg.content || '');
+				const { textContent, imageReferences, tempImageRefs } = this.parseMarkdownContent(msg.content || '', msg.tempImages);
 				
-				// Check if message has images from markdown content
-				if (imageReferences.length > 0 && isVisionCapable && imageCount < contextSettings.maxContextImages) {
+				// Check if message has images (regular or temporary)
+				const hasImages = (imageReferences.length > 0 || tempImageRefs.length > 0) && isVisionCapable && imageCount < contextSettings.maxContextImages;
+				
+				if (hasImages) {
 					// Message with images - only include if model supports vision
 					const messageContent = [
 						{ type: 'text', text: textContent }
 					];
 					
-					// Add images from references (load them as needed)
+					// Add regular images from references (load them as needed)
 					for (const imageRef of imageReferences) {
 						if (imageCount >= contextSettings.maxContextImages) break;
 						
@@ -315,6 +323,17 @@ export class AIManager {
 							});
 							imageCount++;
 						}
+					}
+					
+					// Add temporary images directly
+					for (const tempImageRef of tempImageRefs) {
+						if (imageCount >= contextSettings.maxContextImages) break;
+						
+						(messageContent as any).push({
+							type: 'image_url',
+							image_url: { url: tempImageRef.dataUrl }
+						});
+						imageCount++;
 					}
 					
 					messages.push({
@@ -920,10 +939,10 @@ export class AIManager {
 			// Collect text content and parse for images
 			if (message.content && message.content.trim()) {
 				// Parse markdown content to separate images and text
-				const { textContent, imageReferences } = this.parseMarkdownContent(message.content);
+				const { textContent, imageReferences, tempImageRefs } = this.parseMarkdownContent(message.content, message.tempImages);
 				
-				// Count images from markdown content
-				imageCount += imageReferences.length;
+				// Count images from markdown content and temporary images
+				imageCount += imageReferences.length + tempImageRefs.length;
 				
 				// Clean text content for title
 				const cleanContent = textContent
@@ -1023,14 +1042,16 @@ export class AIManager {
 	}
 
 	/**
-	 * Parse markdown content to separate images and text
+	 * Parse markdown content to separate images and text, including temporary images
 	 */
-	private parseMarkdownContent(markdown: string): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }> } {
+	private parseMarkdownContent(markdown: string, tempImages?: { [key: string]: string }): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }>; tempImageRefs: Array<{ id: string; dataUrl: string }> } {
 		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
+		const tempImageRegex = /\[!Tempimg\s+([^\]]+)\]/g;
 		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
+		const tempImageRefs: Array<{ id: string; dataUrl: string }> = [];
 		let textContent = markdown;
 		
-		// Extract all image references
+		// Extract regular image references
 		let match;
 		while ((match = imageRegex.exec(markdown)) !== null) {
 			const alt = match[1] || 'Image';
@@ -1047,10 +1068,24 @@ export class AIManager {
 			textContent = textContent.replace(match[0], '').trim();
 		}
 		
+		// Extract temporary image references
+		while ((match = tempImageRegex.exec(markdown)) !== null) {
+			const tempId = match[1];
+			if (tempImages && tempImages[tempId]) {
+				tempImageRefs.push({
+					id: tempId,
+					dataUrl: tempImages[tempId]
+				});
+			}
+			
+			// Remove the temp image placeholder from text content
+			textContent = textContent.replace(match[0], '').trim();
+		}
+		
 		// Clean up extra whitespace
 		textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
 		
-		return { textContent, imageReferences };
+		return { textContent, imageReferences, tempImageRefs };
 	}
 
 	/**
@@ -1113,6 +1148,73 @@ export class AIManager {
 
 	private generateConversationId(): string {
 		return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+	}
+
+	/**
+	 * 生成临时图片ID
+	 */
+	private generateTempImageId(): string {
+		return 'temp_img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+	}
+
+	/**
+	 * 检查并提醒临时图片数量
+	 */
+	private checkTempImageLimit(conversation: AIConversation): void {
+		const tempImageCount = this.countTempImagesInConversation(conversation);
+		if (tempImageCount > 5) {
+			new Notice(
+				`📸 当前会话已有${tempImageCount}张临时图片，建议保存会话以避免内存占用过高`,
+				8000
+			);
+		}
+	}
+
+	/**
+	 * 统计会话中的临时图片数量
+	 */
+	private countTempImagesInConversation(conversation: AIConversation): number {
+		let count = 0;
+		for (const message of conversation.messages) {
+			if (message.tempImages) {
+				count += Object.keys(message.tempImages).length;
+			}
+		}
+		return count;
+	}
+
+	/**
+	 * 为图片数组创建临时图片占位符
+	 */
+	createTempImagePlaceholders(imageDataUrls: string[]): { content: string; tempImages: { [key: string]: string } } {
+		const tempImages: { [key: string]: string } = {};
+		const placeholders: string[] = [];
+
+		for (const dataUrl of imageDataUrls) {
+			const tempId = this.generateTempImageId();
+			tempImages[tempId] = dataUrl;
+			placeholders.push(`[!Tempimg ${tempId}]`);
+		}
+
+		return {
+			content: placeholders.join('\n\n'),
+			tempImages
+		};
+	}
+
+	/**
+	 * 将占位符内容和临时图片合并到消息内容中
+	 */
+	mergeTempImagesWithContent(baseContent: string, tempImageData?: { content: string; tempImages: { [key: string]: string } }): { content: string; tempImages?: { [key: string]: string } } {
+		if (!tempImageData) {
+			return { content: baseContent };
+		}
+
+		const finalContent = tempImageData.content + (baseContent ? '\n\n' + baseContent : '');
+		return {
+			content: finalContent,
+			tempImages: tempImageData.tempImages
+		};
 	}
 
 	// Text-only API methods for better chat experience

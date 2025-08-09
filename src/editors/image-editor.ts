@@ -25,6 +25,9 @@ export class ImageEditor extends Modal {
 	private history: ImageData[] = [];
 	private historyIndex = -1;
 	private originalImageData: string = '';
+	
+	// UI elements
+	private fileNameInput: HTMLInputElement | null = null;
 
 	// Four-layer system simulation properties
 	// Layer 1: Preview page with center hole (handled by UI)
@@ -602,10 +605,55 @@ export class ImageEditor extends Modal {
 	private createActionButtons(buttonBar: HTMLElement) {
 		buttonBar.style.cssText = `
 			display: flex;
-			justify-content: flex-end;
+			flex-direction: column;
 			padding: 12px;
 			background: var(--background-secondary);
 			border-top: 1px solid var(--background-modifier-border);
+			gap: 12px;
+		`;
+		
+		// File name input section
+		const fileNameSection = buttonBar.createDiv({ cls: 'image-editor-filename-section' });
+		fileNameSection.style.cssText = `
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		`;
+		
+		const fileNameLabel = fileNameSection.createEl('label', { text: t('imageEditor.fileNameLabel') });
+		fileNameLabel.style.cssText = `
+			font-weight: 500;
+			color: var(--text-normal);
+			white-space: nowrap;
+		`;
+		
+		// Generate default filename
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const defaultFileName = `screenshot-${timestamp}.png`;
+		
+		const fileNameInput = fileNameSection.createEl('input', { 
+			type: 'text',
+			placeholder: t('imageEditor.fileNamePlaceholder'),
+			value: defaultFileName
+		});
+		fileNameInput.style.cssText = `
+			flex: 1;
+			padding: 6px 10px;
+			border: 1px solid var(--background-modifier-border);
+			border-radius: 4px;
+			background: var(--background-primary);
+			color: var(--text-normal);
+			font-size: 14px;
+		`;
+		
+		// Store reference to filename input
+		this.fileNameInput = fileNameInput;
+		
+		// Button row
+		const buttonRow = buttonBar.createDiv({ cls: 'image-editor-button-row' });
+		buttonRow.style.cssText = `
+			display: flex;
+			justify-content: flex-end;
 			gap: 10px;
 		`;
 		
@@ -624,9 +672,45 @@ export class ImageEditor extends Modal {
 		
 		const aiButtonEnabled = aiEnabled && hasValidModel && hasValidCredentials;
 
-		// Save and Send to AI button
+		// New buttons for temporary operations (no save)
 		if (aiEnabled) {
-			const aiButton = buttonBar.createEl('button', { text: t('imageEditor.aiButton') });
+			const tempAIButton = buttonRow.createEl('button', { text: t('imageEditor.tempSendToAI') });
+			if (aiButtonEnabled) {
+				this.styleActionButton(tempAIButton, 'var(--color-orange)', 'white');
+			} else {
+				this.styleActionButton(tempAIButton, 'var(--background-modifier-border)', 'var(--text-muted)');
+				tempAIButton.disabled = true;
+				
+				// Add tooltip for disabled state
+				let tooltip = '';
+				if (visionModels.length === 0) {
+					tooltip = t('imageEditor.noVisionModelsTooltip');
+				} else if (!hasValidModel) {
+					tooltip = t('imageEditor.noDefaultModelTooltip');
+				} else if (!hasValidCredentials) {
+					tooltip = t('imageEditor.credentialsNotVerifiedTooltip');
+				}
+				tempAIButton.title = tooltip;
+			}
+			tempAIButton.title = t('imageEditor.tempSendToAITooltip');
+			tempAIButton.addEventListener('click', () => {
+				if (aiButtonEnabled) {
+					this.sendToAIWithoutSave();
+				}
+			});
+		}
+
+		// Temporary copy button (no save)
+		const tempCopyButton = buttonRow.createEl('button', { text: t('imageEditor.tempCopy') });
+		this.styleActionButton(tempCopyButton, 'var(--color-purple)', 'white');
+		tempCopyButton.title = t('imageEditor.tempCopyTooltip');
+		tempCopyButton.addEventListener('click', () => {
+			this.copyToClipboardWithoutSave();
+		});
+
+		// Original Save and Send to AI button (with save)
+		if (aiEnabled) {
+			const aiButton = buttonRow.createEl('button', { text: t('imageEditor.aiButton') });
 			if (aiButtonEnabled) {
 				this.styleActionButton(aiButton, 'var(--interactive-accent)', 'var(--text-on-accent)');
 			} else {
@@ -651,7 +735,8 @@ export class ImageEditor extends Modal {
 			});
 		}
 		
-		const saveButton = buttonBar.createEl('button', { text: t('imageEditor.saveButton') });
+		// Original save button
+		const saveButton = buttonRow.createEl('button', { text: t('imageEditor.saveButton') });
 		this.styleActionButton(saveButton, 'var(--interactive-accent)', 'var(--text-on-accent)');
 		saveButton.addEventListener('click', () => this.saveAndCopyMarkdown());
 	}
@@ -667,6 +752,96 @@ export class ImageEditor extends Modal {
 			font-weight: 500;
 			font-size: 14px;
 		`;
+	}
+
+	private async sendToAIWithoutSave() {
+		if (!this.canvas) return;
+		
+		try {
+			// Get the final image data without saving
+			const dataUrl = this.createFinalImage();
+			
+			// Generate a temporary filename based on user input
+			const baseFileName = this.getFileName();
+			const tempFileName = baseFileName.replace('.png', '').replace(/^temp-/, '') + '-temp.png';
+			
+			// Show AI panel first (only if not already visible)
+			await this.plugin.ensureAIChatPanelVisible();
+			
+			// Add image to queue instead of sending directly
+			await this.plugin.addImageToAIQueue(dataUrl, tempFileName, null);
+			
+			// Close the editor
+			this.close();
+			
+			new Notice(t('imageEditor.imageAddedToQueue'));
+			
+		} catch (error: any) {
+			console.error('Add to AI queue without save failed:', error);
+			new Notice(t('imageEditor.addToQueueFailed', { message: error.message }));
+		}
+	}
+	
+	private async copyToClipboardWithoutSave() {
+		if (!this.canvas) return;
+		
+		try {
+			// Get the final image data
+			const dataUrl = this.createFinalImage();
+			
+			// Convert data URL to blob
+			const response = await fetch(dataUrl);
+			const blob = await response.blob();
+			
+			// Copy to clipboard using ClipboardItem
+			if (navigator.clipboard && (window as any).ClipboardItem) {
+				const item = new (window as any).ClipboardItem({
+					'image/png': blob
+				});
+				await navigator.clipboard.write([item]);
+				new Notice('✅ 图片已复制到剪贴板');
+			} else {
+				// Fallback: create a temporary canvas for copying
+				const tempCanvas = document.createElement('canvas');
+				const tempCtx = tempCanvas.getContext('2d')!;
+				const img = new Image();
+				
+				img.onload = () => {
+					tempCanvas.width = img.width;
+					tempCanvas.height = img.height;
+					tempCtx.drawImage(img, 0, 0);
+					
+					// Copy canvas content (browser specific)
+					tempCanvas.toBlob(async (blob) => {
+						if (blob && navigator.clipboard) {
+							try {
+								const item = new (window as any).ClipboardItem({
+									'image/png': blob
+								});
+								await navigator.clipboard.write([item]);
+								new Notice('✅ 图片已复制到剪贴板');
+							} catch (fallbackError) {
+								console.warn('Clipboard copy failed:', fallbackError);
+								new Notice('❌ 复制失败，请使用保存功能');
+							}
+						}
+					}, 'image/png');
+				};
+				
+				img.src = dataUrl;
+			}
+			
+			// Close the editor
+			this.close();
+			
+		} catch (error: any) {
+			console.error('Copy to clipboard without save failed:', error);
+			new Notice(t('imageEditor.copyFailed', { message: error.message }));
+		}
+	}
+	
+	private createFinalImage(): string {
+		return this.getFinalCroppedImage();
 	}
 
 
@@ -1377,6 +1552,22 @@ export class ImageEditor extends Modal {
 		this.saveToHistory();
 	}
 
+	private getFileName(): string {
+		// Get user input or generate default filename
+		if (this.fileNameInput && this.fileNameInput.value.trim()) {
+			let fileName = this.fileNameInput.value.trim();
+			// Ensure it has .png extension
+			if (!fileName.toLowerCase().endsWith('.png')) {
+				fileName += '.png';
+			}
+			return fileName;
+		}
+		
+		// Fallback to timestamp-based filename
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		return `screenshot-${timestamp}.png`;
+	}
+
 	private async saveAndCopyMarkdown() {
 		if (!this.canvas) return;
 		
@@ -1384,9 +1575,8 @@ export class ImageEditor extends Modal {
 			// Get the final cropped image
 			const dataUrl = this.getFinalCroppedImage();
 			
-			// Generate filename
-			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-			const fileName = `screenshot-${timestamp}.png`;
+			// Get filename from user input or generate default
+			const fileName = this.getFileName();
 			
 			// Save image to vault and get the path
 			const savedPath = await this.saveImageToVault(dataUrl, fileName);
@@ -1456,9 +1646,8 @@ export class ImageEditor extends Modal {
 			// Get the final cropped image
 			const dataUrl = this.getFinalCroppedImage();
 			
-			// Generate filename
-			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-			const fileName = `screenshot-${timestamp}.png`;
+			// Get filename from user input or generate default
+			const fileName = this.getFileName();
 			
 			// Show progress notice
 			const notice = new Notice(t('imageEditor.savingAndAddingToQueue'), 2000);

@@ -269,7 +269,12 @@ export default {
   "imageEditor.operationFailed": "❌ Operation failed: {{message}}",
   "imageEditor.aiAnalysisFailed": "❌ AI analysis failed: {{message}}",
   "imageEditor.noVisionModelsTooltip": "No vision-capable models configured. Use Settings > Set Keys to add models.",
-  "imageEditor.noDefaultModelTooltip": "No default model selected or model does not support vision",
+  "imageEditor.tempSendToAI": "Send to AI (No Save)",
+  "imageEditor.tempCopy": "Copy (No Save)",
+  "imageEditor.fileNameLabel": "File Name for Saving:",
+  "imageEditor.fileNamePlaceholder": "Enter filename...",
+  "imageEditor.tempSendToAITooltip": "Send image to AI chat without saving to vault",
+  "imageEditor.tempCopyTooltip": "Copy image to clipboard without saving to vault",
   "imageEditor.credentialsNotVerifiedTooltip": "API credentials not verified. Use Settings > Set Keys to verify.",
   
   // Set Keys Modal
@@ -316,7 +321,7 @@ export default {
   "addCustomProvider.title": "Add Custom AI Provider",
   "addCustomProvider.description": "Add a new custom AI provider with your own API configuration.",
   "addCustomProvider.providerNameLabel": "Provider Name",
-  "addCustomProvider.providerNameDescription": "Enter a name for this provider (e.g., '302.AI', 'My Company API')",
+  "addCustomProvider.providerNameDescription": "Enter a name for this provider (e.g., 'My Company API')",
   "addCustomProvider.providerNamePlaceholder": "302.AI",
   "addCustomProvider.baseUrlLabel": "Base URL",
   "addCustomProvider.baseUrlDescription": "Enter the base URL for the API endpoint",

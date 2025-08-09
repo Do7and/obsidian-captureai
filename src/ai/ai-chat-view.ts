@@ -56,7 +56,7 @@ export class AIChatView extends ItemView {
 		// Only do this when we actually have different conversation data
 		const currentConversation = this.aiManager.getCurrentConversationData();
 		if (currentConversation && this.lastAutoSaveContent && currentConversation.messages.length > 0) {
-			this.checkAndResetAutoSaveTracking();
+			await this.checkAndResetAutoSaveTracking();
 		}
 		
 		// Check if this is the first time rendering or if the structure doesn't exist
@@ -3972,8 +3972,8 @@ export class AIChatView extends ItemView {
 			const conversationIdShort = conversation.id.slice(-8); // Last 8 chars of conversation ID
 			const fileName = `auto-saved-${conversationIdShort}.md`;
 
-			// Generate markdown content first to check for changes
-			const markdownContent = this.generateConversationMarkdown(conversation);
+			// Generate markdown content first to check for changes (auto-save mode)
+			const markdownContent = await this.generateConversationMarkdown(conversation, 'auto');
 			
 			// Check if content has changed since last save
 			if (this.lastAutoSaveContent && this.lastAutoSaveContent === markdownContent) {
@@ -4034,8 +4034,8 @@ export class AIChatView extends ItemView {
 			const conversationId = conversation.id.startsWith('loaded_') ? 
 				this.generateConversationId(conversation) : conversation.id;
 
-			// Generate markdown content
-			const markdownContent = this.generateConversationMarkdown(conversation);
+			// Generate markdown content for manual save (convert temp images)
+			const markdownContent = await this.generateConversationMarkdown(conversation, 'manual');
 
 			// Get save location from settings
 			const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
@@ -4198,29 +4198,177 @@ export class AIChatView extends ItemView {
 		return `${timestamp}_${shortHash}`;
 	}
 
-	private generateConversationMarkdown(conversation: AIConversation): string {
+	/**
+	 * Check if conversation has temporary images
+	 */
+	private hasTempImages(conversation: AIConversation): boolean {
+		return conversation.messages.some(message => 
+			message.tempImages && Object.keys(message.tempImages).length > 0
+		);
+	}
+	
+	/**
+	 * Convert temporary images to data URLs for auto-save mode
+	 */
+	private async convertTempImagesToDataUrls(conversation: AIConversation): Promise<AIConversation> {
+		const processedMessages: AIMessage[] = [];
+		
+		for (const message of conversation.messages) {
+			const processedMessage: AIMessage = { ...message };
+			
+			if (message.tempImages && Object.keys(message.tempImages).length > 0) {
+				let updatedContent = message.content;
+				
+				// Process each temporary image - convert to data URL format
+				for (const [tempId, dataUrl] of Object.entries(message.tempImages)) {
+					try {
+						// Replace placeholder with data URL markdown image reference
+						const placeholder = `[!Tempimg ${tempId}]`;
+						const markdownImage = `![screenshot](${dataUrl})`;
+						updatedContent = updatedContent.replace(placeholder, markdownImage);
+						
+					} catch (error) {
+						console.error(`Failed to convert temporary image ${tempId}:`, error);
+						// Keep the placeholder if conversion fails
+					}
+				}
+				
+				processedMessage.content = updatedContent;
+				delete processedMessage.tempImages; // Remove temporary images
+			}
+			
+			processedMessages.push(processedMessage);
+		}
+		
+		return {
+			...conversation,
+			messages: processedMessages
+		};
+	}
+	
+	/**
+	 * Convert temporary images to vault files for manual save mode
+	 */
+	private async convertTempImagesToVaultFiles(conversation: AIConversation): Promise<AIConversation> {
+		const processedMessages: AIMessage[] = [];
+		const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
+		const imageFolder = `${saveLocation}/images`;
+		
+		// Ensure image folder exists
+		const vault = this.plugin.app.vault;
+		if (!await vault.adapter.exists(imageFolder)) {
+			await vault.createFolder(imageFolder);
+		}
+		
+		for (const message of conversation.messages) {
+			const processedMessage: AIMessage = { ...message };
+			
+			if (message.tempImages && Object.keys(message.tempImages).length > 0) {
+				let updatedContent = message.content;
+				
+				// Process each temporary image - save to vault and use local path
+				for (const [tempId, dataUrl] of Object.entries(message.tempImages)) {
+					try {
+						// Save image to vault
+						const savedImagePath = await this.saveTempImageToVault(tempId, dataUrl, imageFolder);
+						
+						// Replace placeholder with markdown image reference using local path
+						const placeholder = `[!Tempimg ${tempId}]`;
+						const markdownImage = `![${tempId}](${savedImagePath})`;
+						updatedContent = updatedContent.replace(placeholder, markdownImage);
+						
+					} catch (error) {
+						console.error(`Failed to save temporary image ${tempId}:`, error);
+						// Keep the placeholder if saving fails
+					}
+				}
+				
+				processedMessage.content = updatedContent;
+				delete processedMessage.tempImages; // Remove temporary images
+			}
+			
+			processedMessages.push(processedMessage);
+		}
+		
+		return {
+			...conversation,
+			messages: processedMessages
+		};
+	}
+	
+	/**
+	 * Save a temporary image to vault and return the path
+	 */
+	private async saveTempImageToVault(tempId: string, dataUrl: string, targetFolder: string): Promise<string> {
+		// Extract image data
+		const base64Data = dataUrl.split(',')[1];
+		const mimeType = dataUrl.match(/data:(.*?);base64,/)?.[1] || 'image/png';
+		const extension = mimeType.split('/')[1] || 'png';
+		
+		// Generate filename
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const fileName = `${tempId}_${timestamp}.${extension}`;
+		const fullPath = `${targetFolder}/${fileName}`;
+		
+		// Convert base64 to binary
+		const binaryString = atob(base64Data);
+		const bytes = new Uint8Array(binaryString.length);
+		for (let i = 0; i < binaryString.length; i++) {
+			bytes[i] = binaryString.charCodeAt(i);
+		}
+		
+		// Save to vault
+		await this.plugin.app.vault.createBinary(fullPath, bytes);
+		
+		return fullPath;
+	}
+
+	/**
+	 * Generate conversation markdown with different modes for temp images
+	 * @param conversation - The conversation to convert
+	 * @param mode - 'auto' for auto-save (keep temp images in YAML), 'manual' for manual save (convert temp images)
+	 */
+	private async generateConversationMarkdown(conversation: AIConversation, mode: 'auto' | 'manual' = 'auto'): Promise<string> {
 		// Generate or use existing conversation ID
 		const conversationId = conversation.id.startsWith('loaded_') ? 
 			this.generateConversationId(conversation) : conversation.id;
+		
+		// Process conversation based on mode
+		let processedConversation = conversation;
+		if (mode === 'manual') {
+			// Convert temporary images to vault files for manual save
+			processedConversation = await this.convertTempImagesToVaultFiles(conversation);
+		} else if (mode === 'auto') {
+			// Convert temporary images to data URLs for auto save
+			processedConversation = await this.convertTempImagesToDataUrls(conversation);
+		}
 			
 		// Format title similar to BestNote style
 		let markdown = ``;
 		
 		// Properties section (similar to BestNote)
+		const currentTime = new Date().toISOString();
+		const createdTime = conversation.createdAt ? conversation.createdAt.toISOString() : currentTime;
+		
 		markdown += `---
 conversationID: ${conversationId}
 model: ${this.plugin.settings.defaultModelConfigId || 'default'}
+created: ${createdTime}
+lastModified: ${currentTime}
 tags:
-  - ai-conversation
----`;
+  - ai-conversation`;
+		
+		// Note: Temporary images are now converted to data URLs in content, not stored in YAML
+		
+		markdown += `\n---`;
 		markdown += `\n`
 		// Generate messages in BestNote style
-		conversation.messages.forEach((message, index) => {
+		processedConversation.messages.forEach((message, index) => {
 			const messageType = message.type === 'user' ? 'user' : 'ai';
-			const timestamp = message.timestamp.toISOString().replace('T', ' ').split('.')[0].replace(/-/g, '/');
+			const timestamp = message.timestamp.toISOString();
 			
-			// Message header with BestNote format
-			markdown += `${messageType}: \n`;
+			// Message header with BestNote format including timestamp
+			markdown += `${messageType}: <!-- ${timestamp} -->\n`;
 			
 			// Add text content first if present
 			if (message.content) {
@@ -4279,14 +4427,14 @@ tags:
 			}
 			
 			// If this is not the last message, add timestamp and spacing
-			if (index < conversation.messages.length - 1) {
+			if (index < processedConversation.messages.length - 1) {
 				markdown += `[Timestamp: ${timestamp}]\n\n`;
 			}
 		});
 		
 		// Add final timestamp for the last message
-		if (conversation.messages.length > 0) {
-			const lastMessage = conversation.messages[conversation.messages.length - 1];
+		if (processedConversation.messages.length > 0) {
+			const lastMessage = processedConversation.messages[processedConversation.messages.length - 1];
 			const lastTimestamp = lastMessage.timestamp.toISOString().replace('T', ' ').split('.')[0].replace(/-/g, '/');
 			markdown += `[Timestamp: ${lastTimestamp}]\n`;
 		}
@@ -4393,16 +4541,26 @@ tags:
 			// Create a new conversation in the AI manager based on the loaded one
 			const newConversation = this.aiManager.createNewConversation(conversation.title);
 			
-			// Copy all messages from the loaded conversation
+			// Preserve the original creation time
+			if (conversation.createdAt) {
+				newConversation.createdAt = conversation.createdAt;
+			}
+			
+			// Copy all messages from the loaded conversation and process images
 			for (const message of conversation.messages) {
+				// Check if this message has data URLs that should be converted to local files
+				// This happens when loading manually saved conversations
+				const { content, tempImages } = await this.processMessageImagesOnLoad(message.content || '');
+				
 				const newMessage: AIMessage = {
 					id: 'loaded_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
 					type: message.type,
-					content: message.content, // Markdown content includes image references
-					timestamp: new Date() // Use current time for loaded messages
+					content: content,
+					timestamp: message.timestamp, // Preserve original timestamp
+					tempImages: tempImages // Temporary image mappings (if any)
 				};
 				
-				// Preserve image data if it exists
+				// Preserve image data if it exists (for backward compatibility)
 				if ((message as any).image) {
 					(newMessage as any).image = (message as any).image;
 				}
@@ -4427,6 +4585,114 @@ tags:
 			console.error('Failed to load conversation:', error);
 			new Notice(`❌ Failed to load conversation: ${error.message}`);
 		}
+	}
+	
+	/**
+	 * Process images when loading conversation - smart handling for different image types
+	 */
+	private async processMessageImagesOnLoad(content: string): Promise<{ content: string; tempImages: { [key: string]: string } }> {
+		const dataUrlRegex = /!\[([^\]]*)\]\((data:image\/[^;]+;base64,[^)]+)\)/g;
+		const vaultImageRegex = /!\[([^\]]*)\]\(([^)]+\.(?:png|jpg|jpeg|gif|webp))\)/gi;
+		const tempImages: { [key: string]: string } = {};
+		let updatedContent = content;
+		let match;
+		
+		// Process data URLs (from manual save conversations)
+		// Convert them to local vault files for better performance and management
+		while ((match = dataUrlRegex.exec(content)) !== null) {
+			const fullMatch = match[0];  // Complete ![xxx](data:...)
+			const altText = match[1];    // Alt text
+			const dataUrl = match[2];    // data:image/...;base64,xxx
+			
+			try {
+				// Save data URL to vault and get local path
+				const localPath = await this.saveDataUrlToVault(dataUrl, altText || 'image');
+				
+				// Replace data URL with local path
+				const localImageMarkdown = `![${altText}](${localPath})`;
+				updatedContent = updatedContent.replace(fullMatch, localImageMarkdown);
+				
+			} catch (error) {
+				console.error('Failed to save data URL to vault:', error);
+				// If saving fails, convert to temporary image for editing
+				const tempId = this.generateTempImageId();
+				const placeholder = `[!Tempimg ${tempId}]`;
+				updatedContent = updatedContent.replace(fullMatch, placeholder);
+				tempImages[tempId] = dataUrl;
+			}
+		}
+		
+		// Vault images (from manual save conversations) - keep as is
+		// They are already saved locally and don't need processing
+		
+		return { content: updatedContent, tempImages };
+	}
+	
+	/**
+	 * Save data URL to vault and return the local path
+	 */
+	private async saveDataUrlToVault(dataUrl: string, altText: string): Promise<string> {
+		// Extract image type from data URL
+		const mimeMatch = dataUrl.match(/data:image\/([^;]+)/);
+		const imageType = mimeMatch ? mimeMatch[1] : 'png';
+		
+		// Generate filename
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const filename = `${altText.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.${imageType}`;
+		
+		// Convert data URL to binary
+		const base64Data = dataUrl.replace(/^data:image\/[^;]+;base64,/, "");
+		const binaryData = atob(base64Data);
+		const bytes = new Uint8Array(binaryData.length);
+		for (let i = 0; i < binaryData.length; i++) {
+			bytes[i] = binaryData.charCodeAt(i);
+		}
+		
+		// Save to vault
+		const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
+		const imageFolder = `${saveLocation}/images`;
+		
+		// Ensure image folder exists
+		const vault = this.plugin.app.vault;
+		if (!await vault.adapter.exists(imageFolder)) {
+			await vault.createFolder(imageFolder);
+		}
+		
+		const imagePath = `${imageFolder}/${filename}`;
+		await vault.adapter.writeBinary(imagePath, bytes.buffer);
+		
+		return imagePath;
+	}
+	private convertDataUrlsToTempImages(content: string): { content: string; tempImages: { [key: string]: string } } {
+		const dataUrlRegex = /!\[([^\]]*)\]\((data:image\/[^;]+;base64,[^)]+)\)/g;
+		const tempImages: { [key: string]: string } = {};
+		let updatedContent = content;
+		let match;
+		
+		while ((match = dataUrlRegex.exec(content)) !== null) {
+			const fullMatch = match[0];  // Complete ![xxx](data:...)
+			const altText = match[1];    // Alt text
+			const dataUrl = match[2];    // data:image/...;base64,xxx
+			
+			// Generate new temporary image ID
+			const tempId = this.generateTempImageId();
+			
+			// Replace data URL with temporary image placeholder
+			const placeholder = `[!Tempimg ${tempId}]`;
+			updatedContent = updatedContent.replace(fullMatch, placeholder);
+			
+			// Store the data URL in temporary images mapping
+			tempImages[tempId] = dataUrl;
+		}
+		
+		return { content: updatedContent, tempImages };
+	}
+	
+	/**
+	 * Generate unique temporary image ID
+	 */
+	private generateTempImageId(): string {
+		return 'temp_img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 	}
 
 	private updateSelectorButtonContent(button: HTMLButtonElement, modelConfig: any) {
@@ -4482,7 +4748,7 @@ tags:
 		return this.currentMode;
 	}
 
-	private checkAndResetAutoSaveTracking(): void {
+	private async checkAndResetAutoSaveTracking(): Promise<void> {
 		// Only check if we have a last saved content to compare against
 		if (!this.lastAutoSaveContent) {
 			return;
@@ -4495,8 +4761,8 @@ tags:
 			return;
 		}
 
-		// Generate current conversation markdown to compare with last saved content
-		const currentMarkdownContent = this.generateConversationMarkdown(conversation);
+		// Generate current conversation markdown to compare with last saved content (auto mode)
+		const currentMarkdownContent = await this.generateConversationMarkdown(conversation, 'auto');
 		
 		// If content has changed, reset the tracking so next auto-save will proceed
 		if (this.lastAutoSaveContent !== currentMarkdownContent) {
@@ -4576,7 +4842,7 @@ tags:
 		if (!message.content) return;
 		
 		// Parse markdown content to extract images and text
-		const { textContent, imageReferences } = this.parseMarkdownContent(message.content);
+		const { textContent, imageReferences } = this.parseMarkdownContent(message.content, message.tempImages);
 		
 		// Render images first
 		if (imageReferences.length > 0) {
@@ -4604,12 +4870,13 @@ tags:
 	/**
 	 * Parse markdown content to separate images and text
 	 */
-	private parseMarkdownContent(markdown: string): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }> } {
+	private parseMarkdownContent(markdown: string, tempImages?: { [key: string]: string }): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }> } {
 		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
+		const tempImageRegex = /\[!Tempimg\s+([^\]]+)\]/g;
 		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
 		let textContent = markdown;
 		
-		// Extract all image references
+		// Extract all standard image references
 		let match;
 		while ((match = imageRegex.exec(markdown)) !== null) {
 			const alt = match[1] || 'Image';
@@ -4626,6 +4893,31 @@ tags:
 			textContent = textContent.replace(match[0], '').trim();
 		}
 		
+		// Extract temporary image references
+		let tempMatch;
+		while ((tempMatch = tempImageRegex.exec(markdown)) !== null) {
+			const tempId = tempMatch[1];
+			
+			// If we have temporary images data, get the data URL
+			if (tempImages && tempImages[tempId]) {
+				imageReferences.push({
+					alt: `Temp Image ${tempId}`,
+					path: tempImages[tempId], // Use data URL as path
+					fileName: `temp-${tempId}.png`
+				});
+			} else {
+				// Fallback: create a placeholder entry
+				imageReferences.push({
+					alt: `Temporary Image`,
+					path: `[Tempimg ${tempId}]`, // Placeholder path
+					fileName: `temp-${tempId}.png`
+				});
+			}
+			
+			// Remove the temporary image placeholder from text content
+			textContent = textContent.replace(tempMatch[0], '').trim();
+		}
+		
 		// Clean up extra whitespace
 		textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
 		
@@ -4638,14 +4930,32 @@ tags:
 	private async renderSingleImage(container: HTMLElement, imageRef: { alt: string; path: string; fileName: string }): Promise<void> {
 		const { alt, path, fileName } = imageRef;
 		
-		// Try to get vault resource URL first, fallback to direct path
-		let imageSrc = this.getVaultResourceUrl(path) || path;
+		let imageSrc: string;
 		
-		// If that fails, try to load as data URL
-		if (!imageSrc.startsWith('app://') && !imageSrc.startsWith('data:')) {
-			const dataUrl = await this.loadImageDataFromPath(path);
-			if (dataUrl) {
-				imageSrc = dataUrl;
+		// Handle different path types
+		if (path.startsWith('data:')) {
+			// Data URL - use directly
+			imageSrc = path;
+		} else if (path.startsWith('[TempPic ') && path.endsWith(']')) {
+			// Placeholder path - show a placeholder image or text
+			imageSrc = 'data:image/svg+xml;base64,' + btoa(`
+				<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+					<rect width="100%" height="100%" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
+					<text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="#666">
+						Temporary Image
+					</text>
+				</svg>
+			`);
+		} else {
+			// Regular path - try to get vault resource URL first, fallback to direct path
+			imageSrc = this.getVaultResourceUrl(path) || path;
+			
+			// If that fails, try to load as data URL
+			if (!imageSrc.startsWith('app://')) {
+				const dataUrl = await this.loadImageDataFromPath(path);
+				if (dataUrl) {
+					imageSrc = dataUrl;
+				}
 			}
 		}
 		
