@@ -4,8 +4,7 @@
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Capture screenshots and gain insights from visual content with AI.",
-	"author": "Screenshot Plugin Developer",
-	"authorUrl": "https://github.com/obsidian-captureai",
-	"fundingUrl": "https://github.com/obsidian-captureai",
+	"author": "Do7and",
+	"authorUrl": "https://github.com/Do7and",
 	"isDesktopOnly": true
 }
