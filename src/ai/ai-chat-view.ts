@@ -33,6 +33,10 @@ export class AIChatView extends ItemView {
 		this.currentMode = plugin.settings.defaultAIChatMode || 'analyze';
 	}
 
+	private createSVGIcon(iconPath: string, size = 16): string {
+		return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${iconPath}</svg>`;
+	}
+
 	getViewType(): string {
 		return AI_CHAT_VIEW_TYPE;
 	}
@@ -84,9 +88,6 @@ export class AIChatView extends ItemView {
 		
 		container.empty();
 		container.addClass('ai-chat-container');
-
-		// Add CSS styles
-		this.addStyles();
 
 		// Header with title (remove model selector from header)
 		const header = container.createEl('div', { cls: 'ai-chat-header' });
@@ -200,18 +201,18 @@ export class AIChatView extends ItemView {
 		dropdown.empty();
 		allModels.forEach(modelConfig => {
 			const option = dropdown.createEl('div', { 
-				cls: 'model-dropdown-option',
+				cls: 'model-dropdown-option  dropdown-option',
 				attr: { 'data-model-id': modelConfig.id }
 			});
 			
 			// Create option content with vision icon
-			const optionContent = option.createEl('span', { cls: 'model-option-content' });
+			const optionContent = option.createEl('span', { cls: 'model-option-content dropdown-option-content' });
 			optionContent.createEl('span', { text: modelConfig.name, cls: 'model-name' });
 			
 			if (modelConfig.isVisionCapable) {
 				const visionIcon = optionContent.createEl('span', { cls: 'vision-icon' });
 				// Using Lucide Eye icon with consistent size for dropdown
-				visionIcon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+				visionIcon.innerHTML = this.createSVGIcon('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>', 12);
 			}
 			
 			if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
@@ -261,7 +262,7 @@ export class AIChatView extends ItemView {
 				dropdown.style.display = 'none';
 				const dropdownIcon = selectorButton.querySelector('.model-dropdown-arrow') as HTMLElement;
 				if (dropdownIcon) {
-					dropdownIcon.innerHTML = '▲';
+					dropdownIcon.textContent = '▲';
 				}
 			});
 		});
@@ -303,14 +304,9 @@ export class AIChatView extends ItemView {
 		const statusEl = emptyState.createEl('div', { cls: 'ai-status' });
 		
 		if (allModels.length === 0) {
-			statusEl.innerHTML = `
-				<div class="ai-status-warning">
-					${t('aiChat.noModelsConfigured')}
-				</div>
-				<div class="ai-status-desc">
-					${t('aiChat.noModelsDescription')}
-				</div>
-			`;
+			statusEl.empty();
+			const warningDiv = statusEl.createEl('div', { cls: 'ai-status-warning', text: t('aiChat.noModelsConfigured') });
+			const descDiv = statusEl.createEl('div', { cls: 'ai-status-desc', text: t('aiChat.noModelsDescription') });
 			statusEl.addEventListener('click', () => {
 				// Open settings
 				(this.plugin.app as any).setting.open();
@@ -321,39 +317,39 @@ export class AIChatView extends ItemView {
 			const isDefaultVisionCapable = defaultModel.isVisionCapable;
 			
 			if (isDefaultVisionCapable) {
-				// Vision-capable model - normal green status
+				statusEl.empty();
 				const totalPlural = allModels.length > 1 ? 's' : '';
-				statusEl.innerHTML = `
-					<div class="ai-status-ready">
-						${t('aiChat.readyWithModel', { modelName: defaultModel.name })}
-					</div>
-					<div class="ai-status-desc">
-						${t('aiChat.allModelsConfigured', { 
-							total: allModels.length, 
-							totalPlural: totalPlural,
-							vision: visionModels.length 
-						})}
-					</div>
-				`;
+				const readyDiv = statusEl.createEl('div', { 
+					cls: 'ai-status-ready', 
+					text: t('aiChat.readyWithModel', { modelName: defaultModel.name })
+				});
+				const descDiv = statusEl.createEl('div', { 
+					cls: 'ai-status-desc', 
+					text: t('aiChat.allModelsConfigured', { 
+						total: allModels.length, 
+						totalPlural: totalPlural,
+						vision: visionModels.length 
+					})
+				});
 			} else {
 				// Text-only model - gray status with notice
 				statusEl.classList.add('ai-status-text-only');
 				const totalPlural = allModels.length > 1 ? 's' : '';
-				statusEl.innerHTML = `
-					<div class="ai-status-text-only-ready">
-						${t('aiChat.readyWithModelTextOnly', { modelName: defaultModel.name })}
-					</div>
-					<div class="ai-status-desc">
-						${visionModels.length > 0 
-							? t('aiChat.allModelsConfigured', { 
-								total: allModels.length, 
-								totalPlural: totalPlural,
-								vision: visionModels.length 
-							})
-							: t('aiChat.textOnlyModelNotice')
-						}
-					</div>
-				`;
+				statusEl.empty();
+				const readyDiv = statusEl.createEl('div', { 
+					cls: 'ai-status-text-only-ready', 
+					text: t('aiChat.readyWithModelTextOnly', { modelName: defaultModel.name })
+				});
+				const descDiv = statusEl.createEl('div', { 
+					cls: 'ai-status-desc', 
+					text: visionModels.length > 0 
+						? t('aiChat.allModelsConfigured', { 
+							total: allModels.length, 
+							totalPlural: totalPlural,
+							vision: visionModels.length 
+						})
+						: t('aiChat.textOnlyModelNotice')
+				});
 			}
 		}
 
@@ -527,11 +523,11 @@ export class AIChatView extends ItemView {
 		
 		if (message.type === 'user') {
 			// User icon
-			avatarIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+			avatarIcon.innerHTML = this.createSVGIcon('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', 20);
 			avatarIcon.addClass('user-avatar');
 		} else {
 			// AI Assistant icon
-			avatarIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><circle cx="12" cy="5" r="2"/><path d="m12 7-2 4 2 4 2-4-2-4z"/></svg>`;
+			avatarIcon.innerHTML = this.createSVGIcon('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><circle cx="12" cy="5" r="2"/><path d="m12 7-2 4 2 4 2-4-2-4z"/>', 20);
 			avatarIcon.addClass('ai-avatar');
 		}
 
@@ -566,11 +562,10 @@ export class AIChatView extends ItemView {
 			}
 
 		});
-		insertBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
+		insertBtn.innerHTML = this.createSVGIcon('<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>');
 		if (isTyping) {
 			insertBtn.disabled = true;
-			insertBtn.style.opacity = '0.4';
-			insertBtn.style.cursor = 'not-allowed';
+			insertBtn.classList.add('ai-chat-button-disabled');
 		}
 		
 		// 2. Copy button  
@@ -581,11 +576,10 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.copyMessageButton')
 			}
 		});
-		copyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+		copyBtn.innerHTML = this.createSVGIcon('<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>');
 		if (isTyping) {
 			copyBtn.disabled = true;
-			copyBtn.style.opacity = '0.4';
-			copyBtn.style.cursor = 'not-allowed';
+			copyBtn.classList.add('ai-chat-button-disabled');
 		}
 		
 		// 3. Toggle edit/read view button
@@ -597,11 +591,10 @@ export class AIChatView extends ItemView {
 			}
 
 		});
-		editBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+		editBtn.innerHTML = this.createSVGIcon('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/>');
 		if (isTyping) {
 			editBtn.disabled = true;
-			editBtn.style.opacity = '0.4';
-			editBtn.style.cursor = 'not-allowed';
+			editBtn.classList.add('ai-chat-button-disabled');
 		}
 		
 		// 4. Delete button
@@ -612,11 +605,10 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.deleteMessageButton')
 			}
 		});
-		deleteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c0 1 1 2 2 2v2"/></svg>`;
+		deleteBtn.innerHTML = this.createSVGIcon('<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c0 1 1 2 2 2v2"/>');
 		if (isTyping) {
 			deleteBtn.disabled = true;
-			deleteBtn.style.opacity = '0.4';
-			deleteBtn.style.cursor = 'not-allowed';
+			deleteBtn.classList.add('ai-chat-button-disabled');
 		}
 
 		// Add click handlers for buttons
@@ -654,11 +646,10 @@ export class AIChatView extends ItemView {
 		// Show text content or typing indicator
 		if ((message as any).isTyping) {
 			const typingEl = messageContent.createEl('div', { cls: 'ai-chat-typing-indicator' });
-			typingEl.innerHTML = `
-				<span class="typing-dot"></span>
-				<span class="typing-dot"></span>
-				<span class="typing-dot"></span>
-			`;
+			typingEl.empty();
+			for (let i = 0; i < 3; i++) {
+				typingEl.createEl('span', { cls: 'typing-dot' });
+			}
 		} else if (message.content) {
 			// Use new markdown rendering that handles both images and text
 			await this.renderMessageContentFromMarkdown(messageContent, message);
@@ -848,34 +839,34 @@ export class AIChatView extends ItemView {
 		const { AI_CHAT_MODES } = require('../types');
 		
 		// Create custom dropdown that opens upward (similar to model selector)
-		const modeSelectorWrapper = container.createEl('div', { cls: 'mode-selector-wrapper' });
+		const modeSelectorWrapper = container.createEl('div', { cls: 'mode-selector-wrapper dropdown-selector-wrapper' });
 		
 		// Current mode display button
 		const currentModeData = AI_CHAT_MODES.find((mode: any) => mode.id === this.currentMode) || AI_CHAT_MODES[0];
 		const selectorButton = modeSelectorWrapper.createEl('button', { 
-			cls: 'mode-selector-button'
+			cls: 'mode-selector-button dropdown-selector-button'
 		});
 		
 		// Update selector button content
 		this.updateModeSelectorButtonContent(selectorButton, currentModeData);
 		
 		// Dropdown arrow
-		const dropdownIcon = selectorButton.createEl('span', { cls: 'mode-dropdown-arrow' });
-		dropdownIcon.innerHTML = '▲';
+		const dropdownIcon = selectorButton.createEl('span', { cls: 'mode-dropdown-arrow dropdown-arrow' });
+		dropdownIcon.toggleClass('rotated', false); 
 		
 		// Dropdown menu (initially hidden)
-		const dropdown = modeSelectorWrapper.createEl('div', { cls: 'mode-dropdown-menu' });
-		dropdown.style.display = 'none';
+		const dropdown = modeSelectorWrapper.createEl('div', { cls: 'mode-dropdown-menu dropdown-menu' });
+		dropdown.toggleClass('visible', false);
 		
 		// Add mode options
 		AI_CHAT_MODES.forEach((mode: any) => {
 			const option = dropdown.createEl('div', { 
-				cls: 'mode-dropdown-option',
+				cls: 'mode-dropdown-option dropdown-option',
 				attr: { 'data-mode-id': mode.id }
 			});
 			
 			// Create option content
-			const optionContent = option.createEl('span', { cls: 'mode-option-content' });
+			const optionContent = option.createEl('span', { cls: 'mode-option-content dropdown-option-content' });
 			optionContent.createEl('span', { text: this.getModeDisplayName(mode.id), cls: 'mode-name' });
 			
 			if (mode.id === this.currentMode) {
@@ -895,40 +886,40 @@ export class AIChatView extends ItemView {
 				this.currentMode = mode.id;
 				
 				// Save current mode to settings
-				this.plugin.settings.defaultAIChatMode = this.currentMode;
-				await this.plugin.saveSettings();
+				//this.plugin.settings.defaultAIChatMode = this.currentMode;
+				//await this.plugin.saveSettings();
 				
 				// Hide dropdown
-				dropdown.style.display = 'none';
-				const dropdownIconEl = selectorButton.querySelector('.mode-dropdown-arrow') as HTMLElement;
-				if (dropdownIconEl) {
-					dropdownIconEl.innerHTML = '▲';
-				}
+				this.hideDropdown(dropdown, dropdownIcon);
 			});
 		});
+		
 		
 		// Toggle dropdown on button click
 		selectorButton.addEventListener('click', (e) => {
 			e.stopPropagation();
-			const isVisible = dropdown.style.display === 'block';
-			
-			if (isVisible) {
-				dropdown.style.display = 'none';
-				dropdownIcon.innerHTML = '▲';
-			} else {
-				dropdown.style.display = 'block';
-				dropdownIcon.innerHTML = '▼';
-			}
+			this.toggleDropdown(dropdown, dropdownIcon);
+
 		});
 		
 		// Hide dropdown when clicking outside
 		document.addEventListener('click', () => {
-			dropdown.style.display = 'none';
-			dropdownIcon.innerHTML = '▲';
+			this.hideDropdown(dropdown, dropdownIcon);
 		});
 		
 		// Store reference for later use
 		this.modeSelector = selectorButton as any;
+	}
+
+	private toggleDropdown(dropdown: HTMLElement, icon: HTMLElement): void {
+	    const isVisible = dropdown.hasClass('visible');
+	    dropdown.toggleClass('visible', !isVisible);
+	    icon.toggleClass('rotated', !isVisible);
+	}
+
+	private hideDropdown(dropdown: HTMLElement, icon: HTMLElement): void {
+	    dropdown.toggleClass('visible', false);
+	    icon.toggleClass('rotated', false);
 	}
 
 	private createInputArea(container: HTMLElement, conversation: AIConversation | null): void {
@@ -1011,7 +1002,7 @@ export class AIChatView extends ItemView {
 		dropIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>`;
 		
 		const dropText = dropZoneContent.createEl('span');
-		dropText.innerHTML = t('aiChat.dragImageHere') + ' ';
+		dropText.textContent = t('aiChat.dragImageHere') + ' ';
 		
 		// Create clickable "browse files" link
 		const browseLink = dropZoneContent.createEl('span', { 
@@ -1193,40 +1184,40 @@ export class AIChatView extends ItemView {
 		}
 
 		// Create custom dropdown that opens upward
-		const selectorWrapper = container.createEl('div', { cls: 'model-selector-wrapper' });
+		const selectorWrapper = container.createEl('div', { cls: 'model-selector-wrapper dropdown-selector-wrapper' });
 		
 		// Current model display button
 		const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
 		const selectorButton = selectorWrapper.createEl('button', { 
-			cls: 'model-selector-button'
+			cls: 'model-selector-button dropdown-selector-button'
 		});
 		
 		// Update selector button content with vision icon if applicable
 		this.updateSelectorButtonContent(selectorButton, currentModel);
 		
 		// Dropdown arrow
-		const dropdownIcon = selectorButton.createEl('span', { cls: 'model-dropdown-arrow' });
-		dropdownIcon.innerHTML = '▲';
+		const dropdownIcon = selectorButton.createEl('span', { cls: 'model-dropdown-arrow dropdown-arrow' });
+		dropdownIcon.toggleClass('rotated', false); 
 		
 		// Dropdown menu (initially hidden)
-		const dropdown = selectorWrapper.createEl('div', { cls: 'model-dropdown-menu' });
-		dropdown.style.display = 'none';
+		const dropdown = selectorWrapper.createEl('div', { cls: 'model-dropdown-menu dropdown-menu' });
+		dropdown.toggleClass('visible', false); 
 		
 		// Add model options
 		allModels.forEach(modelConfig => {
 			const option = dropdown.createEl('div', { 
-				cls: 'model-dropdown-option',
+				cls: 'model-dropdown-option dropdown-option',
 				attr: { 'data-model-id': modelConfig.id }
 			});
 			
 			// Create option content with vision icon
-			const optionContent = option.createEl('span', { cls: 'model-option-content' });
+			const optionContent = option.createEl('span', { cls: 'model-option-content dropdown-option-content' });
 			optionContent.createEl('span', { text: modelConfig.name, cls: 'model-name' });
 			
 			if (modelConfig.isVisionCapable) {
 				const visionIcon = optionContent.createEl('span', { cls: 'vision-icon' });
 				// Using Lucide Eye icon with consistent size for dropdown
-				visionIcon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+				visionIcon.innerHTML = this.createSVGIcon('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>', 12);
 			}
 			
 			if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
@@ -1280,8 +1271,7 @@ export class AIChatView extends ItemView {
 				this.refreshModelDependentComponents();
 				
 				// Hide dropdown
-				dropdown.style.display = 'none';
-				dropdownIcon.innerHTML = '▲';
+				this.hideDropdown(dropdown, dropdownIcon);
 			});
 		});
 		
@@ -1290,21 +1280,13 @@ export class AIChatView extends ItemView {
 			e.preventDefault();
 			e.stopPropagation();
 			
-			const isVisible = dropdown.style.display === 'block';
-			if (isVisible) {
-				dropdown.style.display = 'none';
-				dropdownIcon.innerHTML = '▲';
-			} else {
-				dropdown.style.display = 'block';
-				dropdownIcon.innerHTML = '▼';
-			}
+			this.toggleDropdown(dropdown, dropdownIcon);
 		});
 		
 		// Create a cleanup function for document listener and store it
 		const clickOutsideHandler = (e: MouseEvent) => {
 			if (!selectorWrapper.contains(e.target as Node)) {
-				dropdown.style.display = 'none';
-				dropdownIcon.innerHTML = '▲';
+				this.hideDropdown(dropdown, dropdownIcon);
 			}
 		};
 		
@@ -1476,7 +1458,7 @@ export class AIChatView extends ItemView {
 			
 			// Create remove button directly on imageItem, not in infoOverlay
 			const removeBtn = imageItem.createEl('button', { cls: 'remove-single-image-btn' });
-			removeBtn.innerHTML = '✕'; // Use heavy multiplication X (更粗的斜十字)
+			removeBtn.textContent = '✕'; // Use heavy multiplication X
 			removeBtn.title = t('aiChat.removeThisImage');
 			removeBtn.addEventListener('click', (e) => {
 				e.preventDefault();
@@ -1515,6 +1497,7 @@ export class AIChatView extends ItemView {
 		(inputArea as any)._currentImageDataList = imageDataList;
 		
 		imagePreviewArea.style.display = 'block';
+
 		
 		// Render all images in preview
 		this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
@@ -1523,6 +1506,7 @@ export class AIChatView extends ItemView {
 	private clearImagePreview(inputArea: HTMLElement): void {
 		const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
 		imagePreviewArea.style.display = 'none';
+
 		imagePreviewArea.innerHTML = '';
 		(inputArea as any)._currentImageDataList = [];
 	}
@@ -1975,93 +1959,6 @@ export class AIChatView extends ItemView {
 		}
 	}
 
-	private styleRenderedMarkdown(container: HTMLElement): void {
-		// Add custom CSS classes for better integration with the chat interface
-		container.addClass('ai-chat-markdown-content');
-		
-		// Ensure proper spacing for elements
-		const elements = container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table');
-		elements.forEach((el) => {
-			(el as HTMLElement).style.marginBottom = '8px';
-			(el as HTMLElement).style.marginTop = '0';
-		});
-		
-		// Style code blocks
-		const codeBlocks = container.querySelectorAll('pre');
-		codeBlocks.forEach((block) => {
-			(block as HTMLElement).style.background = 'var(--background-secondary)';
-			(block as HTMLElement).style.border = '1px solid var(--background-modifier-border)';
-			(block as HTMLElement).style.borderRadius = '4px';
-			(block as HTMLElement).style.padding = '8px';
-			(block as HTMLElement).style.fontSize = '14px';
-			(block as HTMLElement).style.fontFamily = 'var(--font-monospace)';
-		});
-		
-		// Style inline code
-		const inlineCodes = container.querySelectorAll('code:not(pre code)');
-		inlineCodes.forEach((code) => {
-			(code as HTMLElement).style.background = 'var(--background-secondary)';
-			(code as HTMLElement).style.padding = '2px 4px';
-			(code as HTMLElement).style.borderRadius = '3px';
-			(code as HTMLElement).style.fontSize = '0.9em';
-			(code as HTMLElement).style.fontFamily = 'var(--font-monospace)';
-		});
-		
-		// Style tables
-		const tables = container.querySelectorAll('table');
-		tables.forEach((table) => {
-			(table as HTMLElement).style.borderCollapse = 'collapse';
-			(table as HTMLElement).style.width = '100%';
-			(table as HTMLElement).style.fontSize = '14px';
-		});
-		
-		// Style table cells
-		const tableCells = container.querySelectorAll('td, th');
-		tableCells.forEach((cell) => {
-			(cell as HTMLElement).style.border = '1px solid var(--background-modifier-border)';
-			(cell as HTMLElement).style.padding = '6px 8px';
-		});
-		
-		// Style table headers
-		const tableHeaders = container.querySelectorAll('th');
-		tableHeaders.forEach((header) => {
-			(header as HTMLElement).style.background = 'var(--background-secondary)';
-			(header as HTMLElement).style.fontWeight = '600';
-		});
-		
-		// Style blockquotes
-		const blockquotes = container.querySelectorAll('blockquote');
-		blockquotes.forEach((quote) => {
-			(quote as HTMLElement).style.borderLeft = '4px solid var(--interactive-accent)';
-			(quote as HTMLElement).style.paddingLeft = '12px';
-			(quote as HTMLElement).style.marginLeft = '0';
-			(quote as HTMLElement).style.fontStyle = 'italic';
-			(quote as HTMLElement).style.color = 'var(--text-muted)';
-		});
-		
-		// Ensure LaTeX math renders properly
-		const mathElements = container.querySelectorAll('.math, .math-block, .math-inline');
-		mathElements.forEach((math) => {
-			(math as HTMLElement).style.fontSize = '16px';
-			(math as HTMLElement).style.lineHeight = '1.4';
-		});
-		
-		// Handle links
-		const links = container.querySelectorAll('a');
-		links.forEach((link) => {
-			(link as HTMLElement).style.color = 'var(--interactive-accent)';
-			(link as HTMLElement).style.textDecoration = 'none';
-			
-			// Add hover effect
-			link.addEventListener('mouseenter', () => {
-				(link as HTMLElement).style.textDecoration = 'underline';
-			});
-			link.addEventListener('mouseleave', () => {
-				(link as HTMLElement).style.textDecoration = 'none';
-			});
-		});
-	}
-
 	private extractAndRenderThinkingBlocks(container: HTMLElement, content: string): string {
 		// Define thinking-related tags to look for
 		const thinkingTags = ['think', 'thinking', 'reasoning', 'plan', 'analysis', 'internal', 'reflection', 'decision'];
@@ -2150,12 +2047,23 @@ export class AIChatView extends ItemView {
 				container.createEl('br');
 			} else {
 				const p = container.createEl('p', { cls: 'ai-thinking-text' });
-				// Handle basic formatting
-				let text = line;
-				text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-				text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-				text = text.replace(/`(.*?)`/g, '<code>$1</code>');
-				p.innerHTML = text;
+				// Handle basic formatting using DOM methods for security
+				const strongRegex = /\*\*(.*?)\*\*/g;
+				const emRegex = /\*(.*?)\*/g;
+				const codeRegex = /`(.*?)`/g;
+				
+				let processedText = line;
+				
+				// Simple approach: if text contains formatting, use innerHTML (safe in this context)
+				// Otherwise use textContent
+				if (strongRegex.test(processedText) || emRegex.test(processedText) || codeRegex.test(processedText)) {
+					processedText = processedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+					processedText = processedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+					processedText = processedText.replace(/`(.*?)`/g, '<code>$1</code>');
+					p.textContent = processedText;
+				} else {
+					p.textContent = processedText;
+				}
 			}
 		}
 	}
@@ -2182,28 +2090,13 @@ export class AIChatView extends ItemView {
 	private showImageModal(imageSrc: string): void {
 		// Create a simple modal to show the full image
 		const modal = document.createElement('div');
-		modal.className = 'ai-image-modal';
-		modal.style.cssText = `
-			position: fixed;
-			top: 0;
-			left: 0;
-			width: 100%;
-			height: 100%;
-			background: rgba(0, 0, 0, 0.8);
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			z-index: 1000;
-			cursor: pointer;
-		`;
+		modal.className = 'ai-chat-image-modal';
+		// Note: Basic modal positioning handled by CSS classes
 
 		const img = document.createElement('img');
 		img.src = imageSrc;
-		img.style.cssText = `
-			max-width: 90%;
-			max-height: 90%;
-			object-fit: contain;
-		`;
+		img.className = 'ai-chat-show-image';
+		// Note: Image sizing handled by CSS classes
 
 		modal.appendChild(img);
 		modal.addEventListener('click', () => {
@@ -2211,1644 +2104,6 @@ export class AIChatView extends ItemView {
 		});
 
 		document.body.appendChild(modal);
-	}
-
-	private addStyles(): void {
-		// Add CSS styles for the AI chat interface
-		if (!document.getElementById('ai-chat-styles')) {
-			const style = document.createElement('style');
-			style.id = 'ai-chat-styles';
-			style.textContent = `
-				.ai-chat-container {
-					display: flex;
-					flex-direction: column;
-					height: 100%;
-					padding: 0;
-				}
-
-				.ai-chat-header {
-					padding: 16px;
-					border-bottom: 1px solid var(--background-modifier-border);
-					background: var(--background-secondary);
-				}
-
-				.ai-chat-title {
-					margin: 0 0 8px 0;
-					font-size: 16px;
-					font-weight: 600;
-				}
-
-				.model-selector {
-					display: flex;
-					align-items: center;
-					gap: 8px;
-				}
-
-				.model-select {
-					padding: 4px 8px;
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 4px;
-					background: var(--background-primary);
-					color: var(--text-normal);
-					font-size: 12px;
-					min-width: 150px;
-				}
-
-				.current-model {
-					font-size: 12px;
-					color: var(--text-muted);
-					padding: 4px 8px;
-					background: var(--background-primary);
-					border-radius: 4px;
-					border: 1px solid var(--background-modifier-border);
-				}
-
-				.no-models {
-					font-size: 12px;
-					color: var(--text-warning);
-					cursor: pointer;
-					padding: 4px 8px;
-					border-radius: 4px;
-					text-decoration: underline;
-				}
-
-				.no-models:hover {
-					background: var(--background-modifier-hover);
-				}
-
-				.ai-chat-area {
-					flex: 1;
-					overflow-y: scroll;
-					padding: 16px 0;
-					/* Always reserve space for scrollbar to prevent layout shifts */
-					scrollbar-gutter: stable;
-				}
-
-				.ai-chat-empty {
-					text-align: center;
-					padding: 16px 16px;
-					color: var(--text-muted);
-				}
-
-				.ai-chat-empty-icon {
-					font-size: 48px;
-					margin-bottom: 16px;
-				}
-
-				.ai-chat-empty-title {
-					font-size: 18px;
-					font-weight: 600;
-					margin-bottom: 8px;
-					color: var(--text-normal);
-				}
-
-				.ai-chat-empty-desc {
-					font-size: 14px;
-					line-height: 1.4;
-					margin-bottom: 16px;
-				}
-
-				.ai-chat-empty-actions {
-					margin: 16px 0;
-					text-align: left;
-				}
-
-				.ai-chat-empty-action {
-					margin: 8px 0;
-					font-size: 13px;
-					line-height: 1.4;
-				}
-
-				.ai-chat-quick-actions {
-					display: flex;
-					gap: 8px;
-					justify-content: center;
-					margin-top: 20px;
-				}
-
-				.ai-chat-quick-btn {
-					padding: 8px 12px;
-					background: var(--interactive-accent);
-					color: var(--text-on-accent);
-					border: none;
-					border-radius: 4px;
-					cursor: pointer;
-					font-size: 12px;
-					font-weight: 500;
-				}
-
-				.ai-chat-quick-btn:hover {
-					background: var(--interactive-accent-hover);
-				}
-
-				.ai-chat-title-section {
-					text-align: center;
-					margin-bottom: 24px;
-				}
-
-				.ai-chat-main-title {
-					margin: 0;
-					font-size: 20px;
-					font-weight: 600;
-					color: var(--text-normal);
-				}
-
-				.ai-chat-prompts-section {
-					margin-bottom: 24px;
-				}
-
-				.ai-chat-section-title {
-					padding-top: 20px;  /* 添加上内边距 */
-					margin: 0 0 12px 0;
-					font-size: 14px;
-					font-weight: 600;
-					color: var(--text-normal);
-				}
-
-				.ai-chat-note-indicator {
-					font-size: 12px;
-					color: var(--text-muted);
-					margin-bottom: 8px;
-				}
-
-				.ai-chat-new-chat-btn {
-					width: 100%;
-					padding: 8px 12px;
-					background: var(--interactive-accent);
-					color: var(--text-on-accent);
-					border: none;
-					border-radius: 4px;
-					cursor: pointer;
-					font-size: 12px;
-					font-weight: 500;
-					margin-bottom: 12px;
-				}
-
-				.ai-chat-new-chat-btn:hover {
-					background: var(--interactive-accent-hover);
-				}
-
-				.ai-chat-prompts-list {
-					display: flex;
-					flex-direction: column;
-					gap: 6px;
-				}
-
-				.ai-chat-prompt-item {
-					padding: 8px 12px;
-					background: var(--background-secondary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 4px;
-					cursor: pointer;
-					font-size: 12px;
-					line-height: 1.3;
-					color: var(--text-normal);
-					transition: background-color 0.2s;
-				}
-
-				.ai-chat-prompt-item:hover {
-					background: var(--background-modifier-hover);
-				}
-
-				.ai-chat-instructions-section {
-					margin-bottom: 20px;
-				}
-
-				.ai-chat-instructions-list {
-					display: flex;
-					flex-direction: column;
-					align-items: center;  /* 水平居中 */
-					gap: 8px;
-				}
-
-				.ai-chat-instruction-item {
-					display: flex;
-					align-items: flex-start;
-					gap: 8px;
-					font-size: 12px;
-					line-height: 1.4;
-				}
-
-				.ai-chat-instruction-icon {
-					font-size: 14px;
-					flex-shrink: 0;
-				}
-
-				.ai-chat-instruction-text {
-					color: var(--text-muted);
-				}
-
-				.ai-status {
-					margin-top: 12px;
-					padding: 8px;
-					border-radius: 6px;
-					text-align: center;
-				}
-
-				.ai-status-warning {
-					color: var(--text-warning);
-					font-weight: 600;
-					margin-bottom: 4px;
-				}
-
-				.ai-status-ready {
-					color: var(--text-success);
-					font-weight: 600;
-					margin-bottom: 4px;
-				}
-
-				.ai-status-text-only-ready {
-					color: var(--text-muted);
-					font-weight: 600;
-					margin-bottom: 4px;
-				}
-
-				.ai-status-desc {
-					font-size: 12px;
-					color: var(--text-muted);
-				}
-
-				.ai-status:hover {
-					background: var(--background-modifier-hover);
-					cursor: pointer;
-				}
-
-				.ai-chat-messages {
-					flex: 1;
-					display: flex;
-					flex-direction: column;
-					gap: 16px;
-					padding: 0 16px;
-					max-height: 100%;
-					overflow-y: scroll; /* Always show scrollbar to prevent width jumping */
-					scrollbar-gutter: stable; /* Reserve space for scrollbar */
-				}
-				
-				/* Custom scrollbar styling for better appearance */
-				.ai-chat-messages::-webkit-scrollbar {
-					width: 8px;
-				}
-				
-				.ai-chat-messages::-webkit-scrollbar-track {
-					background: var(--background-secondary);
-					border-radius: 4px;
-				}
-				
-				.ai-chat-messages::-webkit-scrollbar-thumb {
-					background: var(--background-modifier-border);
-					border-radius: 4px;
-				}
-				
-				.ai-chat-messages::-webkit-scrollbar-thumb:hover {
-					background: var(--background-modifier-border-hover);
-				}
-
-				/* New message block layout */
-				.ai-chat-message {
-					display: flex;
-					flex-direction: column;
-					width: 100%;
-					background: var(--background-secondary);
-					border: 2px solid var(--background-modifier-border);
-					border-radius: 6px;
-					padding: 6px;
-					transition: all 0.2s ease;
-					margin-bottom: 8px;
-				}
-
-				.ai-chat-message:hover {
-					border-color: var(--background-modifier-hover);
-					box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
-				}
-
-				.ai-chat-message-row {
-					display: flex;
-					gap: 8px;
-					width: 100%;
-				}
-
-				/* Avatar section */
-				.ai-chat-message-avatar {
-					flex-shrink: 0;
-					width: 32px;
-					display: flex;
-					flex-direction: column;
-					align-items: center;
-				}
-
-				.ai-chat-avatar-icon {
-					width: 28px;
-					height: 28px;
-					border-radius: 50%;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-				}
-
-				.ai-chat-avatar-icon.user-avatar {
-					background: var(--background-secondary);
-					color: var(--text-muted);
-				}
-
-				.ai-chat-avatar-icon.ai-avatar {
-					background: var(--background-secondary);
-					color: var(--text-muted);
-				}
-
-				/* Content section takes remaining width */
-				.ai-chat-message-content-section {
-					flex: 1;
-					display: flex;
-					flex-direction: column;
-					gap: 4px;
-					min-width: 0;
-				}
-
-				.ai-chat-message-header {
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					font-size: 12px;
-					color: var(--text-muted);
-					margin-bottom: 6px;
-					padding: 4px 0;
-					min-height: 24px;
-				}
-
-				.ai-chat-message-time {
-					opacity: 0.8;
-					font-size: 11px;
-					font-weight: 500;
-				}
-
-				.ai-chat-message-content {
-					background: transparent;
-					border: none;
-					padding: 0;
-					width: 100%;
-					line-height: 1.3;
-					font-size: 14px;
-				}
-
-				/* Action buttons - now in header on right */
-				.ai-chat-message-actions {
-					display: flex;
-					gap: 2px;
-					opacity: 0.6;
-					transition: opacity 0.2s ease;
-				}
-
-				.ai-chat-message:hover .ai-chat-message-actions {
-					opacity: 1;
-				}
-
-				.message-action-btn {
-					background: transparent !important;
-					border: none !important;
-					padding: 6px !important;
-					border-radius: 4px !important;
-					color: #9CA3AF !important;
-					cursor: pointer !important;
-					transition: all 0.2s ease !important;
-					display: flex !important;
-					align-items: center !important;
-					justify-content: center !important;
-					width: 24px !important;
-					height: 24px !important;
-					position: relative !important;
-					outline: none !important;
-					box-shadow: none !important;
-				}
-
-				.message-action-btn:hover {
-					background: transparent !important;
-					color: #1F2937 !important;
-					border: none !important;
-					outline: none !important;
-					box-shadow: none !important;
-				}
-
-				.theme-dark .message-action-btn {
-					color: #6B7280 !important;
-				}
-
-				.theme-dark .message-action-btn:hover {
-					color: #F9FAFB !important;
-				}
-
-				.message-action-btn:disabled {
-					opacity: 0.4 !important;
-					cursor: not-allowed !important;
-					pointer-events: auto !important;
-				}
-
-				.message-action-btn:disabled:hover {
-					background: transparent !important;
-					color: #9CA3AF !important;
-				}
-
-				.theme-dark .message-action-btn:disabled:hover {
-					color: #6B7280 !important;
-				}
-
-				.message-action-btn.delete-btn:hover {
-					color: var(--text-error) !important;
-				}
-
-				/* Enhanced tooltip styles */
-				.message-action-btn::after {
-					content: attr(data-tooltip);
-					position: absolute;
-					left: 50%;
-					top: 100%;
-					margin-top: 8px;
-					transform: translateX(-50%);
-					background: #374151;
-					color: white;
-					padding: 6px 8px;
-					border-radius: 4px;
-					font-size: 12px;
-					white-space: nowrap;
-					opacity: 0;
-					pointer-events: none;
-					transition: opacity 0.2s ease;
-					z-index: 1000;
-				}
-
-				.message-action-btn:hover::after {
-					opacity: 1;
-				}
-
-				.ai-chat-message-image {
-					max-width: 200px;
-					max-height: 200px;
-					border-radius: 4px;
-					cursor: pointer;
-					margin-bottom: 8px;
-					object-fit: contain;
-					transition: all 0.2s ease;
-					border: 2px solid transparent;
-				}
-
-				/* Image selection and hover effects */
-				.ai-chat-message-image::selection {
-					background: rgba(0, 123, 255, 0.4);
-					outline: 3px solid rgba(0, 123, 255, 0.6);
-					border-radius: 6px;
-				}
-
-				.ai-chat-message-image::-moz-selection {
-					background: rgba(0, 123, 255, 0.4);
-					outline: 3px solid rgba(0, 123, 255, 0.6);
-					border-radius: 6px;
-				}
-
-				.ai-chat-message-image:hover {
-					border-color: rgba(0, 123, 255, 0.3);
-					transform: scale(1.02);
-				}
-
-				/* Enhance selection visibility when part of text selection */
-				.ai-chat-message-content:has(*::selection) .ai-chat-message-image {
-					outline: 2px solid rgba(0, 123, 255, 0.5);
-					outline-offset: 2px;
-				}
-
-				.ai-chat-message-images-grid {
-					display: grid;
-					grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-					gap: 12px;
-					margin-bottom: 8px;
-				}
-
-				.ai-chat-message-image-wrapper {
-					display: flex;
-					flex-direction: column;
-					align-items: center;
-					gap: 4px;
-				}
-
-				.ai-chat-message-image-wrapper .ai-chat-message-image {
-					width: 100%;
-					max-width: 180px;
-					max-height: 180px;
-					margin-bottom: 0;
-					transition: all 0.2s ease;
-					border: 2px solid transparent;
-				}
-
-				/* Grid image selection and hover effects */
-				.ai-chat-message-image-wrapper .ai-chat-message-image::selection {
-					background: rgba(0, 123, 255, 0.4);
-					outline: 3px solid rgba(0, 123, 255, 0.6);
-					border-radius: 6px;
-				}
-
-				.ai-chat-message-image-wrapper .ai-chat-message-image::-moz-selection {
-					background: rgba(0, 123, 255, 0.4);
-					outline: 3px solid rgba(0, 123, 255, 0.6);
-					border-radius: 6px;
-				}
-
-				.ai-chat-message-image-wrapper .ai-chat-message-image:hover {
-					border-color: rgba(0, 123, 255, 0.3);
-					transform: scale(1.02);
-				}
-
-				.ai-chat-message-image-filename {
-					font-size: 10px;
-					color: var(--text-muted);
-					text-align: center;
-					word-break: break-all;
-					max-width: 180px;
-				}
-
-				.ai-chat-image-count-indicator {
-					font-size: 11px;
-					color: var(--text-muted);
-					background: var(--background-modifier-border);
-					padding: 2px 6px;
-					border-radius: 10px;
-					margin-top: 4px;
-					display: inline-block;
-					font-weight: 500;
-				}
-
-				.ai-chat-message-text {
-					line-height: 1.3;
-					font-size: 14px;
-				}
-
-				.ai-chat-message-text p {
-					margin: 0 0 4px 0;
-					line-height: 1.3;
-				}
-
-				.ai-chat-message-text p:last-child {
-					margin-bottom: 0;
-				}
-
-				.ai-chat-message-text h1,
-				.ai-chat-message-text h2,
-				.ai-chat-message-text h3 {
-					margin: 6px 0 3px 0;
-					line-height: 1.2;
-				}
-
-				.ai-chat-message-text ul,
-				.ai-chat-message-text ol {
-					margin: 4px 0;
-					padding-left: 16px;
-					line-height: 1.3;
-				}
-
-				.ai-chat-message-text li {
-					margin: 2px 0;
-				}
-
-				.ai-chat-message-text code {
-					background: var(--background-secondary);
-					padding: 1px 3px;
-					border-radius: 2px;
-					font-family: var(--font-monospace);
-					font-size: 0.9em;
-				}
-
-				.ai-chat-typing-indicator {
-					display: flex;
-					align-items: center;
-					gap: 4px;
-					padding: 8px 0;
-				}
-
-				.typing-dot {
-					width: 8px;
-					height: 8px;
-					border-radius: 50%;
-					background: var(--text-muted);
-					animation: typingDots 1.4s infinite ease-in-out;
-				}
-
-				.typing-dot:nth-child(1) {
-					animation-delay: 0s;
-				}
-
-				.typing-dot:nth-child(2) {
-					animation-delay: 0.2s;
-				}
-
-				.typing-dot:nth-child(3) {
-					animation-delay: 0.4s;
-				}
-
-				@keyframes typingDots {
-					0%, 60%, 100% {
-						transform: translateY(0);
-						opacity: 0.4;
-					}
-					30% {
-						transform: translateY(-10px);
-						opacity: 1;
-					}
-				}
-
-				.ai-chat-input-area {
-					border-top: 1px solid var(--background-modifier-border);
-					padding: 2px 4px 4px 4px;
-				}
-
-				/* Top action bar */
-				.ai-chat-top-action-bar {
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					margin-bottom: 2px;
-					padding: 0;
-				}
-
-				.ai-chat-left-actions-top {
-					display: flex;
-					gap: 4px;
-					align-items: center;
-				}
-
-				.ai-chat-right-actions-top {
-					display: flex;
-					gap: 4px;
-				}
-
-				.ai-chat-action-btn {
-					background: transparent !important;
-					border: none !important;
-					outline: none !important;
-					box-shadow: none !important;
-					font-size: 16px;
-					padding: 8px;
-					border-radius: 0;
-					cursor: pointer;
-					transition: color 0.2s ease;
-					color: #9CA3AF !important; /* Ensure gray color is applied with !important */
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					min-width: 32px;
-					height: 32px;
-					position: relative;
-				}
-
-				.ai-chat-action-btn:hover {
-					color: #1F2937 !important; /* Darker black on hover */
-					background: transparent !important;
-					border: none !important;
-					box-shadow: none !important;
-				}
-
-				.ai-chat-action-btn:focus {
-					outline: none !important;
-					border: none !important;
-					box-shadow: none !important;
-				}
-
-				.theme-dark .ai-chat-action-btn {
-					color: #6B7280 !important; /* Lighter gray for dark theme with !important */
-				}
-
-				.theme-dark .ai-chat-action-btn:hover {
-					color: #F9FAFB !important; /* Light color on hover in dark theme */
-				}
-
-				/* Tooltip styles */
-				.ai-chat-action-btn::after {
-					content: attr(data-tooltip);
-					position: absolute;
-					left: 50%;
-					bottom: 100%;
-					margin-bottom: 8px;
-					transform: translateX(-50%);
-					background: #374151;
-					color: white;
-					padding: 6px 8px;
-					border-radius: 4px;
-					font-size: 12px;
-					white-space: nowrap;
-					opacity: 0;
-					pointer-events: none;
-					transition: opacity 0.2s ease;
-					z-index: 1000;
-				}
-
-				.ai-chat-action-btn:hover::after {
-					opacity: 1;
-				}
-
-				/* Drag and drop zone - ultra minimalist */
-				.ai-chat-drop-zone {
-					border: 2px dashed #E5E7EB;
-					border-radius: 4px;
-					padding: 6px;
-					margin-bottom: 2px;
-					text-align: center;
-					transition: border-color 0.2s ease;
-					background: transparent;
-				}
-
-				.ai-chat-drop-zone:hover {
-					border-color: #9CA3AF;
-				}
-
-				.ai-chat-drop-zone-active {
-					border: 2px dashed var(--interactive-accent) !important;
-					background: var(--background-modifier-border) !important;
-					transform: scale(1.02);
-				}
-
-				.ai-chat-drop-zone-content {
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					gap: 8px;
-					color: var(--text-muted);
-					font-size: 14px;
-				}
-
-				.ai-chat-drop-zone-icon {
-					font-size: 18px;
-				}
-
-				.file-picker-link {
-					color: var(--interactive-accent);
-					text-decoration: none;
-					cursor: pointer;
-				}
-
-				.file-picker-link:hover {
-					text-decoration: underline;
-				}
-
-				/* Input container - completely borderless */
-				.ai-chat-input-container {
-					position: relative;
-					display: flex;
-					align-items: flex-end;
-					background: transparent;
-					border: none !important;
-					outline: none !important;
-					border-radius: 0;
-					padding: 8px 4px;
-					margin-bottom: 2px;
-					transition: none;
-					box-shadow: none !important;
-					min-height: 60px;
-				}
-
-				.ai-chat-input-container:focus-within {
-					border: none !important;
-					outline: none !important;
-					box-shadow: none !important;
-				}
-
-				.ai-chat-input {
-					flex: 1;
-					border: none;
-					outline: none;
-					background: transparent;
-					color: var(--text-normal);
-					font-family: inherit;
-					font-size: 16px;
-					line-height: 1.6;
-					resize: none;
-					min-height: 80px;
-					max-height: 200px;
-					overflow-y: auto;
-					padding-right: 8px; /* Reduced padding since send button moved */
-				}
-
-				.ai-chat-input::placeholder {
-					color: #D1D5DB; /* Lighter gray for placeholder text */
-				}
-
-				.theme-dark .ai-chat-input::placeholder {
-					color: #6B7280; /* Appropriate gray for dark theme */
-				}
-
-				
-
-				/* Bottom row - revised layout */
-				.ai-chat-bottom-row {
-					display: flex;
-					align-items: center;
-					justify-content: space-between;
-					padding: 0 1px;
-					margin-top: 1px;
-					height: 32px; /* 固定高度防止layout shift */
-					position: relative; /* 为dropdown提供定位上下文 */
-				}
-
-				.model-selector-container {
-					flex: 1;
-					height: 32px; /* 固定高度与wrapper一致 */
-					overflow: visible; /* 允许dropdown超出容器 */
-				}
-
-				/* Send button in bottom row */
-				.ai-chat-send-button-bottom {
-					background: transparent !important;
-					border: none !important;
-					outline: none !important;
-					box-shadow: none !important;
-					color: #D1D5DB; /* Lighter gray default */
-					font-size: 16px;
-					padding: 6px;
-					border-radius: 4px;
-					cursor: pointer;
-					transition: color 0.2s ease;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					width: 32px;
-					height: 32px;
-					margin-left: 8px;
-				}
-
-				.ai-chat-send-button-bottom:hover:not(:disabled) {
-					color: #1F2937 !important; /* Darker black on hover */
-					background: transparent !important;
-				}
-
-				.theme-dark .ai-chat-send-button-bottom {
-					color: #6B7280; /* Lighter gray for dark theme */
-				}
-
-				.theme-dark .ai-chat-send-button-bottom:hover:not(:disabled) {
-					color: #F9FAFB !important; /* Light color on hover in dark theme */
-				}
-
-				.ai-chat-send-button-bottom:disabled {
-					color: #D1D5DB;
-					cursor: not-allowed;
-				}
-
-				.ai-chat-send-button-bottom.no-models-disabled {
-					opacity: 0.3;
-					cursor: not-allowed;
-					background-color: var(--background-modifier-border);
-					color: var(--text-muted);
-					border-color: var(--background-modifier-border);
-				}
-
-				.ai-chat-right-actions {
-					display: flex;
-					gap: 8px;
-				}
-
-				.ai-chat-action-secondary {
-					padding: 6px 12px;
-					background: var(--background-secondary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 4px;
-					color: var(--text-muted);
-					cursor: pointer;
-					font-size: 13px;
-					transition: all 0.2s ease;
-				}
-
-				.ai-chat-action-secondary:hover {
-					background: var(--background-modifier-hover);
-					color: var(--text-normal);
-				}
-
-				/* Model selector with upward popup */
-				.model-selector-wrapper {
-					position: relative;
-					height: 32px; /* 固定高度防止layout shift */
-					overflow: visible; /* 确保dropdown可以显示在外面 */
-				}
-
-				.model-selector-button {
-					display: flex;
-					align-items: center;
-					justify-content: flex-start; /* 确保内容左对齐 */
-					gap: 4px;
-					padding: 4px 8px;
-					background: transparent !important;
-					border: none !important;
-					border-radius: 4px;
-					color: #9CA3AF !important; /* Gray default with !important */
-					cursor: pointer;
-					font-size: 11px;
-					line-height: 1.2; /* 添加固定行高 */
-					transition: color 0.2s ease;
-					outline: none !important;
-					box-shadow: none !important;
-					white-space: nowrap; /* 防止文字换行 */
-				}
-
-				.model-selector-button:hover {
-					color: #1F2937 !important; /* Darker black on hover */
-					background: transparent !important;
-					border: none !important;
-					outline: none !important;
-					box-shadow: none !important;
-				}
-
-				.theme-dark .model-selector-button {
-					color: #6B7280 !important; /* Lighter gray for dark theme with !important */
-				}
-
-				.theme-dark .model-selector-button:hover {
-					color: #F9FAFB !important; /* Light color on hover in dark theme */
-				}
-
-				.model-dropdown-arrow {
-					font-size: 10px;
-					margin-left: 4px;
-				}
-
-				.model-dropdown-menu {
-					position: absolute;
-					bottom: 100%;
-					left: 0;
-					min-width: 160px;
-					max-width: 300px;
-					width: max-content;
-					background: var(--background-primary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 6px;
-					box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
-					z-index: 1000;
-					margin-bottom: 4px;
-					max-height: 200px;
-					overflow-y: auto;
-					/* 确保不影响父容器布局 */
-					transform: translateZ(0); /* 创建新的stacking context */
-				}
-
-				.model-dropdown-option {
-					padding: 8px 12px;
-					cursor: pointer;
-					font-size: 11px;
-					color: var(--text-normal);
-					transition: background-color 0.2s ease;
-				}
-
-				.model-dropdown-option:hover {
-					background: var(--background-modifier-hover);
-				}
-
-				.model-dropdown-option.selected {
-					background: var(--interactive-accent);
-					color: var(--text-on-accent);
-				}
-
-				.model-option-content {
-					display: flex;
-					align-items: center;
-					gap: 6px;
-					width: 100%;
-				}
-
-				.model-option-content .model-name {
-					font-size: 11px;
-					color: inherit;
-					flex: 1;
-				}
-
-				.vision-icon {
-					color: #8b5cf6;
-					display: inline-flex;
-					align-items: center;
-					flex-shrink: 0;
-				}
-
-				.vision-icon svg {
-					width: 12px;
-					height: 12px;
-					stroke: #8b5cf6;
-				}
-
-				/* Specific styles for vision icons in dropdown options */
-				.model-dropdown-option .vision-icon {
-					color: #8b5cf6;
-					display: inline-flex;
-					align-items: center;
-					flex-shrink: 0;
-				}
-
-				.model-dropdown-option .vision-icon svg {
-					width: 12px;
-					height: 12px;
-					stroke: #8b5cf6;
-				}
-
-				/* Ensure model name in selector button maintains button color */
-				.model-selector-button .model-name {
-					color: inherit;
-					font-size: inherit;
-				}
-
-				.model-dropdown-option:first-child {
-					border-radius: 6px 6px 0 0;
-				}
-
-				.model-dropdown-option:last-child {
-					border-radius: 0 0 6px 6px;
-				}
-
-				/* Mode selector styles (match model selector) */
-				.mode-selector-wrapper {
-					position: relative;
-					height: 32px;
-					overflow: visible;
-				}
-
-				.mode-selector-button {
-					display: flex;
-					align-items: center;
-					justify-content: flex-start;
-					gap: 4px;
-					padding: 4px 8px;
-					background: transparent !important;
-					border: none !important;
-					border-radius: 4px;
-					color: #9CA3AF !important;
-					cursor: pointer;
-					font-size: 11px;
-					line-height: 1.2;
-					transition: color 0.2s ease;
-					outline: none !important;
-					box-shadow: none !important;
-					white-space: nowrap;
-				}
-
-				.mode-selector-button:hover {
-					color: #1F2937 !important;
-					background: transparent !important;
-					border: none !important;
-					outline: none !important;
-					box-shadow: none !important;
-				}
-
-				.theme-dark .mode-selector-button {
-					color: #6B7280 !important;
-				}
-
-				.theme-dark .mode-selector-button:hover {
-					color: #F9FAFB !important;
-				}
-
-				.mode-dropdown-arrow {
-					font-size: 10px;
-					margin-left: 4px;
-				}
-
-				.mode-dropdown-menu {
-					position: absolute;
-					bottom: 100%;
-					left: 0;
-					min-width: 120px;
-					max-width: 200px;
-					width: max-content;
-					background: var(--background-primary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 6px;
-					box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
-					z-index: 1000;
-					margin-bottom: 4px;
-					max-height: 200px;
-					overflow-y: auto;
-					transform: translateZ(0);
-				}
-
-				.mode-dropdown-option {
-					padding: 8px 12px;
-					cursor: pointer;
-					font-size: 11px;
-					color: var(--text-normal);
-					transition: background-color 0.2s ease;
-				}
-
-				.mode-dropdown-option:hover {
-					background: var(--background-modifier-hover);
-				}
-
-				.mode-dropdown-option.selected {
-					background: var(--interactive-accent);
-					color: var(--text-on-accent);
-				}
-
-				.mode-option-content {
-					display: flex;
-					align-items: center;
-					gap: 6px;
-					width: 100%;
-				}
-
-				.mode-option-content .mode-name {
-					font-size: 11px;
-					color: inherit;
-					flex: 1;
-				}
-
-				.mode-selector-button .mode-name {
-					color: inherit;
-					font-size: inherit;
-				}
-
-				.mode-dropdown-option:first-child {
-					border-radius: 6px 6px 0 0;
-				}
-
-				.mode-dropdown-option:last-child {
-					border-radius: 0 0 6px 6px;
-				}
-
-				.no-models-indicator {
-					font-size: 13px;
-					color: var(--text-warning);
-					padding: 6px 12px;
-					background: transparent !important;
-					border: none !important;
-					border-radius: 4px;
-					outline: none !important;
-					box-shadow: none !important;
-				}
-
-				.ai-chat-input-drag-active .ai-chat-drop-zone {
-					border-color: var(--interactive-accent) !important;
-					background: var(--background-modifier-border) !important;
-					transform: scale(1.02);
-				}
-
-				.ai-chat-image-preview-area {
-					margin-bottom: 8px;
-					padding: 8px;
-					background: var(--background-secondary);
-					border-radius: 6px;
-					border: 1px solid var(--background-modifier-border);
-				}
-
-				.images-preview-container {
-					display: flex;
-					flex-direction: column;
-					gap: 8px;
-				}
-
-				.preview-header {
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					padding-bottom: 6px;
-					border-bottom: 1px solid var(--background-modifier-border);
-				}
-
-				.preview-count {
-					font-size: 12px;
-					color: var(--text-normal);
-					font-weight: 500;
-				}
-
-				.preview-count.non-vision-warning {
-					color: var(--text-warning);
-					font-weight: 600;
-				}
-
-				.images-grid {
-					display: grid;
-					grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-					gap: 8px;
-					max-height: 200px;
-					overflow-y: auto;
-				}
-
-				.preview-image-item {
-					position: relative;
-					border-radius: 4px;
-					overflow: hidden;
-					border: 1px solid var(--background-modifier-border);
-					cursor: pointer;
-				}
-
-				.preview-image-thumb {
-					width: 100%;
-					height: 80px;
-					object-fit: cover;
-					display: block;
-					cursor: pointer;
-					transition: opacity 0.2s ease;
-				}
-
-				.preview-image-thumb:hover {
-					opacity: 0.8;
-				}
-
-				.image-info-overlay {
-					position: absolute;
-					bottom: 0;
-					left: 0;
-					right: 0;
-					background: linear-gradient(transparent, rgba(0,0,0,0.8));
-					color: white;
-					padding: 4px 6px;
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					opacity: 0;
-					transition: opacity 0.2s;
-				}
-
-				.preview-image-item:hover .image-info-overlay {
-					opacity: 1;
-				}
-
-				.image-filename-overlay {
-					font-size: 10px;
-					white-space: nowrap;
-					overflow: hidden;
-					text-overflow: ellipsis;
-					flex: 1;
-				}
-
-				.remove-single-image-btn {
-					width: 24px;
-					height: 24px;
-					border-radius: 50%;
-					border: 1px solid #9CA3AF; /* Gray border to match other buttons */
-					background: transparent !important;
-					color: #9CA3AF !important; /* Gray color to match border */
-					cursor: pointer;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					position: absolute;
-					top: 4px;
-					right: 4px;
-					z-index: 10;
-					transition: all 0.2s ease;
-					outline: none;
-					box-shadow: none;
-					font-size: 16px; /* Larger size for better visibility */
-					font-weight: normal; /* Let the symbol speak for itself */
-					line-height: 1;
-					font-family: Arial, sans-serif;
-					padding: 0;
-					margin: 0;
-					text-align: center;
-					vertical-align: middle;
-				}
-
-				.remove-single-image-btn:hover {
-					background: transparent !important;
-					color: #1F2937 !important; /* Dark color on hover to match other buttons */
-					border-color: #1F2937 !important; /* Dark border on hover to match text */
-				}
-
-				.remove-single-image-btn:focus {
-					outline: none !important;
-					box-shadow: none !important;
-				}
-
-				.image-preview-container {
-					display: flex;
-					align-items: center;
-					gap: 12px;
-				}
-
-				.preview-image {
-					width: 80px;
-					height: 80px;
-					object-fit: cover;
-					border-radius: 4px;
-					border: 1px solid var(--background-modifier-border);
-				}
-
-				.image-preview-info {
-					flex: 1;
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-				}
-
-				.image-filename {
-					font-size: 12px;
-					color: var(--text-normal);
-					font-weight: 500;
-				}
-
-				.remove-image-btn {
-					width: 20px;
-					height: 20px;
-					border-radius: 50%;
-					border: none;
-					background: var(--interactive-critical);
-					color: white;
-					cursor: pointer;
-					font-size: 14px;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					line-height: 1;
-				}
-
-				.remove-image-btn:hover {
-					background: var(--interactive-critical-hover);
-				}
-
-				.ai-chat-input {
-					flex: 1;
-					resize: none;
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 4px;
-					padding: 8px;
-					background: var(--background-primary);
-					color: var(--text-normal);
-					font-family: inherit;
-				}
-
-				.ai-chat-send-button {
-					padding: 12px 20px;
-					background: #4A9EFF;
-					color: white;
-					border: none;
-					border-radius: 6px;
-					cursor: pointer;
-					font-size: 14px;
-					font-weight: 500;
-					white-space: nowrap;
-					align-self: center;
-					transition: background-color 0.2s;
-				}
-
-				.ai-chat-send-button:hover:not(:disabled) {
-					background: #3B8BFF;
-				}
-
-				.ai-chat-send-button:disabled {
-					background: #A0A0A0;
-					color: white;
-					cursor: not-allowed;
-				}
-
-				.ai-chat-message-content {
-					user-select: text;
-					-webkit-user-select: text;
-					-moz-user-select: text;
-					-ms-user-select: text;
-					word-wrap: break-word;
-					overflow-wrap: break-word;
-					word-break: break-word;
-					white-space: pre-wrap;
-					max-width: 100%;
-					overflow-x: hidden;
-				}
-
-				/* Improve text selection visibility */
-				.ai-chat-message-content ::selection {
-					background: rgba(0, 123, 255, 0.3);
-					color: var(--text-normal);
-				}
-
-				.ai-chat-message-content ::-moz-selection {
-					background: rgba(0, 123, 255, 0.3);
-					color: var(--text-normal);
-				}
-
-				/* Special selection for user messages with accent background */
-				.ai-chat-message-user .ai-chat-message-content ::selection {
-					background: rgba(255, 255, 255, 0.4);
-					color: var(--text-on-accent);
-				}
-
-				.ai-chat-message-user .ai-chat-message-content ::-moz-selection {
-					background: rgba(255, 255, 255, 0.4);
-					color: var(--text-on-accent);
-				}
-
-				/* Thinking blocks styling */
-				.ai-thinking-block {
-					margin: 12px 0;
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 8px;
-					background: var(--background-secondary);
-					overflow: hidden;
-					transition: all 0.2s ease;
-				}
-
-				.ai-thinking-block.collapsed {
-					background: var(--background-primary);
-				}
-
-				.ai-thinking-header {
-					display: flex;
-					align-items: center;
-					gap: 8px;
-					padding: 10px 12px;
-					background: var(--background-modifier-border);
-					cursor: pointer;
-					user-select: none;
-					transition: background-color 0.2s ease;
-					border-bottom: 1px solid var(--background-modifier-border);
-				}
-
-				.ai-thinking-header:hover {
-					background: var(--background-modifier-hover);
-				}
-
-				.ai-thinking-toggle {
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					color: var(--text-muted);
-					transition: transform 0.2s ease, color 0.2s ease;
-					flex-shrink: 0;
-					width: 20px;
-					height: 20px;
-				}
-
-				.ai-thinking-toggle:hover {
-					color: var(--text-normal);
-				}
-
-				.ai-thinking-block.collapsed .ai-thinking-toggle {
-					transform: rotate(0deg);
-				}
-
-				.ai-thinking-label {
-					font-size: 13px;
-					font-weight: 600;
-					color: var(--text-normal);
-					text-transform: uppercase;
-					letter-spacing: 0.5px;
-				}
-
-				.ai-thinking-content {
-					padding: 12px;
-					border-top: none;
-					background: var(--background-secondary);
-					font-size: 14px;
-					line-height: 1.5;
-				}
-
-				.ai-thinking-text {
-					margin: 0 0 8px 0;
-					color: var(--text-muted);
-					font-style: normal;
-				}
-
-				.ai-thinking-text:last-child {
-					margin-bottom: 0;
-				}
-
-				.ai-thinking-text strong {
-					color: var(--text-normal);
-					font-weight: 600;
-				}
-
-				.ai-thinking-text em {
-					color: var(--text-accent);
-				}
-
-				/* Markdown rendering with extremely compact spacing */
-				.markdown-rendered p {
-					margin: 0.1em 0 !important;
-					line-height: 1.3 !important;
-				}
-				
-				.markdown-rendered h1 { 
-					margin: 0.3em 0 0.05em 0 !important;
-					line-height: 1.1 !important;
-					font-size: 1.4em !important;
-				}
-				
-				.markdown-rendered h2 { 
-					margin: 0.25em 0 0.05em 0 !important;
-					line-height: 1.1 !important;
-					font-size: 1.25em !important;
-				}
-				
-				.markdown-rendered h3 { 
-					margin: 0.2em 0 0.03em 0 !important;
-					line-height: 1.1 !important;
-					font-size: 1.15em !important;
-				}
-				
-				.markdown-rendered h4,
-				.markdown-rendered h5,
-				.markdown-rendered h6 {
-					margin: 0.15em 0 0.03em 0 !important;
-					line-height: 1.1 !important;
-					font-size: 1.05em !important;
-				}
-				
-				/* Extremely compact lists */
-				.markdown-rendered ul,
-				.markdown-rendered ol {
-					margin: 0.1em 0 !important;
-					padding-left: 1.5em !important; /* Increased to prevent bullet cutoff */
-					margin-left: 0 !important;
-				}
-				
-				.markdown-rendered li {
-					margin: 0 !important;
-					padding: 0 !important;
-					line-height: 1.3 !important;
-					list-style-position: outside !important; /* Ensure bullets are outside */
-				}
-				
-				.markdown-rendered li p {
-					margin: 0 !important;
-					padding: 0 !important;
-				}
-				
-				/* Nested lists even more compact */
-				.markdown-rendered li ul,
-				.markdown-rendered li ol {
-					margin: 0 !important;
-					padding-left: 1.2em !important; /* Slightly less for nested */
-				}
-				
-				.markdown-rendered blockquote {
-					margin: 0.1em 0 !important;
-					padding: 0.2em 0.6em !important;
-				}
-				
-				.markdown-rendered pre {
-					margin: 0.1em 0 !important;
-					padding: 0.3em !important;
-				}
-				
-				.markdown-rendered hr {
-					margin: 0.2em 0 !important;
-				}
-				
-				.markdown-rendered table {
-					margin: 0.1em 0 !important;
-				}
-				
-				/* Compact LaTeX formulas */
-				.markdown-rendered .math-block,
-				.markdown-rendered .math {
-					margin: 0.1em 0 !important;
-					line-height: 1.2 !important;
-				}
-				
-				.markdown-rendered mjx-container {
-					margin: 0.05em 0 !important;
-				}
-				
-				.markdown-rendered mjx-container[display="block"] {
-					margin: 0.15em 0 !important;
-				}
-				
-				/* Remove extra spacing from math elements */
-				.markdown-rendered .MathJax {
-					margin: 0 !important;
-				}
-				
-				.markdown-rendered .MathJax_Display {
-					margin: 0.1em 0 !important;
-				}
-
-				.ai-chat-thinking-text code {
-					background: var(--background-primary);
-					padding: 2px 4px;
-					border-radius: 3px;
-					font-family: var(--font-monospace);
-					font-size: 0.9em;
-					color: var(--text-normal);
-				}
-
-				/* Message editing styles */
-				.message-edit-textarea {
-					width: 100%;
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 4px;
-					padding: 8px;
-					background: var(--background-primary);
-					color: var(--text-normal);
-					font-family: inherit;
-					font-size: 14px;
-					line-height: 1.5;
-					resize: vertical;
-					min-height: 100px;
-					outline: none;
-				}
-
-				.message-edit-textarea:focus {
-					border-color: var(--interactive-accent);
-					box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
-				}
-
-				.ai-chat-message.editing-mode {
-					background: var(--background-primary);
-					border-color: var(--interactive-accent);
-				}
-
-				.ai-chat-message.editing-mode .ai-chat-message-content {
-					margin: 4px 0;
-				}
-			`;
-			document.head.appendChild(style);
-		}
 	}
 
 	async onClose(): Promise<void> {
@@ -3972,8 +2227,8 @@ export class AIChatView extends ItemView {
 			const conversationIdShort = conversation.id.slice(-8); // Last 8 chars of conversation ID
 			const fileName = `auto-saved-${conversationIdShort}.md`;
 
-			// Generate markdown content first to check for changes (auto-save mode)
-			const markdownContent = await this.generateConversationMarkdown(conversation, 'auto');
+			// Generate markdown content first to check for changes (auto-save mode, without timestamp update for comparison)
+			const markdownContent = await this.generateConversationMarkdown(conversation, 'auto', false);
 			
 			// Check if content has changed since last save
 			if (this.lastAutoSaveContent && this.lastAutoSaveContent === markdownContent) {
@@ -3984,6 +2239,9 @@ export class AIChatView extends ItemView {
 			getLogger().log('Auto-save proceeding: Content changes detected for conversation', conversationIdShort, 
 				'(previous content length:', this.lastAutoSaveContent?.length || 0, 
 				', new content length:', markdownContent.length, ')');
+
+			// Generate final content with updated timestamp for actual saving
+			const finalMarkdownContent = await this.generateConversationMarkdown(conversation, 'auto', true);
 
 			// Get auto-save location from settings
 			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
@@ -4003,13 +2261,13 @@ export class AIChatView extends ItemView {
 			const existingFile = vault.getAbstractFileByPath(fullPath);
 			if (existingFile) {
 				// File exists, modify it to avoid closing it if it's open
-				await vault.modify(existingFile as any, markdownContent);
+				await vault.modify(existingFile as any, finalMarkdownContent);
 			} else {
 				// File doesn't exist, create it
-				await vault.create(fullPath, markdownContent);
+				await vault.create(fullPath, finalMarkdownContent);
 			}
 
-			// Update the last saved content after successful save
+			// Update the last saved content after successful save (use content without timestamp for comparison)
 			this.lastAutoSaveContent = markdownContent;
 
 			// Clean up old auto-saved conversations to enforce limit
@@ -4328,7 +2586,7 @@ export class AIChatView extends ItemView {
 	 * @param conversation - The conversation to convert
 	 * @param mode - 'auto' for auto-save (keep temp images in YAML), 'manual' for manual save (convert temp images)
 	 */
-	private async generateConversationMarkdown(conversation: AIConversation, mode: 'auto' | 'manual' = 'auto'): Promise<string> {
+	private async generateConversationMarkdown(conversation: AIConversation, mode: 'auto' | 'manual' = 'auto', updateTimestamp: boolean = true): Promise<string> {
 		// Generate or use existing conversation ID
 		const conversationId = conversation.id.startsWith('loaded_') ? 
 			this.generateConversationId(conversation) : conversation.id;
@@ -4350,11 +2608,18 @@ export class AIChatView extends ItemView {
 		const currentTime = new Date().toISOString();
 		const createdTime = conversation.createdAt ? conversation.createdAt.toISOString() : currentTime;
 		
+		// For auto-save mode, use a fixed timestamp for comparison unless explicitly updating
+		let lastModifiedTime = currentTime;
+		if (mode === 'auto' && !updateTimestamp) {
+			// Use a fixed timestamp to prevent unnecessary saves due to timestamp changes
+			lastModifiedTime = createdTime;
+		}
+		
 		markdown += `---
 conversationID: ${conversationId}
 model: ${this.plugin.settings.defaultModelConfigId || 'default'}
 created: ${createdTime}
-lastModified: ${currentTime}
+lastModified: ${lastModifiedTime}
 tags:
   - ai-conversation`;
 		
@@ -4698,7 +2963,8 @@ tags:
 	private updateSelectorButtonContent(button: HTMLButtonElement, modelConfig: any) {
 		// Clear existing content (except dropdown arrow)
 		const dropdownArrow = button.querySelector('.model-dropdown-arrow');
-		button.innerHTML = '';
+		button.empty();
+		// Clear button content
 		
 		// Add model name
 		const modelName = button.createEl('span', { text: modelConfig.name, cls: 'model-name' });
@@ -4761,8 +3027,8 @@ tags:
 			return;
 		}
 
-		// Generate current conversation markdown to compare with last saved content (auto mode)
-		const currentMarkdownContent = await this.generateConversationMarkdown(conversation, 'auto');
+		// Generate current conversation markdown to compare with last saved content (auto mode, without timestamp update)
+		const currentMarkdownContent = await this.generateConversationMarkdown(conversation, 'auto', false);
 		
 		// If content has changed, reset the tracking so next auto-save will proceed
 		if (this.lastAutoSaveContent !== currentMarkdownContent) {
@@ -4774,7 +3040,8 @@ tags:
 	private updateModeSelectorButtonContent(button: HTMLButtonElement, modeData: any) {
 		// Clear existing content (except dropdown arrow)
 		const dropdownArrow = button.querySelector('.mode-dropdown-arrow');
-		button.innerHTML = '';
+		button.empty();
+		// Clear button content
 		
 		// Add mode name
 		const modeName = button.createEl('span', { text: this.getModeDisplayName(modeData.id), cls: 'mode-name' });
@@ -5233,24 +3500,13 @@ tags:
 		return new Promise((resolve) => {
 			const modal = new Modal(this.app);
 			
-			// Set modal styles
-			modal.contentEl.style.cssText = `
-				width: 400px;
-				padding: 20px;
-				text-align: center;
-			`;
+			modal.contentEl.className = 'ai-chat-modal-content';
 			
 			// Title
 			const title = modal.contentEl.createEl('h3', { 
 				text: 'Delete Message',
-				cls: 'modal-title'
+				cls: 'ai-chat-modal-title'
 			});
-			title.style.cssText = `
-				margin: 0 0 16px 0;
-				color: var(--text-normal);
-				font-size: 18px;
-				font-weight: 600;
-			`;
 			
 			// Message preview
 			const isUserMessage = message.type === 'user';
@@ -5258,82 +3514,28 @@ tags:
 			const truncated = messagePreview.length < (message.content || '').length;
 			
 			const description = modal.contentEl.createEl('p', {
-				text: `Are you sure you want to delete this ${isUserMessage ? 'user' : 'AI'} message?`
+				text: `Are you sure you want to delete this ${isUserMessage ? 'user' : 'AI'} message?`,
+				cls: 'ai-chat-modal-description'
 			});
-			description.style.cssText = `
-				margin: 0 0 12px 0;
-				color: var(--text-normal);
-				font-size: 14px;
-				line-height: 1.4;
-			`;
 			
 			const preview = modal.contentEl.createEl('div', {
 				text: `"${messagePreview}${truncated ? '...' : ''}"`,
+				cls: 'ai-chat-modal-preview'
 			});
-			preview.style.cssText = `
-				background: var(--background-secondary);
-				border: 1px solid var(--background-modifier-border);
-				border-radius: 4px;
-				padding: 12px;
-				margin: 0 0 20px 0;
-				font-size: 13px;
-				color: var(--text-muted);
-				font-style: italic;
-				max-height: 80px;
-				overflow-y: auto;
-				text-align: left;
-			`;
 			
 			// Button container
-			const buttonContainer = modal.contentEl.createEl('div');
-			buttonContainer.style.cssText = `
-				display: flex;
-				justify-content: center;
-				gap: 12px;
-				margin-top: 20px;
-			`;
+			const buttonContainer = modal.contentEl.createEl('div', { cls: 'ai-chat-modal-button-container' });
 			
 			// Cancel button
-			const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
-			cancelBtn.style.cssText = `
-				padding: 8px 16px;
-				border: 1px solid var(--background-modifier-border);
-				background: var(--background-primary);
-				color: var(--text-normal);
-				border-radius: 4px;
-				cursor: pointer;
-				font-size: 14px;
-				transition: all 0.2s ease;
-				min-width: 80px;
-			`;
+			const cancelBtn = buttonContainer.createEl('button', { 
+				text: 'Cancel',
+				cls: 'ai-chat-modal-button-cancel'
+			});
 			
 			// Delete button
-			const deleteBtn = buttonContainer.createEl('button', { text: 'Delete' });
-			deleteBtn.style.cssText = `
-				padding: 8px 16px;
-				border: 1px solid var(--color-red);
-				background: var(--color-red);
-				color: white;
-				border-radius: 4px;
-				cursor: pointer;
-				font-size: 14px;
-				transition: all 0.2s ease;
-				min-width: 80px;
-			`;
-			
-			// Hover effects
-			cancelBtn.addEventListener('mouseenter', () => {
-				cancelBtn.style.background = 'var(--background-modifier-hover)';
-			});
-			cancelBtn.addEventListener('mouseleave', () => {
-				cancelBtn.style.background = 'var(--background-primary)';
-			});
-			
-			deleteBtn.addEventListener('mouseenter', () => {
-				deleteBtn.style.background = '#dc2626';
-			});
-			deleteBtn.addEventListener('mouseleave', () => {
-				deleteBtn.style.background = 'var(--color-red)';
+			const deleteBtn = buttonContainer.createEl('button', { 
+				text: 'Delete',
+				cls: 'ai-chat-modal-button-delete'
 			});
 			
 			// Event handlers

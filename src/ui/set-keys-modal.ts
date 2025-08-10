@@ -34,9 +34,6 @@ export class SetKeysModal extends Modal {
 		LLM_PROVIDERS.forEach(provider => {
 			this.createProviderSetting(providersEl, provider);
 		});
-
-		// Add custom styles
-		this.addStyles();
 	}
 
 	private createProviderSetting(container: HTMLElement, provider: LLMProvider) {
@@ -298,20 +295,12 @@ export class SetKeysModal extends Modal {
 			case 'verified':
 				verifyButton.textContent = t('setKeys.verifiedButton');
 				verifyButton.disabled = false;
-				verifyButton.classList.add('verified');
-				// Force style refresh
-				verifyButton.style.background = '#22c55e';
-				verifyButton.style.color = 'white';
-				verifyButton.style.borderColor = '#22c55e';
+				verifyButton.classList.add('verified', 'set-keys-verify-success');
 				break;
 			case 'error':
 				verifyButton.textContent = t('setKeys.retryButton');
 				verifyButton.disabled = false;
-				verifyButton.classList.add('error');
-				// Force style refresh
-				verifyButton.style.background = '#ef4444';
-				verifyButton.style.color = 'white';
-				verifyButton.style.borderColor = '#ef4444';
+				verifyButton.classList.add('error', 'set-keys-verify-error');
 				break;
 		}
 	}
@@ -366,8 +355,7 @@ export class SetKeysModal extends Modal {
 					
 					// Add visual indicator for non-vision models
 					if (!model.hasVision) {
-						option.style.color = 'var(--text-muted)';
-						option.style.fontStyle = 'italic';
+						option.classList.add('set-keys-option-disabled');
 					}
 					
 					dropdown.appendChild(option);
@@ -942,233 +930,6 @@ export class SetKeysModal extends Modal {
 		});
 	}
 
-	private addStyles() {
-		if (!document.getElementById('set-keys-modal-styles')) {
-			const style = document.createElement('style');
-			style.id = 'set-keys-modal-styles';
-			style.textContent = `
-				.set-keys-modal {
-					width: 700px;
-					max-width: 90vw;
-				}
-
-				.modal-header {
-					margin-bottom: 20px;
-					text-align: center;
-				}
-
-				.modal-header h2 {
-					margin: 0 0 8px 0;
-					font-size: 24px;
-				}
-
-				.modal-description {
-					margin: 0;
-					color: var(--text-muted);
-					font-size: 14px;
-				}
-
-				.providers-container {
-					display: flex;
-					flex-direction: column;
-					gap: 20px;
-					max-height: 600px;
-					overflow-y: auto;
-					padding-right: 8px;
-				}
-
-				.provider-setting {
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 8px;
-					padding: 16px;
-					background: var(--background-secondary);
-				}
-
-				.provider-header {
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					margin-bottom: 16px;
-				}
-
-				.provider-header h3 {
-					margin: 0;
-					color: var(--text-normal);
-				}
-
-				.provider-link {
-					color: var(--interactive-accent);
-					text-decoration: none;
-					font-size: 12px;
-				}
-
-				.provider-link:hover {
-					text-decoration: underline;
-				}
-
-				.api-key-container, .add-model-container {
-					margin-bottom: 16px;
-				}
-
-				.setting-item-info {
-					margin-bottom: 8px;
-				}
-
-				.setting-item-name {
-					font-weight: 500;
-					color: var(--text-normal);
-					margin-bottom: 2px;
-				}
-
-				.setting-item-description {
-					font-size: 12px;
-					color: var(--text-muted);
-				}
-
-				.api-key-input-container {
-					display: flex;
-					gap: 8px;
-					align-items: center;
-				}
-
-				.add-model-input-container {
-					display: flex;
-					gap: 8px;
-					align-items: center; /* Center align for proper alignment */
-					height: 36px; /* Fixed height for consistent alignment */
-					min-height: 36px;
-					flex-wrap: wrap; /* Allow wrapping for custom provider layout */
-				}
-
-				.add-model-input-container.custom-provider {
-					flex-direction: column;
-					height: auto;
-					align-items: stretch;
-				}
-
-				.vision-checkbox-container {
-					display: flex;
-					align-items: center;
-					gap: 6px;
-					margin-top: 8px;
-					padding: 4px 8px;
-					background: var(--background-modifier-form-field);
-					border-radius: 4px;
-					border: 1px solid var(--background-modifier-border);
-				}
-
-				.vision-checkbox {
-					margin: 0;
-				}
-
-				.vision-checkbox-label {
-					font-size: 12px;
-					color: var(--text-normal);
-					margin: 0;
-					cursor: pointer;
-				}
-
-				.api-key-input {
-					flex: 1;
-					padding: 8px 12px;
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 4px;
-					background: var(--background-primary);
-					color: var(--text-normal);
-					font-size: 13px;
-				}
-
-				.api-key-input:focus {
-					border-color: var(--interactive-accent);
-					outline: none;
-				}
-
-				.modellist-dropdown, .model-text-input {
-					flex: 1;
-					padding: 8px 12px;
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 4px;
-					background: var(--background-primary);
-					color: var(--text-normal);
-					font-size: 13px;
-					min-height: 36px;
-					height: 36px;
-					box-sizing: border-box;
-				}
-
-				.modellist-dropdown:disabled, .model-text-input:disabled {
-					opacity: 0.5;
-					cursor: not-allowed;
-				}
-
-				.model-text-input:focus {
-					border-color: var(--interactive-accent);
-					outline: none;
-				}
-
-				.set-keys-modal .verify-button-inline, .set-keys-modal .add-model-button {
-					padding: 8px 16px;
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 4px;
-					background: var(--background-primary);
-					color: var(--text-normal);
-					cursor: pointer;
-					font-size: 13px;
-					transition: all 0.2s;
-					white-space: nowrap;
-					min-height: 36px;
-					height: 36px;
-					box-sizing: border-box;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-				}
-
-				.set-keys-modal .verify-button-inline:hover, .set-keys-modal .add-model-button:hover:not(:disabled) {
-					background: var(--background-modifier-hover);
-				}
-
-				/* Higher specificity for verified state */
-				.set-keys-modal .api-key-input-container .verify-button-inline.verified,
-				.set-keys-modal .verify-button-inline.verified {
-					background: #22c55e !important;
-					color: white !important;
-					border-color: #22c55e !important;
-					border: 1px solid #22c55e !important;
-				}
-
-				/* Higher specificity for error state */
-				.set-keys-modal .api-key-input-container .verify-button-inline.error,
-				.set-keys-modal .verify-button-inline.error {
-					background: #ef4444 !important;
-					color: white !important;
-					border-color: #ef4444 !important;
-					border: 1px solid #ef4444 !important;
-				}
-
-				/* Higher specificity for verifying state */
-				.set-keys-modal .api-key-input-container .verify-button-inline.verifying,
-				.set-keys-modal .verify-button-inline.verifying {
-					background: #3b82f6 !important;
-					color: white !important;
-					border-color: #3b82f6 !important;
-					border: 1px solid #3b82f6 !important;
-					cursor: not-allowed;
-				}
-
-				.set-keys-modal .add-model-button:disabled {
-					opacity: 0.5;
-					cursor: not-allowed;
-				}
-
-				.set-keys-modal .add-model-button.enabled {
-					background: var(--interactive-accent) !important;
-					color: var(--text-on-accent) !important;
-				}
-			`;
-			document.head.appendChild(style);
-		}
-	}
 
 	onClose() {
 		const { contentEl } = this;
@@ -1428,75 +1189,6 @@ class ModelSelectionModal extends Modal {
 			});
 		});
 
-		// Add styles for model selection
-		if (!document.getElementById('model-selection-styles')) {
-			const style = document.createElement('style');
-			style.id = 'model-selection-styles';
-			style.textContent = `
-				.model-selection-modal {
-					width: 500px;
-				}
-
-				.models-list {
-					display: flex;
-					flex-direction: column;
-					gap: 8px;
-					margin-top: 16px;
-				}
-
-				.model-item {
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					padding: 12px;
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 6px;
-					background: var(--background-primary);
-				}
-
-				.model-info {
-					flex: 1;
-				}
-
-				.model-name {
-					font-weight: 500;
-					margin-bottom: 4px;
-				}
-
-				.model-meta {
-					display: flex;
-					gap: 8px;
-				}
-
-				.vision-badge, .context-badge {
-					font-size: 11px;
-					padding: 2px 6px;
-					border-radius: 3px;
-					background: var(--background-modifier-border);
-					color: var(--text-muted);
-				}
-
-				.vision-badge {
-					background: var(--interactive-success);
-					color: white;
-				}
-
-				.add-btn {
-					padding: 6px 12px;
-					background: var(--interactive-accent);
-					color: var(--text-on-accent);
-					border: none;
-					border-radius: 4px;
-					cursor: pointer;
-					font-size: 12px;
-				}
-
-				.add-btn:hover {
-					background: var(--interactive-accent-hover);
-				}
-			`;
-			document.head.appendChild(style);
-		}
 	}
 
 	onClose() {

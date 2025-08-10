@@ -27,77 +27,27 @@ export class ChatHistoryModal extends Modal {
 		contentEl.addClass('chat-history-modal');
 
 		// Set modal size to be more responsive
-		this.modalEl.style.cssText = `
-			width: min(90vw, 1000px) !important;
-			height: min(80vh, 700px) !important;
-			max-width: 1000px !important;
-			max-height: 700px !important;
-		`;
+		this.modalEl.addClass('chat-history-modal-responsive');
 
 		// Title
-		const titleEl = contentEl.createEl('h2', { text: t('ui.chatHistory') });
-		titleEl.style.cssText = 'margin-bottom: 20px; text-align: center;';
+		const titleEl = contentEl.createEl('h2', { text: t('ui.chatHistory'), cls: 'chat-history-title' });
 
 		// Main container
 		const mainContainer = contentEl.createEl('div', { cls: 'chat-history-container' });
-		mainContainer.style.cssText = `
-			display: flex;
-			flex-direction: column;
-			height: 100%;
-			width: 100%;
-			gap: 16px;
-			box-sizing: border-box;
-		`;
 
 		// Auto-saved conversations section
-		const autoSavedSection = mainContainer.createEl('div', { cls: 'history-section' });
-		autoSavedSection.style.cssText = `
-			flex: 1;
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 8px;
-			padding: 12px;
-			background: var(--background-secondary);
-		`;
+		const autoSavedSection = mainContainer.createEl('div', { cls: 'chat-history-section' });
 
-		const autoSavedTitle = autoSavedSection.createEl('h3', { text: t('ui.autoSavedConversations') });
-		autoSavedTitle.style.cssText = 'margin: 0 0 12px 0; color: var(--text-normal);';
+		const autoSavedTitle = autoSavedSection.createEl('h3', { text: t('ui.autoSavedConversations'), cls: 'chat-history-section-title' });
 
-		const autoSavedList = autoSavedSection.createEl('div', { cls: 'conversation-list' });
-		autoSavedList.style.cssText = `
-			max-height: 300px;
-			overflow-y: auto;
-			overflow-x: hidden;
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-			padding-right: 8px;
-			box-sizing: border-box;
-		`;
+		const autoSavedList = autoSavedSection.createEl('div', { cls: 'chat-history-list' });
 
 		// Manually saved conversations section
-		const manualSavedSection = mainContainer.createEl('div', { cls: 'history-section' });
-		manualSavedSection.style.cssText = `
-			flex: 1;
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 8px;
-			padding: 12px;
-			background: var(--background-secondary);
-		`;
+		const manualSavedSection = mainContainer.createEl('div', { cls: 'chat-history-section' });
 
-		const manualSavedTitle = manualSavedSection.createEl('h3', { text: 'Manually Saved Conversations' });
-		manualSavedTitle.style.cssText = 'margin: 0 0 12px 0; color: var(--text-normal);';
+		const manualSavedTitle = manualSavedSection.createEl('h3', { text: 'Manually Saved Conversations', cls: 'chat-history-section-title' });
 
-		const manualSavedList = manualSavedSection.createEl('div', { cls: 'conversation-list' });
-		manualSavedList.style.cssText = `
-			max-height: 300px;
-			overflow-y: auto;
-			overflow-x: hidden;
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-			padding-right: 8px;
-			box-sizing: border-box;
-		`;
+		const manualSavedList = manualSavedSection.createEl('div', { cls: 'chat-history-list' });
 
 		// Load and display conversations
 		this.loadConversations(autoSavedList, manualSavedList);
@@ -133,8 +83,7 @@ export class ChatHistoryModal extends Modal {
 
 			// Display auto-saved conversations
 			if (autoSavedFiles.length === 0) {
-				const emptyMsg = autoSavedList.createEl('div', { text: 'No auto-saved conversations found' });
-				emptyMsg.style.cssText = 'color: var(--text-muted); font-style: italic; text-align: center; padding: 20px;';
+				const emptyMsg = autoSavedList.createEl('div', { text: 'No auto-saved conversations found', cls: 'chat-history-empty' });
 			} else {
 				for (const file of autoSavedFiles.slice(0, 20)) { // Limit to 20 most recent
 					await this.createConversationItem(autoSavedList, file, true);
@@ -143,8 +92,7 @@ export class ChatHistoryModal extends Modal {
 
 			// Display manually saved conversations
 			if (manualSavedFiles.length === 0) {
-				const emptyMsg = manualSavedList.createEl('div', { text: 'No manually saved conversations found' });
-				emptyMsg.style.cssText = 'color: var(--text-muted); font-style: italic; text-align: center; padding: 20px;';
+				const emptyMsg = manualSavedList.createEl('div', { text: 'No manually saved conversations found', cls: 'chat-history-empty' });
 			} else {
 				for (const file of manualSavedFiles.slice(0, 20)) { // Limit to 20 most recent
 					await this.createConversationItem(manualSavedList, file, false);
@@ -152,8 +100,7 @@ export class ChatHistoryModal extends Modal {
 			}
 		} catch (error: any) {
 			console.error('Failed to load conversations:', error);
-			const errorMsg = autoSavedList.createEl('div', { text: `Error loading conversations: ${error.message}` });
-			errorMsg.style.cssText = 'color: var(--text-error); text-align: center; padding: 20px;';
+			const errorMsg = autoSavedList.createEl('div', { text: `Error loading conversations: ${error.message}`, cls: 'chat-history-error' });
 		}
 	}
 
@@ -171,64 +118,29 @@ export class ChatHistoryModal extends Modal {
 			const lastModified = new Date(file.stat.mtime);
 			
 			// Create conversation item
-			const item = container.createEl('div', { cls: 'conversation-item' });
-			item.style.cssText = `
-				padding: 12px;
-				border: 1px solid var(--background-modifier-border);
-				border-radius: 6px;
-				cursor: pointer;
-				transition: background-color 0.2s;
-				background: var(--background-primary);
-				word-wrap: break-word;
-				overflow-wrap: break-word;
-				max-width: 100%;
-				box-sizing: border-box;
-			`;
+			const item = container.createEl('div', { cls: 'chat-history-item' });
 
 			// Title
-			const titleEl = item.createEl('div', { text: title });
-			titleEl.style.cssText = `
-				font-weight: 600; 
-				margin-bottom: 4px; 
-				color: var(--text-normal);
-				word-wrap: break-word;
-				overflow-wrap: break-word;
-				white-space: normal;
-				line-height: 1.3;
-			`;
+			const titleEl = item.createEl('div', { text: title, cls: 'chat-history-item-title' });
 
 			// Metadata
-			const metaEl = item.createEl('div');
-			metaEl.style.cssText = `
-				font-size: 12px; 
-				color: var(--text-muted); 
-				display: flex; 
-				justify-content: space-between;
-				flex-wrap: wrap;
-				gap: 8px;
-			`;
+			const metaEl = item.createEl('div', { cls: 'chat-history-item-meta' });
 			
 			const dateEl = metaEl.createEl('span', { text: lastModified.toLocaleString() });
-			const typeEl = metaEl.createEl('span', { text: isAutoSaved ? 'Auto-saved' : 'Manual' });
-			
-			if (isAutoSaved) {
-				typeEl.style.cssText = 'color: var(--text-accent);';
-			}
+			const typeEl = metaEl.createEl('span', { 
+				text: isAutoSaved ? 'Auto-saved' : 'Manual',
+				cls: isAutoSaved ? 'chat-history-item-type' : ''
+			});
 
 			// Extract first few lines of conversation content for preview
 			const previewMatch = content.match(/## 👤 \*\*User\*\*[\s\S]*?\n\n(.*?)(\n|$)/);
 			if (previewMatch && previewMatch[1]) {
-				const previewEl = item.createEl('div', { text: previewMatch[1].substring(0, 100) + (previewMatch[1].length > 100 ? '...' : '') });
-				previewEl.style.cssText = 'font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.3;';
+				const previewEl = item.createEl('div', { 
+					text: previewMatch[1].substring(0, 100) + (previewMatch[1].length > 100 ? '...' : ''),
+					cls: 'chat-history-item-preview'
+				});
 			}
 
-			// Hover effect
-			item.addEventListener('mouseenter', () => {
-				item.style.background = 'var(--background-modifier-hover)';
-			});
-			item.addEventListener('mouseleave', () => {
-				item.style.background = 'var(--background-primary)';
-			});
 
 			// Click handler to load conversation
 			item.addEventListener('click', async () => {
@@ -548,7 +460,7 @@ export class ChatHistoryModal extends Modal {
 
 	onClose() {
 		// Reset modal styles to prevent affecting other modals
-		this.modalEl.style.cssText = '';
+		this.modalEl.removeClass('chat-history-modal-responsive');
 		
 		const { contentEl } = this;
 		contentEl.empty();

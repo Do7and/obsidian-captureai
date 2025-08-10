@@ -199,24 +199,12 @@ export class ImageEditor extends Modal {
 		const modalWidth = (this as any).calculatedModalWidth || 500;
 		const modalHeight = (this as any).calculatedModalHeight || 400;
 		
-		this.modalEl.style.cssText = `
-			width: ${modalWidth}px !important;
-			height: ${modalHeight}px !important;
-			max-width: ${modalWidth}px !important;
-			max-height: ${modalHeight}px !important;
-			min-width: ${modalWidth}px !important;
-			min-height: ${modalHeight}px !important;
-			overflow: hidden !important;
-			resize: none !important;
-		`;
+		this.modalEl.addClass('image-editor-modal-sized');
+		this.modalEl.style.setProperty('--modal-width', modalWidth + 'px');
+		this.modalEl.style.setProperty('--modal-height', modalHeight + 'px');
 		
 		// Also set contentEl to fill the modal without overflow
-		contentEl.style.cssText = `
-			width: 100%;
-			height: 100%;
-			overflow: hidden;
-			box-sizing: border-box;
-		`;
+		contentEl.addClass('image-editor-content-fullsize');
 		
 		this.createEditorInterface(contentEl);
 		this.loadImage();
@@ -229,9 +217,12 @@ export class ImageEditor extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.removeClass('image-editor-container');
+		contentEl.removeClass('image-editor-content-fullsize');
 		
 		// Reset modal styles to prevent affecting other modals
-		this.modalEl.style.cssText = '';
+		this.modalEl.removeClass('image-editor-modal-sized');
+		this.modalEl.style.removeProperty('--modal-width');
+		this.modalEl.style.removeProperty('--modal-height');
 	}
 
 	private createEditorInterface(container: HTMLElement) {
@@ -245,14 +236,7 @@ export class ImageEditor extends Modal {
 		const buttonBarHeight = 60;
 		
 		// Set container to use full modal space
-		container.style.cssText = `
-			display: flex;
-			flex-direction: column;
-			width: 100%;
-			height: 100%;
-			overflow: hidden;
-			box-sizing: border-box;
-		`;
+		container.addClass('image-editor-container-layout');
 		
 		// Store display dimensions
 		(this as any).canvasDisplayWidth = canvasDisplayWidth;
@@ -260,55 +244,29 @@ export class ImageEditor extends Modal {
 		
 		// Fixed height toolbar
 		const toolbar = container.createDiv({ cls: 'image-editor-toolbar' });
-		toolbar.style.cssText = `
-			height: ${toolbarHeight}px;
-			flex-shrink: 0;
-		`;
+		toolbar.addClass('image-editor-toolbar-fixed');
+		toolbar.style.setProperty('--toolbar-height', toolbarHeight + 'px');
 		this.createMainToolbar(toolbar);
 		
 		// Canvas container with exact size, no forced width
 		const canvasContainer = container.createDiv({ cls: 'image-editor-canvas-container' });
-		canvasContainer.style.cssText = `
-			display: flex;
-			justify-content: center;
-			align-items: center;
-			background: var(--background-primary);
-			border: 1px solid var(--background-modifier-border);
-			margin: 10px 20px;
-			height: ${canvasDisplayHeight}px;
-			flex-shrink: 0;
-			overflow: hidden;
-		`;
+		canvasContainer.addClass('image-editor-canvas-container-sized');
+		canvasContainer.style.setProperty('--canvas-height', canvasDisplayHeight + 'px');
 		
-		this.canvas = canvasContainer.createEl('canvas');
-		this.canvas.style.cssText = `
-			box-shadow: 0 0 10px rgba(0,0,0,0.3);
-			cursor: crosshair;
-			display: block;
-		`;
+		this.canvas = canvasContainer.createEl('canvas', { cls: 'image-editor-canvas' });
 		
 		this.ctx = this.canvas.getContext('2d')!;
 		this.bindCanvasEvents();
 		
 		// Fixed height button bar
 		const buttonBar = container.createDiv({ cls: 'image-editor-button-bar' });
-		buttonBar.style.cssText = `
-			height: ${buttonBarHeight}px;
-			flex-shrink: 0;
-		`;
+		buttonBar.addClass('image-editor-button-bar-fixed');
+		buttonBar.style.setProperty('--button-bar-height', buttonBarHeight + 'px');
 		this.createActionButtons(buttonBar);
 	}
 
 	private createMainToolbar(toolbar: HTMLElement) {
-		toolbar.style.cssText = `
-			display: flex;
-			align-items: center;
-			padding: 12px;
-			background: var(--background-secondary);
-			border-bottom: 1px solid var(--background-modifier-border);
-			gap: 8px;
-			flex-wrap: wrap;
-		`;
+		toolbar.addClass('image-editor-main-toolbar');
 		
 		// Drawing tools
 		const tools: EditTool[] = [
@@ -340,13 +298,14 @@ export class ImageEditor extends Modal {
 		
 		tools.forEach(tool => {
 			const button = toolbar.createEl('button', { 
-				cls: this.currentTool === tool.name ? 'active' : ''
+				cls: this.currentTool === tool.name ? 'active image-editor-tool-button' : 'image-editor-tool-button'
 			});
-			button.innerHTML = tool.icon;
-			button.setAttribute('data-tooltip', toolNames[tool.name]); // Use data-tooltip instead of title
-			this.styleToolButton(button, this.currentTool === tool.name);
+			button.createEl('span', {}, (span) => {
+				this.createSVGIcon(span, tool.icon);
+			});
+			button.setAttribute('data-tooltip', toolNames[tool.name]);
 			
-				button.addEventListener('click', () => {
+			button.addEventListener('click', () => {
 					this.currentTool = tool.name;
 					
 					// Switch between normal and highlighter mode
@@ -368,10 +327,10 @@ export class ImageEditor extends Modal {
 					// Update active state
 					toolbar.querySelectorAll('button').forEach(btn => {
 						if (btn !== button && !btn.classList.contains('non-tool')) {
-							this.styleToolButton(btn as HTMLButtonElement, false);
+							btn.classList.remove('active');
 						}
 					});
-				this.styleToolButton(button, true);
+				button.classList.add('active');
 				
 				// Update color picker and stroke size buttons when switching modes
 				this.updateColorAndStrokeDisplay(toolbar);
@@ -384,48 +343,38 @@ export class ImageEditor extends Modal {
 		});
 		
 		// Separator
-		const separator1 = toolbar.createEl('div');
-		separator1.style.cssText = 'width: 1px; height: 24px; background: var(--background-modifier-border); margin: 0 4px;';
+		const separator1 = toolbar.createEl('div', { cls: 'image-editor-separator' });
 		
 		// Note: Crop frame is automatically shown for extended regions
 		
 		// History buttons
-		const undoButton = toolbar.createEl('button');
-		undoButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>`;
-		undoButton.classList.add('non-tool');
+		const undoButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
+		undoButton.createEl('span', {}, (span) => {
+			this.createUndoSVG(span);
+		});
 		undoButton.setAttribute('data-tooltip', '撤销');
-		this.styleToolButton(undoButton, false);
 		undoButton.addEventListener('click', () => this.undo());
 		
-		const redoButton = toolbar.createEl('button');
-		redoButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>`;
-		redoButton.classList.add('non-tool');
+		const redoButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
+		redoButton.createEl('span', {}, (span) => {
+			this.createRedoSVG(span);
+		});
 		redoButton.setAttribute('data-tooltip', '重做');
-		this.styleToolButton(redoButton, false);
 		redoButton.addEventListener('click', () => this.redo());
 		
-		const clearButton = toolbar.createEl('button');
-		clearButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
-		clearButton.classList.add('non-tool');
+		const clearButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
+		clearButton.createEl('span', {}, (span) => {
+			this.createClearSVG(span);
+		});
 		clearButton.setAttribute('data-tooltip', '清空画布');
-		this.styleToolButton(clearButton, false);
 		clearButton.addEventListener('click', () => this.clearCanvas());
 		
 		// Separator
-		const separator2 = toolbar.createEl('div');
-		separator2.style.cssText = 'width: 1px; height: 24px; background: var(--background-modifier-border); margin: 0 4px;';
+		const separator2 = toolbar.createEl('div', { cls: 'image-editor-separator' });
 		
 		// Color picker
-		const colorPicker = toolbar.createEl('input', { type: 'color' });
+		const colorPicker = toolbar.createEl('input', { type: 'color', cls: 'image-editor-color-picker' });
 		colorPicker.value = this.currentColor;
-		colorPicker.style.cssText = `
-			width: 32px;
-			height: 32px;
-			border: none;
-			border-radius: 4px;
-			cursor: pointer;
-			background: none;
-		`;
 		// Add both input (real-time) and change (final) event listeners for color picker
 		colorPicker.addEventListener('input', (e) => {
 			const newColor = (e.target as HTMLInputElement).value;
@@ -453,45 +402,39 @@ export class ImageEditor extends Modal {
 		(toolbar as any)._colorPicker = colorPicker;
 		
 		// Stroke size buttons with colored circles
-		const strokeSizeContainer = toolbar.createDiv({ cls: 'stroke-size-container' });
-		strokeSizeContainer.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 4px;
-			padding: 4px;
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 4px;
-			background: var(--background-primary);
-		`;
+		const strokeSizeContainer = toolbar.createDiv({ cls: 'stroke-size-container image-editor-stroke-size-container' });
 		
 		const strokeSizes: { size: StrokeSize, radius: number }[] = [
-			{ size: 'small', radius: 2 },
-			{ size: 'medium', radius: 4 },
-			{ size: 'large', radius: 6 }
+			{ size: 'small', radius: 3 },    // 先用较小的半径测试
+			{ size: 'medium', radius: 5 },   // 先用较小的半径测试
+			{ size: 'large', radius: 7 }     // 先用较小的半径测试
 		];
 		
 		strokeSizes.forEach(({ size, radius }) => {
-			const button = strokeSizeContainer.createEl('button');
-			button.classList.add('non-tool', 'stroke-size');
+			const button = strokeSizeContainer.createEl('button', { cls: 'non-tool stroke-size image-editor-stroke-size-button' });
 			
-			// Create SVG circle icon
+			// Create SVG circle icon - make SVG larger to match button size
 			const svg = button.createSvg('svg');
-			svg.setAttribute('width', '20');
-			svg.setAttribute('height', '20');
-			svg.setAttribute('viewBox', '0 0 20 20');
+			svg.setAttribute('width', '24');
+			svg.setAttribute('height', '24');
+			svg.setAttribute('viewBox', '0 0 24 24');
 			
 			const circle = svg.createSvg('circle');
-			circle.setAttribute('cx', '10');
-			circle.setAttribute('cy', '10');
+			circle.setAttribute('cx', '12');  // 中心点从10改为12 (24/2)
+			circle.setAttribute('cy', '12');  // 中心点从10改为12 (24/2)
 			circle.setAttribute('r', radius.toString());
-			circle.setAttribute('fill', this.getCurrentColor());
+			circle.setAttribute('fill', this.getCurrentColor() || '#000000'); // 确保有颜色
+			circle.setAttribute('stroke', '#333'); // 添加边框确保可见
+			circle.setAttribute('stroke-width', '0.5');
 			
 			// Store circle element and original radius for updates
 			(button as any)._circle = circle;
 			(button as any)._originalRadius = radius;
 			(button as any)._size = size;
 			
-			this.styleStrokeSizeButton(button, this.getCurrentStrokeSize() === size);
+			if (this.getCurrentStrokeSize() === size) {
+				button.addClass('active');
+			}
 			
 			button.addEventListener('click', () => {
 				if (this.isHighlighterMode) {
@@ -508,22 +451,7 @@ export class ImageEditor extends Modal {
 		(toolbar as any)._strokeSizeContainer = strokeSizeContainer;
 	}
 
-	private styleToolButton(button: HTMLButtonElement, active: boolean) {
-		button.style.cssText = `
-			padding: 8px 12px;
-			border: 1px solid var(--background-modifier-border);
-			background: ${active ? 'var(--interactive-accent)' : 'var(--background-primary)'};
-			color: ${active ? 'var(--text-on-accent)' : 'var(--text-normal)'};
-			cursor: pointer;
-			border-radius: 4px;
-			font-size: 16px;
-			min-width: 40px;
-			position: relative;
-		`;
-		
-		// Add tooltip CSS class
-		button.classList.add('tool-button');
-	}
+
 
 	private getCurrentColor(): string {
 		return this.isHighlighterMode ? this.highlighterColor : this.currentColor;
@@ -564,10 +492,10 @@ export class ImageEditor extends Modal {
 				let displayRadius = originalRadius;
 				if (this.isHighlighterMode) {
 					// Make highlighter circles larger to show the difference
-					displayRadius = Math.min(originalRadius + 3, 8);
+					displayRadius = Math.min(originalRadius + 2, 12); // 调整最大值从8到12
 				}
 				circle.setAttribute('r', displayRadius.toString());
-				circle.setAttribute('fill', this.getCurrentColor());
+				circle.setAttribute('fill', this.getCurrentColor() || '#000000'); // 确保有颜色
 			}
 			
 			this.styleStrokeSizeButton(button, this.getCurrentStrokeSize() === size);
@@ -575,18 +503,12 @@ export class ImageEditor extends Modal {
 	}
 
 	private styleStrokeSizeButton(button: HTMLButtonElement, active: boolean) {
-		button.style.cssText = `
-			padding: 4px;
-			border: 2px solid ${active ? 'var(--interactive-accent)' : 'transparent'};
-			background: var(--background-primary);
-			cursor: pointer;
-			border-radius: 4px;
-			width: 28px;
-			height: 28px;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-		`;
+		// Use original CSS classes - no need for new base classes since they already exist
+		if (active) {
+			button.addClass('active');
+		} else {
+			button.removeClass('active');
+		}
 	}
 	
 	private updateStrokeSizeButtonColors(toolbar: HTMLElement) {
@@ -596,36 +518,23 @@ export class ImageEditor extends Modal {
 				const circle = (button as any)._circle;
 				if (circle) {
 					// Use getCurrentColor() to get the correct color based on current mode
-					circle.setAttribute('fill', this.getCurrentColor());
+					circle.setAttribute('fill', this.getCurrentColor() || '#000000'); // 确保有颜色
 				}
 			});
 		}
 	}
 
 	private createActionButtons(buttonBar: HTMLElement) {
-		buttonBar.style.cssText = `
-			display: flex;
-			flex-direction: column;
-			padding: 12px;
-			background: var(--background-secondary);
-			border-top: 1px solid var(--background-modifier-border);
-			gap: 12px;
-		`;
+		// Use CSS class for base styling
+		buttonBar.className = 'image-editor-action-buttons-container';
 		
 		// File name input section
-		const fileNameSection = buttonBar.createDiv({ cls: 'image-editor-filename-section' });
-		fileNameSection.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 8px;
-		`;
+		const fileNameSection = buttonBar.createDiv({ cls: 'image-editor-filename-section image-editor-filename-section-layout' });
 		
-		const fileNameLabel = fileNameSection.createEl('label', { text: t('imageEditor.fileNameLabel') });
-		fileNameLabel.style.cssText = `
-			font-weight: 500;
-			color: var(--text-normal);
-			white-space: nowrap;
-		`;
+		const fileNameLabel = fileNameSection.createEl('label', { 
+			text: t('imageEditor.fileNameLabel'),
+			cls: 'image-editor-filename-label-style'
+		});
 		
 		// Generate default filename
 		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -634,28 +543,15 @@ export class ImageEditor extends Modal {
 		const fileNameInput = fileNameSection.createEl('input', { 
 			type: 'text',
 			placeholder: t('imageEditor.fileNamePlaceholder'),
-			value: defaultFileName
+			value: defaultFileName,
+			cls: 'image-editor-filename-input-style'
 		});
-		fileNameInput.style.cssText = `
-			flex: 1;
-			padding: 6px 10px;
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 4px;
-			background: var(--background-primary);
-			color: var(--text-normal);
-			font-size: 14px;
-		`;
 		
 		// Store reference to filename input
 		this.fileNameInput = fileNameInput;
 		
 		// Button row
-		const buttonRow = buttonBar.createDiv({ cls: 'image-editor-button-row' });
-		buttonRow.style.cssText = `
-			display: flex;
-			justify-content: flex-end;
-			gap: 10px;
-		`;
+		const buttonRow = buttonBar.createDiv({ cls: 'image-editor-button-row image-editor-button-row-layout' });
 		
 		// Check if AI is enabled and if we have any vision-capable models
 		const aiEnabled = this.plugin.settings.enableAIAnalysis;
@@ -742,16 +638,10 @@ export class ImageEditor extends Modal {
 	}
 
 	private styleActionButton(button: HTMLButtonElement, bgColor: string, textColor: string) {
-		button.style.cssText = `
-			padding: 10px 20px;
-			border: 1px solid var(--background-modifier-border);
-			background: ${bgColor};
-			color: ${textColor};
-			cursor: pointer;
-			border-radius: 4px;
-			font-weight: 500;
-			font-size: 14px;
-		`;
+		// Use CSS class for base styling
+		button.className = 'image-editor-action-button-base';
+		// Use style attribute only for dynamic colors
+		button.setAttr('style', `background: ${bgColor}; color: ${textColor};`);
 	}
 
 	private async sendToAIWithoutSave() {
@@ -1820,5 +1710,81 @@ export class ImageEditor extends Modal {
 			`;
 			document.head.appendChild(style);
 		}
+	}
+
+	private createSVGIcon(container: HTMLElement, iconHTML: string) {
+		// Parse the SVG string safely
+		const tempDiv = document.createElement('div');
+		tempDiv.innerHTML = iconHTML;
+		const svg = tempDiv.firstElementChild;
+		if (svg) {
+			container.appendChild(svg);
+		}
+	}
+
+	private createUndoSVG(container: HTMLElement) {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '16');
+		svg.setAttribute('height', '16');
+		svg.setAttribute('viewBox', '0 0 24 24');
+		svg.setAttribute('fill', 'none');
+		svg.setAttribute('stroke', 'currentColor');
+		svg.setAttribute('stroke-width', '2');
+		svg.setAttribute('stroke-linecap', 'round');
+		svg.setAttribute('stroke-linejoin', 'round');
+		
+		const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path1.setAttribute('d', 'M3 7v6h6');
+		svg.appendChild(path1);
+		
+		const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path2.setAttribute('d', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13');
+		svg.appendChild(path2);
+		
+		container.appendChild(svg);
+	}
+
+	private createRedoSVG(container: HTMLElement) {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '16');
+		svg.setAttribute('height', '16');
+		svg.setAttribute('viewBox', '0 0 24 24');
+		svg.setAttribute('fill', 'none');
+		svg.setAttribute('stroke', 'currentColor');
+		svg.setAttribute('stroke-width', '2');
+		svg.setAttribute('stroke-linecap', 'round');
+		svg.setAttribute('stroke-linejoin', 'round');
+		
+		const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path1.setAttribute('d', 'M21 7v6h-6');
+		svg.appendChild(path1);
+		
+		const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path2.setAttribute('d', 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7');
+		svg.appendChild(path2);
+		
+		container.appendChild(svg);
+	}
+
+	private createClearSVG(container: HTMLElement) {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '16');
+		svg.setAttribute('height', '16');
+		svg.setAttribute('viewBox', '0 0 24 24');
+		svg.setAttribute('fill', 'none');
+		svg.setAttribute('stroke', 'currentColor');
+		svg.setAttribute('stroke-width', '2');
+		svg.setAttribute('stroke-linecap', 'round');
+		svg.setAttribute('stroke-linejoin', 'round');
+		
+		const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+		polyline.setAttribute('points', '3,6 5,6 21,6');
+		svg.appendChild(polyline);
+		
+		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path.setAttribute('d', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2');
+		svg.appendChild(path);
+		
+		container.appendChild(svg);
 	}
 }

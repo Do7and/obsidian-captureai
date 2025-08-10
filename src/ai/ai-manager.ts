@@ -116,11 +116,14 @@ export class AIManager {
 				true // Include modeprompt for send area calls
 			);
 
-			// Remove typing indicator
+			// Remove typing indicator more reliably
 			const typingIndex = conversation.messages.findIndex(m => m.id === typingMessage.id);
 			if (typingIndex > -1) {
 				conversation.messages.splice(typingIndex, 1);
 			}
+			
+			// Also remove any other lingering typing indicators to prevent conflicts
+			conversation.messages = conversation.messages.filter(m => !m.isTyping);
 
 			// Add AI response
 			const assistantMsg: AIMessage = {
@@ -144,11 +147,14 @@ export class AIManager {
 		} catch (error) {
 			console.error('AI API call failed:', error);
 			
-			// Remove typing indicator
+			// Remove typing indicator more reliably
 			const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
 			if (typingIndex > -1) {
 				conversation.messages.splice(typingIndex, 1);
 			}
+			
+			// Also remove any other lingering typing indicators to prevent conflicts
+			conversation.messages = conversation.messages.filter(m => !m.isTyping);
 
 			// Add error message
 			const errorMsg: AIMessage = {

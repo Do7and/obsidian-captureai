@@ -17,8 +17,6 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		// Add CSS styles for consistent setting item layout
-		this.addSettingsStyles(containerEl);
 
 		// Register listener for plugin settings changes
 		this.registerSettingsListener();
@@ -179,12 +177,9 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 			} else {
 				// Guide to add models
 				const guideEl = apiKeysContainer.createEl('div', { 
-					cls: 'setting-item-description',
+					cls: 'setting-item-description settings-guide-text',
 					text: t('settings.getStarted.guide')
 				});
-				guideEl.style.color = 'var(--text-muted)';
-				guideEl.style.fontStyle = 'italic';
-				guideEl.style.marginTop = '10px';
 			}
 
 			// 第二块：图片上传和保存功能
@@ -274,12 +269,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					const textArea = setting.controlEl.querySelector('textarea') as HTMLTextAreaElement;
 					if (textArea) {
 						textArea.rows = 4;
-						textArea.style.width = '100%';
-						textArea.style.minHeight = '100px';
-						textArea.style.resize = 'vertical';
-						textArea.style.fontFamily = 'var(--font-interface)';
-						textArea.style.fontSize = '14px';
-						textArea.style.lineHeight = '1.5';
+						textArea.classList.add('settings-textarea-large');
 					}
 				});
 
@@ -318,12 +308,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 						const textArea = setting.controlEl.querySelector('textarea') as HTMLTextAreaElement;
 						if (textArea) {
 							textArea.rows = 3;
-							textArea.style.width = '100%';
-							textArea.style.minHeight = '80px';
-							textArea.style.resize = 'vertical';
-							textArea.style.fontFamily = 'var(--font-interface)';
-							textArea.style.fontSize = '14px';
-							textArea.style.lineHeight = '1.5';
+							textArea.classList.add('settings-textarea-small');
 						}
 					});
 			});
@@ -424,22 +409,30 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 		containerEl.createEl('h3', { text: t('settings.shortcuts.name') });
 		
 		const shortcutsDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		shortcutsDesc.innerHTML = t('settings.shortcuts.help');
+		this.createHTMLContent(shortcutsDesc, t('settings.shortcuts.help'));
 
 		// Usage Section
 		containerEl.createEl('h3', { text: t('settings.usage.name') });
 		
 		const usageDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		usageDesc.innerHTML = t('settings.usage.helpContent');
+		this.createHTMLContent(usageDesc, t('settings.usage.helpContent'));
 
 		// Troubleshooting Section
 		containerEl.createEl('h3', { text: t('settings.troubleshooting') });
 		
 		const troubleshootingDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		troubleshootingDesc.innerHTML = t('settings.troubleshooting.helpContent');
+		this.createHTMLContent(troubleshootingDesc, t('settings.troubleshooting.helpContent'));
+	}
 
-		// Add custom styles for the settings page
-		this.addStyles();
+	private createHTMLContent(container: HTMLElement, htmlString: string) {
+		// Parse HTML string and safely add content using DOM methods
+		const tempDiv = document.createElement('div');
+		tempDiv.innerHTML = htmlString;
+		
+		// Move all child nodes from temp div to target container
+		while (tempDiv.firstChild) {
+			container.appendChild(tempDiv.firstChild);
+		}
 	}
 
 	private refreshModelDependentComponents() {
@@ -481,87 +474,5 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 			}
 		});
 		observer.observe(document.body, { childList: true, subtree: true });
-	}
-
-	private addStyles() {
-		if (!document.getElementById('image-capture-settings-styles')) {
-			const style = document.createElement('style');
-			style.id = 'image-capture-settings-styles';
-			style.textContent = `
-				.api-keys-section {
-					background: var(--background-secondary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 6px;
-					padding: 16px;
-					margin: 16px 0;
-				}
-
-				.api-keys-section .setting-item {
-					border: none;
-					padding: 8px 0;
-				}
-
-				.api-keys-section .setting-item:not(:last-child) {
-					border-bottom: 1px solid var(--background-modifier-border-hover);
-				}
-
-				.prompts-settings-container {
-					background: var(--background-secondary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 6px;
-					padding: 16px;
-					margin: 16px 0;
-				}
-
-				.prompts-settings-container .setting-item {
-					border: none;
-					padding: 8px 0;
-				}
-
-				.prompts-settings-container .setting-item:not(:last-child) {
-					border-bottom: 1px solid var(--background-modifier-border-hover);
-				}
-
-				.prompts-settings-container .setting-item-control textarea {
-					font-family: var(--font-interface) !important;
-					font-size: 14px !important;
-					line-height: 1.5 !important;
-				}
-				
-				.number-input-buttons button {
-					width: 24px;
-					height: 16px;
-					padding: 0;
-					font-size: 8px;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-				}
-
-				/* Settings layout consistency */
-				.setting-item-info {
-					min-width: 200px;
-					max-width: 200px;
-					flex-shrink: 0;
-				}
-
-				.setting-item-control {
-					flex: 1;
-				}
-
-				.setting-item-control input[type="text"],
-				.setting-item-control textarea,
-				.setting-item-control select {
-					width: 100% !important;
-					max-width: 100% !important;
-				}
-			`;
-			document.head.appendChild(style);
-		}
-	}
-
-	private addSettingsStyles(containerEl: HTMLElement): void {
-		// Add a CSS class to the container for targeted styling
-		containerEl.addClass('image-capture-settings');
-	}
+}
 }
