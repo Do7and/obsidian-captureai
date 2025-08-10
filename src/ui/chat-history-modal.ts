@@ -245,6 +245,40 @@ export class ChatHistoryModal extends Modal {
 		}
 	}
 
+	/**
+	 * Parse timestamp string as local time to avoid timezone issues
+	 */
+	private parseTimestampAsLocal(timestampStr: string): Date {
+		// Try ISO format first (from comments)
+		try {
+			const isoDate = new Date(timestampStr);
+			if (!isNaN(isoDate.getTime()) && timestampStr.includes('T')) {
+				return isoDate;
+			}
+		} catch (e) {
+			// Continue to local parsing
+		}
+		
+		// Parse local timestamp format: "2025/08/07 01:27:20" or "2025-08-07 01:27:20"
+		const normalizedStr = timestampStr.replace(/\//g, '-');
+		const parts = normalizedStr.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+		if (parts) {
+			const [, year, month, day, hour, minute, second] = parts;
+			// Create date in local time (month is 0-indexed in Date constructor)
+			return new Date(
+				parseInt(year), 
+				parseInt(month) - 1, 
+				parseInt(day), 
+				parseInt(hour), 
+				parseInt(minute), 
+				parseInt(second)
+			);
+		}
+		
+		// Fallback to default parsing
+		return new Date(timestampStr);
+	}
+
 	private async parseBestNoteFormat(content: string, conversation: AIConversation, tempImagesMap: { [key: string]: string }): Promise<void> {
 		// Split content by lines to parse line by line
 		const lines = content.split('\n');
@@ -269,10 +303,7 @@ export class ChatHistoryModal extends Modal {
 				
 				let timestamp = new Date();
 				try {
-					const parsedTime = new Date(timestampStr);
-					if (!isNaN(parsedTime.getTime())) {
-						timestamp = parsedTime;
-					}
+					timestamp = this.parseTimestampAsLocal(timestampStr);
 				} catch (error) {
 					console.warn('Could not parse timestamp:', timestampStr);
 				}
@@ -315,11 +346,7 @@ export class ChatHistoryModal extends Modal {
 				// Parse timestamp and finalize current message
 				const timestampStr = timestampMatch[1];
 				try {
-					// Convert from "2025/08/07 01:27:20" format
-					const parsedTime = new Date(timestampStr.replace(/\//g, '-'));
-					if (!isNaN(parsedTime.getTime())) {
-						currentMessage.timestamp = parsedTime;
-					}
+					currentMessage.timestamp = this.parseTimestampAsLocal(timestampStr);
 				} catch (e) {
 					console.warn('Could not parse timestamp:', timestampStr);
 				}

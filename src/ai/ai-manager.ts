@@ -110,7 +110,7 @@ export class AIManager {
 			// Include modeprompt since this is from the send area
 			const response = await this.callAIWithContext(
 				conversation, 
-				textContent || (images.length === 1 ? 'Please analyze this image' : `Please analyze these ${images.length} images`), 
+				textContent || '', // 删除默认的分析文本，使用空字符串
 				images.map(img => img.dataUrl), 
 				defaultModelConfig,
 				true // Include modeprompt for send area calls
@@ -460,7 +460,7 @@ export class AIManager {
 			throw new Error(`Unsupported provider: ${modelConfig.providerId}`);
 		}
 
-		console.log(`API Response Status: ${response.status}, URL: ${response.url}`);
+		getLogger().log(`API Response Status: ${response.status}, URL: ${response.url}`);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -469,9 +469,9 @@ export class AIManager {
 		}
 
 		const responseText = await response.text();
-		console.log('API Response Length:', responseText.length);
-		console.log('API Response Preview:', responseText.substring(0, 200) + '...');
-		console.log('API Response End:', responseText.substring(Math.max(0, responseText.length - 200)));
+		getLogger().log('API Response Length:', responseText.length);
+		getLogger().log('API Response Preview:', responseText.substring(0, 200) + '...');
+		getLogger().log('API Response End:', responseText.substring(Math.max(0, responseText.length - 200)));
 		
 		// Check if response appears to be truncated (doesn't end properly)
 		if (responseText.includes('<think>') && !responseText.includes('</think>')) {
@@ -524,7 +524,7 @@ export class AIManager {
 			throw new Error('Provider credentials not verified');
 		}
 
-		console.log(`Calling AI API with ${imageDataUrls.length} images - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
+		getLogger().log(`Calling AI API with ${imageDataUrls.length} images - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
 
 		let response: Response;
 
@@ -543,7 +543,7 @@ export class AIManager {
 			return await this.callAIAPI(message, imageDataUrls[0], modelConfig);
 		}
 
-		console.log(`Multi-image API Response Status: ${response.status}`);
+		getLogger().log(`Multi-image API Response Status: ${response.status}`);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -552,7 +552,7 @@ export class AIManager {
 		}
 
 		const responseText = await response.text();
-		console.log('Multi-image API Response:', responseText.substring(0, 200) + '...');
+		getLogger().log('Multi-image API Response:', responseText.substring(0, 200) + '...');
 		
 		let data;
 		try {
@@ -576,10 +576,10 @@ export class AIManager {
 			throw new Error('Provider credentials not verified');
 		}
 
-		console.log(`Calling AI API - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
-		console.log(`API Key present: ${!!credentials.apiKey}`);
+		getLogger().log(`Calling AI API - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
+		getLogger().log(`API Key present: ${!!credentials.apiKey}`);
 		if (credentials.baseUrl) {
-			console.log(`Base URL: ${credentials.baseUrl}`);
+			getLogger().log(`Base URL: ${credentials.baseUrl}`);
 		}
 
 		// Extract base64 and MIME type from data URL
@@ -604,7 +604,7 @@ export class AIManager {
 			throw new Error(`Unsupported provider: ${modelConfig.providerId}`);
 		}
 
-		console.log(`API Response Status: ${response.status}, URL: ${response.url}`);
+		getLogger().log(`API Response Status: ${response.status}, URL: ${response.url}`);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -613,9 +613,9 @@ export class AIManager {
 		}
 
 		const responseText = await response.text();
-		console.log('API Response Length:', responseText.length);
-		console.log('API Response Preview:', responseText.substring(0, 200) + '...');
-		console.log('API Response End:', responseText.substring(Math.max(0, responseText.length - 200)));
+		getLogger().log('API Response Length:', responseText.length);
+		getLogger().log('API Response Preview:', responseText.substring(0, 200) + '...');
+		getLogger().log('API Response End:', responseText.substring(Math.max(0, responseText.length - 200)));
 		
 		// Check if response appears to be truncated (doesn't end properly)
 		if (responseText.includes('<think>') && !responseText.includes('</think>')) {
@@ -646,7 +646,7 @@ export class AIManager {
 			throw new Error('Provider credentials not verified');
 		}
 
-		console.log(`Calling text-only AI API - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
+		getLogger().log(`Calling text-only AI API - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
 
 		let response: Response;
 
@@ -664,7 +664,7 @@ export class AIManager {
 			throw new Error(`Unsupported provider for text chat: ${modelConfig.providerId}`);
 		}
 
-		console.log(`Text API Response Status: ${response.status}, URL: ${response.url}`);
+		getLogger().log(`Text API Response Status: ${response.status}, URL: ${response.url}`);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -673,7 +673,7 @@ export class AIManager {
 		}
 
 		const responseText = await response.text();
-		console.log('Text API Response:', responseText.substring(0, 200) + '...');
+		getLogger().log('Text API Response:', responseText.substring(0, 200) + '...');
 		
 		let data;
 		try {
@@ -861,7 +861,7 @@ export class AIManager {
 		// Use custom API path if provided, otherwise default to "/v1/chat/completions"
 		const fullUrl = `${baseUrl.replace(/\/+$/, '')}${apiPath}`;
 
-		console.log(`Custom API URL: ${fullUrl}`);
+		getLogger().log(`Custom API URL: ${fullUrl}`);
 
 		// Default to OpenAI-compatible format for custom APIs
 		return fetch(fullUrl, {
@@ -1103,8 +1103,8 @@ export class AIManager {
 			const abstractFile = vault.getAbstractFileByPath(path);
 			
 			// Check if it's a file (not a folder)
-			if (abstractFile && 'extension' in abstractFile) {
-				const file = abstractFile as TFile;
+			if (abstractFile instanceof TFile && abstractFile && 'extension' in abstractFile) {
+				const file = abstractFile;
 				const arrayBuffer = await vault.readBinary(file);
 				const uint8Array = new Uint8Array(arrayBuffer);
 				

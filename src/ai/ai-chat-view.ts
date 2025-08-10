@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, Component, MarkdownView, Modal, Editor } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, Component, MarkdownView, Modal, Editor, setIcon } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIManager, AIMessage, AIConversation } from './ai-manager';
 import { ChatHistoryModal } from '../ui/chat-history-modal';
@@ -212,7 +212,7 @@ export class AIChatView extends ItemView {
 			if (modelConfig.isVisionCapable) {
 				const visionIcon = optionContent.createEl('span', { cls: 'vision-icon' });
 				// Using Lucide Eye icon with consistent size for dropdown
-				visionIcon.innerHTML = this.createSVGIcon('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>', 12);
+				setIcon(visionIcon, 'eye');
 			}
 			
 			if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
@@ -259,11 +259,8 @@ export class AIChatView extends ItemView {
 				this.refreshModelDependentComponents();
 				
 				// Hide dropdown
-				dropdown.style.display = 'none';
 				const dropdownIcon = selectorButton.querySelector('.model-dropdown-arrow') as HTMLElement;
-				if (dropdownIcon) {
-					dropdownIcon.textContent = '▲';
-				}
+				this.hideDropdown(dropdown, dropdownIcon);
 			});
 		});
 
@@ -523,11 +520,11 @@ export class AIChatView extends ItemView {
 		
 		if (message.type === 'user') {
 			// User icon
-			avatarIcon.innerHTML = this.createSVGIcon('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', 20);
+			setIcon(avatarIcon, 'user-round');
 			avatarIcon.addClass('user-avatar');
 		} else {
 			// AI Assistant icon
-			avatarIcon.innerHTML = this.createSVGIcon('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><circle cx="12" cy="5" r="2"/><path d="m12 7-2 4 2 4 2-4-2-4z"/>', 20);
+			setIcon(avatarIcon, 'bot');
 			avatarIcon.addClass('ai-avatar');
 		}
 
@@ -562,7 +559,8 @@ export class AIChatView extends ItemView {
 			}
 
 		});
-		insertBtn.innerHTML = this.createSVGIcon('<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>');
+		
+		setIcon(insertBtn, 'between-horizontal-end');
 		if (isTyping) {
 			insertBtn.disabled = true;
 			insertBtn.classList.add('ai-chat-button-disabled');
@@ -576,7 +574,8 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.copyMessageButton')
 			}
 		});
-		copyBtn.innerHTML = this.createSVGIcon('<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>');
+
+		setIcon(copyBtn, 'copy');
 		if (isTyping) {
 			copyBtn.disabled = true;
 			copyBtn.classList.add('ai-chat-button-disabled');
@@ -591,7 +590,8 @@ export class AIChatView extends ItemView {
 			}
 
 		});
-		editBtn.innerHTML = this.createSVGIcon('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/>');
+
+		setIcon(editBtn, 'square-pen');
 		if (isTyping) {
 			editBtn.disabled = true;
 			editBtn.classList.add('ai-chat-button-disabled');
@@ -605,7 +605,7 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.deleteMessageButton')
 			}
 		});
-		deleteBtn.innerHTML = this.createSVGIcon('<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c0 1 1 2 2 2v2"/>');
+		setIcon(deleteBtn, 'trash-2');
 		if (isTyping) {
 			deleteBtn.disabled = true;
 			deleteBtn.classList.add('ai-chat-button-disabled');
@@ -943,8 +943,9 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.saveConversationButton')
 			}
 		});
-		saveBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>`;
-		
+
+		setIcon(saveBtn, 'save');
+
 		// Chat History button with Lucide history icon
 		const historyBtn = rightActions.createEl('button', { 
 			cls: 'ai-chat-action-btn',
@@ -953,8 +954,9 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.loadHistoryButton')
 			}
 		});
-		historyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`;
-		
+
+		setIcon(historyBtn, 'history');
+
 		// New chat button with Lucide plus icon
 		const newChatBtn = rightActions.createEl('button', { 
 			cls: 'ai-chat-action-btn',
@@ -963,7 +965,9 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.newConversationButton')
 			}
 		});
-		newChatBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+
+		setIcon(newChatBtn, 'square-plus');
+
 		
 		// Menu button with Lucide more-vertical icon
 		const menuBtn = rightActions.createEl('button', { 
@@ -973,8 +977,9 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.menuButton')
 			}
 		});
-		menuBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>`;
-		
+
+		setIcon(menuBtn, 'ellipsis');
+
 		// Handle new chat button click
 		newChatBtn.addEventListener('click', async () => {
 			await this.startNewConversation();
@@ -999,8 +1004,9 @@ export class AIChatView extends ItemView {
 		const dropZoneContent = dropZone.createEl('div', { cls: 'ai-chat-drop-zone-content' });
 		
 		const dropIcon = dropZoneContent.createEl('span', { cls: 'ai-chat-drop-zone-icon' });
-		dropIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>`;
-		
+
+		setIcon(dropIcon, 'image');
+
 		const dropText = dropZoneContent.createEl('span');
 		dropText.textContent = t('aiChat.dragImageHere') + ' ';
 		
@@ -1041,7 +1047,8 @@ export class AIChatView extends ItemView {
 			cls: 'ai-chat-send-button-bottom',
 			attr: { title: t('aiChat.sendMessageTooltip') }
 		});
-		sendButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9 22,2"/></svg>`;
+
+		setIcon(sendButton, 'send');
 
 		// Setup drag and drop on the entire input area
 		this.setupDragAndDrop(inputArea);
@@ -1090,7 +1097,7 @@ export class AIChatView extends ItemView {
 			// Clear text input
 			textInput.value = '';
 			sendButton.disabled = true;
-			sendButton.innerHTML = '⏳';
+			setIcon(sendButton, 'hourglass');
 
 			try {
 				if (imageDataList.length > 0 && isVisionCapable) {
@@ -1141,7 +1148,7 @@ export class AIChatView extends ItemView {
 				textInput.value = message;
 			} finally {
 				sendButton.disabled = false;
-				sendButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9 22,2"/></svg>`;
+				setIcon(sendButton, 'send');
 			}
 		};
 
@@ -1217,7 +1224,7 @@ export class AIChatView extends ItemView {
 			if (modelConfig.isVisionCapable) {
 				const visionIcon = optionContent.createEl('span', { cls: 'vision-icon' });
 				// Using Lucide Eye icon with consistent size for dropdown
-				visionIcon.innerHTML = this.createSVGIcon('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>', 12);
+				setIcon(visionIcon, 'eye');
 			}
 			
 			if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
@@ -1344,8 +1351,9 @@ export class AIChatView extends ItemView {
 	}
 
 	private renderImagePreviews(container: HTMLElement, imageDataList: any[], inputArea: HTMLElement, isNonVisionModel: boolean = false): void {
-		container.innerHTML = '';
-		
+
+		container.empty();
+
 		if (imageDataList.length === 0) {
 			container.style.display = 'none';
 			return;
@@ -1382,7 +1390,9 @@ export class AIChatView extends ItemView {
 				'data-tooltip': t('aiChat.clearAllImages')
 			}
 		});
-		clearAllBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c0 1 1 2 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+
+		setIcon(clearAllBtn, 'trash-2');
+
 		clearAllBtn.addEventListener('click', () => {
 			this.clearImagePreview(inputArea);
 		});
@@ -1507,7 +1517,7 @@ export class AIChatView extends ItemView {
 		const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
 		imagePreviewArea.style.display = 'none';
 
-		imagePreviewArea.innerHTML = '';
+		imagePreviewArea.empty();
 		(inputArea as any)._currentImageDataList = [];
 	}
 
@@ -1796,7 +1806,7 @@ export class AIChatView extends ItemView {
 			}
 			
 			// Read the file as binary
-			const file = abstractFile as TFile;
+			const file = abstractFile;
 			getLogger().log('Reading vault file:', file.path);
 			
 			const buffer = await vault.readBinary(file);
@@ -1929,15 +1939,15 @@ export class AIChatView extends ItemView {
 		// First, extract and render thinking blocks
 		let processedContent = this.extractAndRenderThinkingBlocks(container, content);
 		
-		// LaTeX delimiter conversion - be very precise about what we capture
-		// \[ ... \] -> $$...$$  (capture content inside brackets)
+		// LaTeX delimiter conversion - 修复转换逻辑和注释
+		// \( ... \) -> $...$ (行内公式)
 		processedContent = processedContent.replace(/\\\(\s*([^]*?)\s*\\\)/g, function(match, formula) {
-			return ' $' + formula.trim() + '$ ';
+			return '$' + formula.trim() + '$'; // 移除额外空格，避免影响渲染
 		});
 		
-		// \( ... \) -> $...$ (capture content inside parentheses, exclude the parentheses themselves)
+		// \[ ... \] -> $$...$$ (行间公式)  
 		processedContent = processedContent.replace(/\\\[\s*([^]*?)\s*\\\]/g, function(match, formula) {
-			return ' $$' + formula.trim() + '$$ ';
+			return '$$' + formula.trim() + '$$'; // 移除额外空格，让渲染与原生$$公式一致
 		});
 		
 		
@@ -1986,7 +1996,9 @@ export class AIChatView extends ItemView {
 					const header = thinkingBlock.createEl('div', { cls: 'ai-thinking-header' });
 					const toggleIcon = header.createEl('span', { cls: 'ai-thinking-toggle' });
 					// Using Lucide Brain icon
-					toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`;
+
+					setIcon(toggleIcon, 'lightbulb');
+
 					const label = header.createEl('span', { 
 						cls: 'ai-thinking-label',
 						text: this.getThinkingLabel(tag)
@@ -2005,9 +2017,9 @@ export class AIChatView extends ItemView {
 						contentEl.style.display = isCollapsed ? 'none' : 'block';
 						// Toggle between Brain and ChevronDown icons
 						if (isCollapsed) {
-							toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+							setIcon(toggleIcon, 'chevron-up');
 						} else {
-							toggleIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`;
+							setIcon(toggleIcon, 'lightbulb');
 						}
 						thinkingBlock.classList.toggle('collapsed', isCollapsed);
 					});
@@ -2054,8 +2066,6 @@ export class AIChatView extends ItemView {
 				
 				let processedText = line;
 				
-				// Simple approach: if text contains formatting, use innerHTML (safe in this context)
-				// Otherwise use textContent
 				if (strongRegex.test(processedText) || emRegex.test(processedText) || codeRegex.test(processedText)) {
 					processedText = processedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 					processedText = processedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
@@ -2582,6 +2592,19 @@ export class AIChatView extends ItemView {
 	}
 
 	/**
+	 * Format timestamp in local time to avoid timezone issues when saving/loading
+	 */
+	private formatTimestampForSaving(timestamp: Date): string {
+		const year = timestamp.getFullYear();
+		const month = String(timestamp.getMonth() + 1).padStart(2, '0');
+		const day = String(timestamp.getDate()).padStart(2, '0');
+		const hours = String(timestamp.getHours()).padStart(2, '0');
+		const minutes = String(timestamp.getMinutes()).padStart(2, '0');
+		const seconds = String(timestamp.getSeconds()).padStart(2, '0');
+		return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+	}
+
+	/**
 	 * Generate conversation markdown with different modes for temp images
 	 * @param conversation - The conversation to convert
 	 * @param mode - 'auto' for auto-save (keep temp images in YAML), 'manual' for manual save (convert temp images)
@@ -2630,10 +2653,10 @@ tags:
 		// Generate messages in BestNote style
 		processedConversation.messages.forEach((message, index) => {
 			const messageType = message.type === 'user' ? 'user' : 'ai';
-			const timestamp = message.timestamp.toISOString();
+			const timestamp = this.formatTimestampForSaving(message.timestamp);
 			
 			// Message header with BestNote format including timestamp
-			markdown += `${messageType}: <!-- ${timestamp} -->\n`;
+			markdown += `${messageType}: <!-- ${message.timestamp.toISOString()} -->\n`;
 			
 			// Add text content first if present
 			if (message.content) {
@@ -2700,7 +2723,7 @@ tags:
 		// Add final timestamp for the last message
 		if (processedConversation.messages.length > 0) {
 			const lastMessage = processedConversation.messages[processedConversation.messages.length - 1];
-			const lastTimestamp = lastMessage.timestamp.toISOString().replace('T', ' ').split('.')[0].replace(/-/g, '/');
+			const lastTimestamp = this.formatTimestampForSaving(lastMessage.timestamp);
 			markdown += `[Timestamp: ${lastTimestamp}]\n`;
 		}
 		
@@ -2972,7 +2995,7 @@ tags:
 		// Add vision icon if applicable (smaller size for selector button)
 		if (modelConfig.isVisionCapable) {
 			const visionIcon = button.createEl('span', { cls: 'vision-icon' });
-			visionIcon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+			setIcon(visionIcon, 'eye');
 		}
 		
 		// Re-add dropdown arrow
@@ -2986,6 +3009,13 @@ tags:
 		const updateSendButtonState = (this as any)._updateSendButtonState;
 		if (updateSendButtonState) {
 			updateSendButtonState();
+		}
+
+		// Update current view's model selector
+		const container = this.containerEl.children[1] as HTMLElement;
+		const modelSelectorContainer = container.querySelector('.model-selector-container');
+		if (modelSelectorContainer) {
+			this.updateModelSelectorInPlace(modelSelectorContainer as HTMLElement);
 		}
 
 		// Refresh settings tab by finding the settings tab instance and calling display()
@@ -3083,7 +3113,7 @@ tags:
 				await this.renderMessageContentFromMarkdown(messageContent, message);
 				
 				// Update button icon to edit icon
-				editBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+				setIcon(editBtn, 'square-pen');
 				editBtn.setAttribute('data-tooltip', t('aiChat.switchEditViewButton'));
 				
 				messageContent.removeClass('editing-mode');
@@ -3093,7 +3123,7 @@ tags:
 			this.renderMessageContentAsEditor(messageContent, message.content || '');
 			
 			// Update button icon to view icon
-			editBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+			setIcon(editBtn, 'eye');
 			editBtn.setAttribute('data-tooltip', 'Switch to Read View');
 			
 			messageContent.addClass('editing-mode');

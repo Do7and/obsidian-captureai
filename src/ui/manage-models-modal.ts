@@ -1,4 +1,4 @@
-import { Modal, Setting, Notice, ButtonComponent } from 'obsidian';
+import { Modal, Setting, Notice, setIcon  } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { ModelConfig, ModelSettings, LLM_PROVIDERS, DEFAULT_MODEL_SETTINGS } from '../types';
 import { t } from '../i18n';
@@ -33,7 +33,7 @@ export class ManageModelsModal extends Modal {
 			
 			// Icon container
 			const iconEl = emptyEl.createEl('div', { cls: 'empty-icon' });
-			iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+			setIcon(iconEl, 'settings');
 			
 			// Title and description
 			emptyEl.createEl('h3', { text: t('ui.noModelsConfigured') });
@@ -73,7 +73,7 @@ export class ManageModelsModal extends Modal {
 		if (modelConfig.isVisionCapable) {
 			const visionIcon = metaEl.createEl('span', { cls: 'vision-badge vision-icon' });
 			// Using Lucide Eye icon with purple color
-			visionIcon.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+			setIcon(visionIcon, 'eye');
 		}
 		if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
 			metaEl.createEl('span', { text: t('manageModels.defaultBadge'), cls: 'default-badge' });
@@ -94,12 +94,14 @@ export class ManageModelsModal extends Modal {
 		}
 
 		// Delete button
-		const deleteBtn = actionsEl.createEl('button', { text: t('manageModels.deleteButton'), cls: 'delete-btn' });
+		const deleteBtn = actionsEl.createEl('button', { cls: 'delete-btn' });
+		setIcon(deleteBtn, 'trash-2');
 		deleteBtn.title = t('manageModels.deleteButtonTitle');
 		deleteBtn.addEventListener('click', () => this.confirmDelete(modelConfig, index));
 
 		// Settings toggle button
-		const toggleBtn = actionsEl.createEl('button', { text: t('manageModels.configureButton'), cls: 'toggle-settings-btn' });
+		const toggleBtn = actionsEl.createEl('button', { cls: 'toggle-settings-btn' });
+		setIcon(toggleBtn, 'settings');
 		toggleBtn.title = t('manageModels.configureButtonTitle');
 
 		// Expandable settings section
@@ -138,10 +140,10 @@ export class ManageModelsModal extends Modal {
 				.onChange(async (value) => {
 					const numValue = parseInt(value);
 					if (!isNaN(numValue) && numValue > 0) {
-						console.log(`Updating maxTokens for model ${modelConfig.id} from ${modelConfig.settings.maxTokens} to ${numValue}`);
+						getLogger().log(`Updating maxTokens for model ${modelConfig.id} from ${modelConfig.settings.maxTokens} to ${numValue}`);
 						modelConfig.settings.maxTokens = numValue;
 						await this.plugin.saveSettings();
-						console.log(`MaxTokens saved successfully for model ${modelConfig.id}`);
+						getLogger().log(`MaxTokens saved successfully for model ${modelConfig.id}`);
 					}
 				}));
 

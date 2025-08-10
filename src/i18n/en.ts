@@ -24,8 +24,8 @@ export default {
   
   // AI Settings
   "settings.aiFunction": "AI Chat Function",
-  "settings.enableAI.name": "Enable AI Analysis",
-  "settings.enableAI.desc": "Enable AI features for image analysis",
+  "settings.enableAI.name": "Enable AI",
+  "settings.enableAI.desc": "Enable AI for image analysis",
   "settings.aiApiConfig": "AI API Configuration",
   "settings.apiKey.name": "API Key",
   "settings.apiKey.desc": "API key for selected provider",
@@ -399,7 +399,7 @@ export default {
   "chatHistory.failedToLoad": "❌ Failed to load conversation: {{message}}",
 
   // AI Chat View
-  "aiChat.title": "AI Chat - from captureAI",
+  "aiChat.title": "CaptureAI",
   "aiChat.assistantTitle": "AI Assistant",
   "aiChat.howToUseTitle": "How to Use",
   "aiChat.instruction.screenshot": "Take a screenshot and it will be automatically analyzed",

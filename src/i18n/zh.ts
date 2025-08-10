@@ -24,7 +24,7 @@ export default {
   
   // AI Settings
   "settings.aiFunction": "AI 会话功能",
-  "settings.enableAI.name": "启用 AI 分析",
+  "settings.enableAI.name": "启用 AI",
   "settings.enableAI.desc": "启用图像分析的 AI 功能",
   "settings.aiApiConfig": "AI API 配置",
   "settings.apiKey.name": "API 密钥",
@@ -400,7 +400,7 @@ export default {
   "chatHistory.failedToLoad": "❌ 加载会话失败: {{message}}",
 
   // AI Chat View
-  "aiChat.title": "AI 会话 - 来自截图捕获插件",
+  "aiChat.title": "CaptureAI",
   "aiChat.assistantTitle": "AI 助手",
   "aiChat.howToUseTitle": "使用方法",
   "aiChat.instruction.screenshot": "截取屏幕截图，它将自动分析",

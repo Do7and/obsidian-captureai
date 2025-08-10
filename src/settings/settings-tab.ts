@@ -427,7 +427,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 	private createHTMLContent(container: HTMLElement, htmlString: string) {
 		// Parse HTML string and safely add content using DOM methods
 		const tempDiv = document.createElement('div');
-		tempDiv.innerHTML = htmlString;
+		tempDiv.textContent = htmlString;
 		
 		// Move all child nodes from temp div to target container
 		while (tempDiv.firstChild) {

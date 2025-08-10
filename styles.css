@@ -950,11 +950,12 @@
 }
 
 .ai-chat-message-text code {
-	background: var(--background-secondary);
-	padding: 1px 3px;
-	border-radius: 2px;
+	background: var(--code-background);
+	padding: 2px 4px;
+	border-radius: 4px;
 	font-family: var(--font-monospace);
 	font-size: 0.9em;
+	border: 1px solid var(--background-modifier-border);
 }
 
 .ai-chat-typing-indicator {
@@ -1752,9 +1753,29 @@
 	padding: 0.2em 0.6em !important;
 }
 
+/* 删除过度的 pre 样式覆盖，让 Obsidian 默认样式生效 */
 .markdown-rendered pre {
 	margin: 0.1em 0 !important;
-	padding: 0.3em !important;
+	/* 移除 padding 覆盖，让 Obsidian 的默认代码块样式生效 */
+}
+
+/* 确保代码块在AI聊天中显示正确 */
+.ai-chat-message-content .markdown-rendered pre {
+	background: var(--code-background);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 12px !important;
+	overflow-x: auto;
+	font-family: var(--font-monospace);
+	/* 删除固定的字体大小，让它继承Obsidian的默认设置 */
+	line-height: 1.4;
+}
+
+.ai-chat-message-content .markdown-rendered pre code {
+	background: transparent !important;
+	border: none !important;
+	padding: 0 !important;
+	font-size: inherit;
 }
 
 .markdown-rendered hr {
@@ -2542,6 +2563,7 @@
 	margin-bottom: 20px;
 	color: var(--text-muted);
 	opacity: 0.6;
+	--icon-size:--icon-xl;
 }
 
 .empty-icon svg {

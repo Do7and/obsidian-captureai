@@ -1,4 +1,4 @@
-import { Modal, Notice } from 'obsidian';
+import { Modal, Notice, setIcon } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { EditTool, Region, StrokeSize, StrokeSetting, LLM_PROVIDERS } from '../types';
 import { t } from '../i18n';
@@ -270,16 +270,16 @@ export class ImageEditor extends Modal {
 		
 		// Drawing tools
 		const tools: EditTool[] = [
-			{ name: 'pen', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`, cursor: 'crosshair' },
-			{ name: 'highlighter', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9 4 4l-1.5 1.5L7 10"/><path d="M10 10 3 17l-2 2h4l7-7"/><path d="M11 11 20 2l2 2-9 9"/><path d="m7 17 5 5"/><path d="m12 6 5 5"/></svg>`, cursor: 'crosshair' },
-			{ name: 'line', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`, cursor: 'crosshair' },
-			{ name: 'wavy-line', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/></svg>`, cursor: 'crosshair' },
-			{ name: 'dashed-line', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"><line x1="5" y1="12" x2="19" y2="12"/></svg>`, cursor: 'crosshair' },
-			{ name: 'dotted-line', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 3"><line x1="5" y1="12" x2="19" y2="12"/></svg>`, cursor: 'crosshair' },
-			{ name: 'rectangle', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>`, cursor: 'crosshair' },
-			{ name: 'ellipse', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg>`, cursor: 'crosshair' },
-			{ name: 'arrow', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7,7 17,7 17,17"/></svg>`, cursor: 'crosshair' },
-			{ name: 'hand', icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`, cursor: 'crosshair' }
+			{ name: 'pen', icon: 'pen', cursor: 'crosshair' },
+			{ name: 'highlighter', icon: 'highlighter', cursor: 'crosshair' },
+			{ name: 'line', icon: 'minus', cursor: 'crosshair' },
+			{ name: 'wavy-line', icon: 'waves', cursor: 'crosshair' },
+			{ name: 'dashed-line', icon: 'flip-vertical', cursor: 'crosshair' },
+			{ name: 'dotted-line', icon: 'ellipsis', cursor: 'crosshair' },
+			{ name: 'rectangle', icon: 'square', cursor: 'crosshair' },
+			{ name: 'ellipse', icon: 'circle', cursor: 'crosshair' },
+			{ name: 'arrow', icon: 'move-up-right', cursor: 'crosshair' },
+			{ name: 'hand', icon: 'move', cursor: 'crosshair' }
 		];
 		
 		// Tool names for tooltips
@@ -301,7 +301,7 @@ export class ImageEditor extends Modal {
 				cls: this.currentTool === tool.name ? 'active image-editor-tool-button' : 'image-editor-tool-button'
 			});
 			button.createEl('span', {}, (span) => {
-				this.createSVGIcon(span, tool.icon);
+				setIcon(span, tool.icon);
 			});
 			button.setAttribute('data-tooltip', toolNames[tool.name]);
 			
@@ -349,23 +349,18 @@ export class ImageEditor extends Modal {
 		
 		// History buttons
 		const undoButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
-		undoButton.createEl('span', {}, (span) => {
-			this.createUndoSVG(span);
-		});
+		setIcon(undoButton, 'undo');
+
 		undoButton.setAttribute('data-tooltip', '撤销');
 		undoButton.addEventListener('click', () => this.undo());
 		
 		const redoButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
-		redoButton.createEl('span', {}, (span) => {
-			this.createRedoSVG(span);
-		});
+		setIcon(redoButton, 'redo');
 		redoButton.setAttribute('data-tooltip', '重做');
 		redoButton.addEventListener('click', () => this.redo());
 		
 		const clearButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
-		clearButton.createEl('span', {}, (span) => {
-			this.createClearSVG(span);
-		});
+		setIcon(clearButton, 'trash-2');
 		clearButton.setAttribute('data-tooltip', '清空画布');
 		clearButton.addEventListener('click', () => this.clearCanvas());
 		
@@ -1711,80 +1706,5 @@ export class ImageEditor extends Modal {
 			document.head.appendChild(style);
 		}
 	}
-
-	private createSVGIcon(container: HTMLElement, iconHTML: string) {
-		// Parse the SVG string safely
-		const tempDiv = document.createElement('div');
-		tempDiv.innerHTML = iconHTML;
-		const svg = tempDiv.firstElementChild;
-		if (svg) {
-			container.appendChild(svg);
-		}
-	}
-
-	private createUndoSVG(container: HTMLElement) {
-		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('width', '16');
-		svg.setAttribute('height', '16');
-		svg.setAttribute('viewBox', '0 0 24 24');
-		svg.setAttribute('fill', 'none');
-		svg.setAttribute('stroke', 'currentColor');
-		svg.setAttribute('stroke-width', '2');
-		svg.setAttribute('stroke-linecap', 'round');
-		svg.setAttribute('stroke-linejoin', 'round');
-		
-		const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path1.setAttribute('d', 'M3 7v6h6');
-		svg.appendChild(path1);
-		
-		const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path2.setAttribute('d', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13');
-		svg.appendChild(path2);
-		
-		container.appendChild(svg);
-	}
-
-	private createRedoSVG(container: HTMLElement) {
-		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('width', '16');
-		svg.setAttribute('height', '16');
-		svg.setAttribute('viewBox', '0 0 24 24');
-		svg.setAttribute('fill', 'none');
-		svg.setAttribute('stroke', 'currentColor');
-		svg.setAttribute('stroke-width', '2');
-		svg.setAttribute('stroke-linecap', 'round');
-		svg.setAttribute('stroke-linejoin', 'round');
-		
-		const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path1.setAttribute('d', 'M21 7v6h-6');
-		svg.appendChild(path1);
-		
-		const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path2.setAttribute('d', 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7');
-		svg.appendChild(path2);
-		
-		container.appendChild(svg);
-	}
-
-	private createClearSVG(container: HTMLElement) {
-		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('width', '16');
-		svg.setAttribute('height', '16');
-		svg.setAttribute('viewBox', '0 0 24 24');
-		svg.setAttribute('fill', 'none');
-		svg.setAttribute('stroke', 'currentColor');
-		svg.setAttribute('stroke-width', '2');
-		svg.setAttribute('stroke-linecap', 'round');
-		svg.setAttribute('stroke-linejoin', 'round');
-		
-		const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-		polyline.setAttribute('points', '3,6 5,6 21,6');
-		svg.appendChild(polyline);
-		
-		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path.setAttribute('d', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2');
-		svg.appendChild(path);
-		
-		container.appendChild(svg);
-	}
+	
 }
