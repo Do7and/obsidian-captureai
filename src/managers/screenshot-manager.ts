@@ -37,7 +37,7 @@ export class ScreenshotManager {
 			getLogger().log('🔍 Starting screen capture...');
 			const screenshot = await this.captureScreen();
 			if (!screenshot) {
-				console.error('❌ Failed to capture screen');
+				getLogger().error('❌ Failed to capture screen');
 				new Notice(t('notice.screenCaptureFailed'));
 				return;
 			}
@@ -51,8 +51,8 @@ export class ScreenshotManager {
 			this.plugin.imageEditor.showEditor(extendedImage.imageData, region, extendedImage.extendedRegion, screenshot);
 			
 		} catch (error: any) {
-			console.error('❌ Region capture failed:', error);
-			console.error('Error details:', {
+			getLogger().error('❌ Region capture failed:', error);
+			getLogger().error('Error details:', {
 				name: error.name,
 				message: error.message,
 				stack: error.stack
@@ -75,7 +75,7 @@ export class ScreenshotManager {
 			
 		} catch (error: any) {
 			new Notice(t('notice.fullScreenCaptureFailed', { message: error.message }));
-			console.error('Full screen capture failed:', error);
+			getLogger().error('Full screen capture failed:', error);
 		}
 	}
 
@@ -283,13 +283,13 @@ export class ScreenshotManager {
 			getLogger().log('🔍 Electron API:', electron ? 'Available' : 'Not available');
 			
 			if (!electron) {
-				console.error('❌ Electron API not available');
+				getLogger().error('❌ Electron API not available');
 				new Notice(t('notice.electronAPINotAvailable'));
 				return null;
 			}
 			
 			if (!electron.remote) {
-				console.error('❌ Electron remote not available');
+				getLogger().error('❌ Electron remote not available');
 				new Notice(t('notice.electronRemoteNotAvailable'));
 				return null;
 			}
@@ -299,7 +299,7 @@ export class ScreenshotManager {
 			const desktopCapturer = remoteElectron.desktopCapturer;
 			
 			if (!desktopCapturer) {
-				console.error('❌ desktopCapturer not available');
+				getLogger().error('❌ desktopCapturer not available');
 				new Notice(t('notice.desktopCapturerNotAvailable'));
 				return null;
 			}
@@ -314,12 +314,12 @@ export class ScreenshotManager {
 				
 				getLogger().log(`🔍 Permission check: Found ${testSources.length} screen sources`);
 				if (testSources.length === 0) {
-					console.error('❌ No screen sources available - permission denied');
+					getLogger().error('❌ No screen sources available - permission denied');
 					new Notice(t('notice.screenRecordingPermissionDenied'));
 					return null;
 				}
 			} catch (permError: any) {
-				console.error('❌ Permission check failed:', permError);
+				getLogger().error('❌ Permission check failed:', permError);
 				new Notice(t('notice.screenPermissionCheckFailed'));
 				return null;
 			}
@@ -337,7 +337,7 @@ export class ScreenshotManager {
 			getLogger().log(`🔍 Found ${sources.length} screen sources for capture`);
 			
 			if (sources.length === 0) {
-				console.error('❌ No screen sources found for capture');
+				getLogger().error('❌ No screen sources found for capture');
 				new Notice(t('notice.noScreenSourcesFound'));
 				return null;
 			}
@@ -347,13 +347,13 @@ export class ScreenshotManager {
 			
 			const primaryThumbnail = primarySource.thumbnail;
 			if (!primaryThumbnail) {
-				console.error('❌ No thumbnail in source');
+				getLogger().error('❌ No thumbnail in source');
 				new Notice(t('notice.noThumbnailAvailable'));
 				return null;
 			}
 			
 			if (primaryThumbnail.isEmpty()) {
-				console.error('❌ Thumbnail is empty');
+				getLogger().error('❌ Thumbnail is empty');
 				new Notice(t('notice.thumbnailEmpty'));
 				return null;
 			}
@@ -362,7 +362,7 @@ export class ScreenshotManager {
 			getLogger().log('🔍 Captured screen size:', screenSize);
 			
 			if (screenSize.width === 0 || screenSize.height === 0) {
-				console.error('❌ Invalid screen size, trying alternative method...');
+				getLogger().error('❌ Invalid screen size, trying alternative method...');
 				
 				// Try with different thumbnail sizes
 				const alternativeSizes = [
@@ -394,7 +394,7 @@ export class ScreenshotManager {
 					}
 				}
 				
-				console.error('❌ All capture attempts failed');
+				getLogger().error('❌ All capture attempts failed');
 				new Notice(t('notice.allCaptureAttemptsFailed'));
 				return null;
 			}
@@ -405,8 +405,8 @@ export class ScreenshotManager {
 			return dataURL;
 			
 		} catch (error: any) {
-			console.error('❌ Screen capture failed with error:', error);
-			console.error('Error details:', {
+			getLogger().error('❌ Screen capture failed with error:', error);
+			getLogger().error('Error details:', {
 				name: error.name,
 				message: error.message,
 				stack: error.stack

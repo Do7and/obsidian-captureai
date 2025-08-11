@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, Component, MarkdownView, Modal, Editor, setIcon } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, Component, MarkdownView, Modal, Editor, setIcon, requestUrl } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIManager, AIMessage, AIConversation } from './ai-manager';
 import { ChatHistoryModal } from '../ui/chat-history-modal';
@@ -30,7 +30,9 @@ export class AIChatView extends ItemView {
 		this.markdownComponent = new Component();
 		
 		// Initialize current mode from settings
+		getLogger().log('Initializing AI chat mode:', plugin.settings.defaultAIChatMode);
 		this.currentMode = plugin.settings.defaultAIChatMode || 'analyze';
+		getLogger().log('Current mode set to:', this.currentMode);
 	}
 
 	private createSVGIcon(iconPath: string, size = 16): string {
@@ -91,7 +93,14 @@ export class AIChatView extends ItemView {
 
 		// Header with title (remove model selector from header)
 		const header = container.createEl('div', { cls: 'ai-chat-header' });
-		header.createEl('h3', { text: t('aiChat.title'), cls: 'ai-chat-title' });
+		// 创建一个包含图标和标题的容器
+        const titleContainer = header.createEl('div', { cls: 'ai-chat-title-container' });
+        
+        // 添加图标
+        const iconContainer = titleContainer.createEl('div', { cls: 'ai-chat-title-icon' });
+        setIcon(iconContainer, 'captureai-icon'); // 使用我们注册的自定义图标
+        
+		titleContainer.createEl('h3', { text: t('aiChat.title'), cls: 'ai-chat-title' });
 
 		// Chat area
 		const chatArea = container.createEl('div', { cls: 'ai-chat-area' });
@@ -269,21 +278,21 @@ export class AIChatView extends ItemView {
 	}
 
 	// Method to add image to queue from external sources (like image editor)
-	addImageToQueue(imageDataUrl: string, fileName: string, localPath?: string | null): void {
+	addImageToQueue(imageDataUrl: string, fileName: string, localPath?: string | null, source: string = 'screenshot'): void {
 		const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
 		if (!inputArea) {
-			console.error('Input area not found');
+			getLogger().error('Input area not found');
 			return;
 		}
 		
 		// Check if input area has the required properties
 		if (!(inputArea as any)._imagePreviewArea) {
-			console.error('Image preview area not initialized');
+			getLogger().error('Image preview area not initialized');
 			return;
 		}
 		
-		// Show image preview by adding to the current image list with local path support
-		this.showImagePreview(imageDataUrl, fileName, localPath);
+		// Show image preview by adding to the current image list with local path and source support
+		this.showImagePreview(imageDataUrl, fileName, localPath, source);
 	}
 
 	private renderEmptyState(chatArea: HTMLElement): void {
@@ -436,7 +445,7 @@ export class AIChatView extends ItemView {
 			await this.updateContent();
 
 		} catch (error) {
-			console.error('Failed to send text message:', error);
+			getLogger().error('Failed to send text message:', error);
 			// Remove typing indicator
 			const conversation = this.aiManager.getCurrentConversationData();
 			if (conversation) {
@@ -500,7 +509,7 @@ export class AIChatView extends ItemView {
 				return this.plugin.app.vault.getResourcePath(file as any);
 			}
 		} catch (error) {
-			console.warn('Failed to get vault resource URL for path:', path, error);
+			getLogger().warn('Failed to get vault resource URL for path:', path, error);
 		}
 		
 		return null;
@@ -548,7 +557,7 @@ export class AIChatView extends ItemView {
 		});
 		
 		// Check if message is currently being typed (AI response in progress)
-		const isTyping = (message as any).isTyping || false;
+		const isTyping = (message ).isTyping || false;
 		
 		// 1. Insert at cursor button
 		const insertBtn = actionButtons.createEl('button', { 
@@ -644,7 +653,7 @@ export class AIChatView extends ItemView {
 		messageEl.setAttribute('tabindex', '0'); // Make it focusable for keyboard events
 
 		// Show text content or typing indicator
-		if ((message as any).isTyping) {
+		if ((message ).isTyping) {
 			const typingEl = messageContent.createEl('div', { cls: 'ai-chat-typing-indicator' });
 			typingEl.empty();
 			for (let i = 0; i < 3; i++) {
@@ -670,7 +679,7 @@ export class AIChatView extends ItemView {
 				new Notice(t('aiChat.textCopied'));
 			}
 		} catch (error) {
-			console.error('Failed to copy message:', error);
+			getLogger().error('Failed to copy message:', error);
 			new Notice(t('aiChat.copyFailed'));
 		}
 	}
@@ -678,8 +687,8 @@ export class AIChatView extends ItemView {
 	private async copyImage(imageDataUrl: string): Promise<void> {
 		try {
 			// Convert data URL to blob
-			const response = await fetch(imageDataUrl);
-			const blob = await response.blob();
+			const response = await requestUrl(imageDataUrl);
+			const blob = new Blob([response.arrayBuffer], { type: response.headers['content-type'] || 'image/png' });
 			
 			// Copy to clipboard
 			await navigator.clipboard.write([
@@ -687,7 +696,7 @@ export class AIChatView extends ItemView {
 			]);
 			new Notice(t('aiChat.imageCopied'));
 		} catch (error) {
-			console.error('Failed to copy image:', error);
+			getLogger().error('Failed to copy image:', error);
 			new Notice(t('aiChat.copyImageFailed'));
 		}
 	}
@@ -706,7 +715,7 @@ export class AIChatView extends ItemView {
 			await navigator.clipboard.writeText(selectedContent);
 			new Notice(t('aiChat.selectionCopied'));
 		} catch (error) {
-			console.error('Failed to copy selection:', error);
+			getLogger().error('Failed to copy selection:', error);
 			new Notice(t('aiChat.copySelectionFailed'));
 		}
 	}
@@ -745,19 +754,23 @@ export class AIChatView extends ItemView {
 								(img.localPath && this.getVaultResourceUrl(img.localPath) === src)
 							);
 							if (imageData && imageData.localPath) {
-								// Use standard Markdown format with local path
-								markdown += `![${alt}](${imageData.localPath})`;
+								// Use standard Markdown format with local path and source label
+								const sourceLabel = this.getImageSourceLabel(imageData);
+								markdown += `![${sourceLabel}](${imageData.localPath})`;
 							} else {
 								// Fallback to src (might be dataUrl)
-								markdown += `![${alt}](${src})`;
+								const sourceLabel = this.getImageSourceLabel(null);
+								markdown += `![${sourceLabel}](${src})`;
 							}
 						} else {
 							// Single image case
 							const singleImageData = (message as any).imageData;
 							if (singleImageData && singleImageData.localPath) {
-								markdown += `![${alt}](${singleImageData.localPath})`;
+								const sourceLabel = this.getImageSourceLabel(singleImageData);
+								markdown += `![${sourceLabel}](${singleImageData.localPath})`;
 							} else {
-								markdown += `![${alt}](${src})`;
+								const sourceLabel = this.getImageSourceLabel(null);
+								markdown += `![${sourceLabel}](${src})`;
 							}
 						}
 					}
@@ -791,18 +804,22 @@ export class AIChatView extends ItemView {
 			const allImages = (message as any).images;
 			
 			let imagePath = message.image; // fallback to base64
+			let imageData = null;
 			
 			// Try to get local path
 			if (allImages && allImages.length > 0 && allImages[0].localPath) {
 				imagePath = allImages[0].localPath;
+				imageData = allImages[0];
 			} else if (singleImageData && singleImageData.localPath) {
 				imagePath = singleImageData.localPath;
+				imageData = singleImageData;
 			}
-				
+			
+			const sourceLabel = this.getImageSourceLabel(imageData);
 			if (selectedText) {
-				markdown = `![Screenshot](${imagePath})\n\n${markdown}`;
+				markdown = `![${sourceLabel}](${imagePath})\n\n${markdown}`;
 			} else {
-				markdown = `![Screenshot](${imagePath})`;
+				markdown = `![${sourceLabel}](${imagePath})`;
 			}
 		}
 
@@ -812,8 +829,8 @@ export class AIChatView extends ItemView {
 	private async copyImageAndText(imageDataUrl: string, text: string): Promise<void> {
 		try {
 			// Convert data URL to blob
-			const response = await fetch(imageDataUrl);
-			const blob = await response.blob();
+			const response = await requestUrl(imageDataUrl);
+			const blob = new Blob([response.arrayBuffer], { type: response.headers['content-type'] || 'image/png' });
 			
 			// Copy both image and text to clipboard
 			await navigator.clipboard.write([
@@ -824,7 +841,7 @@ export class AIChatView extends ItemView {
 			]);
 			new Notice('Image and text copied to clipboard');
 		} catch (error) {
-			console.error('Failed to copy image and text:', error);
+			getLogger().error('Failed to copy image and text:', error);
 			// Fallback to copying just text
 			try {
 				await navigator.clipboard.writeText(text);
@@ -842,7 +859,9 @@ export class AIChatView extends ItemView {
 		const modeSelectorWrapper = container.createEl('div', { cls: 'mode-selector-wrapper dropdown-selector-wrapper' });
 		
 		// Current mode display button
+		getLogger().log('Creating mode selector. Current mode:', this.currentMode);
 		const currentModeData = AI_CHAT_MODES.find((mode: any) => mode.id === this.currentMode) || AI_CHAT_MODES[0];
+		getLogger().log('Current mode data:', currentModeData);
 		const selectorButton = modeSelectorWrapper.createEl('button', { 
 			cls: 'mode-selector-button dropdown-selector-button'
 		});
@@ -1143,7 +1162,7 @@ export class AIChatView extends ItemView {
 					this.lastAutoSaveContent = null;
 				}
 			} catch (error) {
-				console.error('Failed to send message:', error);
+				getLogger().error('Failed to send message:', error);
 				// Restore text input on error
 				textInput.value = message;
 			} finally {
@@ -1321,17 +1340,11 @@ export class AIChatView extends ItemView {
 				try {
 					const dataUrl = await this.fileToDataUrl(file);
 					
-					// Check if the file is already in the vault
-					const vault = this.plugin.app.vault;
-					let localPath: string | null = null;
-					
-					// Try to check if it's a vault file (this is tricky with file picker)
-					// For now, we'll treat all browse files as external and save them
-					localPath = await this.saveExternalImageToVault(dataUrl, file.name);
-					
-					this.showImagePreview(dataUrl, file.name, localPath);
+					// Treat browse files as temporary images (don't save to vault immediately)
+					// They will only be saved when manually saving conversation
+					this.showImagePreview(dataUrl, file.name, null, 'external');
 				} catch (error) {
-					console.error('Failed to process selected image:', error);
+					getLogger().error('Failed to process selected image:', error);
 					new Notice(`Failed to process image: ${error.message}`);
 				}
 			}
@@ -1454,7 +1467,7 @@ export class AIChatView extends ItemView {
 					e.dataTransfer?.setData('text/plain', imageData.dataUrl);
 					
 					// Log warning about missing local path
-					console.warn('⚠️ Image dragged without local path - this will result in pasted image behavior:', imageData);
+					getLogger().warn('⚠️ Image dragged without local path - this will result in pasted image behavior:', imageData);
 				}
 			});
 			
@@ -1487,7 +1500,7 @@ export class AIChatView extends ItemView {
 		this.renderImagePreviews(imagePreviewArea, filteredList, inputArea);
 	}
 
-	private showImagePreview(dataUrl: string, fileName: string, localPath?: string | null): void {
+	private showImagePreview(dataUrl: string, fileName: string, localPath?: string | null, source: string = 'external'): void {
 		const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
 		if (!inputArea) return;
 
@@ -1496,12 +1509,13 @@ export class AIChatView extends ItemView {
 		
 		const imageDataList = (inputArea as any)._currentImageDataList || [];
 		
-		// Add new image to the list with local path support
+		// Add new image to the list with local path and source support
 		const newImageData = { 
 			dataUrl, 
 			fileName, 
 			id: Date.now().toString(),
-			localPath: localPath || null  // Store local path if available
+			localPath: localPath || null,  // Store local path if available
+			source: source  // Store image source
 		};
 		imageDataList.push(newImageData);
 		(inputArea as any)._currentImageDataList = imageDataList;
@@ -1582,7 +1596,7 @@ export class AIChatView extends ItemView {
 							// This is a vault image file - use it directly without re-saving
 							getLogger().log('Found existing vault image file:', filePath);
 							const dataUrl = await this.fileToDataUrl(await this.getFileFromVault(abstractFile));
-							this.showImagePreview(dataUrl, abstractFile.name, filePath);
+							this.showImagePreview(dataUrl, abstractFile.name, filePath, 'vault');
 							return; // Successfully handled as existing vault file
 						}
 					}
@@ -1594,7 +1608,7 @@ export class AIChatView extends ItemView {
 						const dataUrl = await this.fileToDataUrl(vaultFile);
 						// Extract the file path from the vault file processing
 						const extractedPath = this.extractFilePathFromDragData(dragData);
-						this.showImagePreview(dataUrl, vaultFile.name, extractedPath);
+						this.showImagePreview(dataUrl, vaultFile.name, extractedPath, 'vault');
 						return; // Successfully handled as vault file, exit early
 					}
 				}
@@ -1615,15 +1629,15 @@ export class AIChatView extends ItemView {
 			}
 
 			try {
-				// Process all external image files and save them to vault
+				// Process all external image files as temporary images
 				for (const file of imageFiles) {
 					const dataUrl = await this.fileToDataUrl(file);
-					// Save external image to vault to get local path
-					const localPath = await this.saveExternalImageToVault(dataUrl, file.name);
-					this.showImagePreview(dataUrl, file.name, localPath);
+					// Treat external drag files as temporary images (don't save to vault immediately)
+					// They will only be saved when manually saving conversation
+					this.showImagePreview(dataUrl, file.name, null, 'external');
 				}
 			} catch (error) {
-				console.error('Failed to process dropped images:', error);
+				getLogger().error('Failed to process dropped images:', error);
 				new Notice(`Failed to process images: ${error.message}`);
 			}
 		};
@@ -1681,7 +1695,7 @@ export class AIChatView extends ItemView {
 			return savePath;
 			
 		} catch (error: any) {
-			console.error('Failed to save external image to vault:', error);
+			getLogger().error('Failed to save external image to vault:', error);
 			return null;
 		}
 	}
@@ -1816,7 +1830,7 @@ export class AIChatView extends ItemView {
 			return new File([blob], file.name, { type: mimeType });
 			
 		} catch (error) {
-			console.error('Failed to handle vault file drop:', error);
+			getLogger().error('Failed to handle vault file drop:', error);
 			return null;
 		}
 	}
@@ -1909,7 +1923,7 @@ export class AIChatView extends ItemView {
 			this.updateContent();
 
 		} catch (error) {
-			console.error('Follow-up message failed:', error);
+			getLogger().error('Follow-up message failed:', error);
 			
 			// Remove typing indicator
 			const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
@@ -1964,7 +1978,7 @@ export class AIChatView extends ItemView {
 			);
 			
 		} catch (error) {
-			console.error('Failed to render markdown:', error);
+			getLogger().error('Failed to render markdown:', error);
 			markdownContainer.createEl('div', { text: processedContent });
 		}
 	}
@@ -2201,7 +2215,7 @@ export class AIChatView extends ItemView {
 			this.lastAutoSaveTime = now;
 			
 		} catch (error) {
-			console.error('Periodic auto-save failed:', error);
+			getLogger().error('Periodic auto-save failed:', error);
 		}
 	}
 	
@@ -2217,7 +2231,7 @@ export class AIChatView extends ItemView {
 			getLogger().log('Final auto-save completed for conversation:', conversation.id);
 			
 		} catch (error) {
-			console.error('Final auto-save failed:', error);
+			getLogger().error('Final auto-save failed:', error);
 		}
 	}
 	
@@ -2271,7 +2285,7 @@ export class AIChatView extends ItemView {
 			const existingFile = vault.getAbstractFileByPath(fullPath);
 			if (existingFile) {
 				// File exists, modify it to avoid closing it if it's open
-				await vault.modify(existingFile as any, finalMarkdownContent);
+				await vault.modify(existingFile as any , finalMarkdownContent);
 			} else {
 				// File doesn't exist, create it
 				await vault.create(fullPath, finalMarkdownContent);
@@ -2286,7 +2300,7 @@ export class AIChatView extends ItemView {
 			getLogger().log('Auto-saved conversation to:', fullPath);
 
 		} catch (error: any) {
-			console.error('Failed to auto-save conversation with timestamp:', error);
+			getLogger().error('Failed to auto-save conversation with timestamp:', error);
 		}
 	}
 
@@ -2337,7 +2351,7 @@ export class AIChatView extends ItemView {
 			}
 
 		} catch (error: any) {
-			console.error('Failed to save conversation:', error);
+			getLogger().error('Failed to save conversation:', error);
 			new Notice(`❌ Failed to save conversation: ${error.message}`);
 		}
 	}
@@ -2375,7 +2389,7 @@ export class AIChatView extends ItemView {
 			return matchingFiles.length > 0 ? matchingFiles[0] : null;
 			
 		} catch (error: any) {
-			console.error('Failed to search for existing conversation file:', error);
+			getLogger().error('Failed to search for existing conversation file:', error);
 			return null;
 		}
 	}
@@ -2431,12 +2445,12 @@ export class AIChatView extends ItemView {
 			if (files.length > maxConversations) {
 				const filesToDelete = files.slice(maxConversations);
 				for (const file of filesToDelete) {
-					await vault.delete(file);
-					getLogger().log('Deleted old auto-saved conversation:', file.path);
+					await this.plugin.app.fileManager.trashFile(file);
+					getLogger().log('Moved old auto-saved conversation to trash:', file.path);
 				}
 			}
 		} catch (error: any) {
-			console.error('Failed to cleanup old auto-saved conversations:', error);
+			getLogger().error('Failed to cleanup old auto-saved conversations:', error);
 		}
 	}
 
@@ -2496,7 +2510,7 @@ export class AIChatView extends ItemView {
 						updatedContent = updatedContent.replace(placeholder, markdownImage);
 						
 					} catch (error) {
-						console.error(`Failed to convert temporary image ${tempId}:`, error);
+						getLogger().error(`Failed to convert temporary image ${tempId}:`, error);
 						// Keep the placeholder if conversion fails
 					}
 				}
@@ -2546,7 +2560,7 @@ export class AIChatView extends ItemView {
 						updatedContent = updatedContent.replace(placeholder, markdownImage);
 						
 					} catch (error) {
-						console.error(`Failed to save temporary image ${tempId}:`, error);
+						getLogger().error(`Failed to save temporary image ${tempId}:`, error);
 						// Keep the placeholder if saving fails
 					}
 				}
@@ -2586,7 +2600,7 @@ export class AIChatView extends ItemView {
 		}
 		
 		// Save to vault
-		await this.plugin.app.vault.createBinary(fullPath, bytes);
+		await this.plugin.app.vault.createBinary(fullPath, bytes.buffer);
 		
 		return fullPath;
 	}
@@ -2602,6 +2616,19 @@ export class AIChatView extends ItemView {
 		const minutes = String(timestamp.getMinutes()).padStart(2, '0');
 		const seconds = String(timestamp.getSeconds()).padStart(2, '0');
 		return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+	}
+
+	/**
+	 * Get image source label from image data
+	 */
+	private getImageSourceLabel(imageData: any): string {
+		// Use source attribute directly - no path inference needed
+		if (imageData && imageData.source) {
+			return imageData.source;
+		}
+		
+		// Default fallback for legacy data without source attribute
+		return 'image';
 	}
 
 	/**
@@ -2653,7 +2680,6 @@ tags:
 		// Generate messages in BestNote style
 		processedConversation.messages.forEach((message, index) => {
 			const messageType = message.type === 'user' ? 'user' : 'ai';
-			const timestamp = this.formatTimestampForSaving(message.timestamp);
 			
 			// Message header with BestNote format including timestamp
 			markdown += `${messageType}: <!-- ${message.timestamp.toISOString()} -->\n`;
@@ -2679,7 +2705,8 @@ tags:
 						}
 						
 						const fileName = imageData.fileName || `image-${imgIndex + 1}`;
-						markdown += `![${fileName}](${imagePath})\n`;
+						const sourceLabel = this.getImageSourceLabel(imageData);
+						markdown += `![${sourceLabel}](${imagePath})\n`;
 					});
 				} else {
 					// Single image - check for local path in multiple places
@@ -2710,22 +2737,14 @@ tags:
 						}
 					}
 					
-					markdown += `![Screenshot](${imagePath})\n`;
+					const sourceLabel = this.getImageSourceLabel(singleImageData || firstImageFromArray);
+					markdown += `![${sourceLabel}](${imagePath})\n`;
 				}
 			}
 			
-			// If this is not the last message, add timestamp and spacing
-			if (index < processedConversation.messages.length - 1) {
-				markdown += `[Timestamp: ${timestamp}]\n\n`;
-			}
+			// Add spacing between messages
+			markdown += `\n`;
 		});
-		
-		// Add final timestamp for the last message
-		if (processedConversation.messages.length > 0) {
-			const lastMessage = processedConversation.messages[processedConversation.messages.length - 1];
-			const lastTimestamp = this.formatTimestampForSaving(lastMessage.timestamp);
-			markdown += `[Timestamp: ${lastTimestamp}]\n`;
-		}
 		
 		return markdown;
 	}
@@ -2737,7 +2756,7 @@ tags:
 			});
 			modal.open();
 		} catch (error: any) {
-			console.error('Failed to show history modal:', error);
+			getLogger().error('Failed to show history modal:', error);
 			new Notice(`❌ Failed to open history: ${error.message}`);
 		}
 	}
@@ -2748,7 +2767,7 @@ tags:
 			const file = vault.getAbstractFileByPath(localPath);
 			
 			if (!file) {
-				console.warn(`Image file not found: ${localPath}`);
+				getLogger().warn(`Image file not found: ${localPath}`);
 				return null;
 			}
 			
@@ -2770,7 +2789,7 @@ tags:
 			return `data:${mimeType};base64,${base64}`;
 			
 		} catch (error) {
-			console.error(`Failed to load image data from path ${localPath}:`, error);
+			getLogger().error(`Failed to load image data from path ${localPath}:`, error);
 			return null;
 		}
 	}
@@ -2785,7 +2804,7 @@ tags:
 						imageData.dataUrl = dataUrl;
 						getLogger().log(`✅ Restored dataUrl for image: ${imageData.localPath}`);
 					} else {
-						console.warn(`⚠️ Could not restore dataUrl for image: ${imageData.localPath}`);
+						getLogger().warn(`⚠️ Could not restore dataUrl for image: ${imageData.localPath}`);
 					}
 				}
 			}
@@ -2798,7 +2817,7 @@ tags:
 				message.imageData.dataUrl = dataUrl;
 				getLogger().log(`✅ Restored dataUrl for single image: ${message.imageData.localPath}`);
 			} else {
-				console.warn(`⚠️ Could not restore dataUrl for single image: ${message.imageData.localPath}`);
+				getLogger().warn(`⚠️ Could not restore dataUrl for single image: ${message.imageData.localPath}`);
 			}
 		}
 		
@@ -2819,7 +2838,7 @@ tags:
 				message.image = dataUrl;
 				getLogger().log(`✅ Restored dataUrl for message image: ${originalPath}`);
 			} else {
-				console.warn(`⚠️ Could not restore dataUrl for message image: ${message.image}`);
+				getLogger().warn(`⚠️ Could not restore dataUrl for message image: ${message.image}`);
 			}
 		}
 	}
@@ -2870,7 +2889,7 @@ tags:
 			
 			new Notice(`✅ Loaded conversation: ${conversation.title}`);
 		} catch (error: any) {
-			console.error('Failed to load conversation:', error);
+			getLogger().error('Failed to load conversation:', error);
 			new Notice(`❌ Failed to load conversation: ${error.message}`);
 		}
 	}
@@ -2901,7 +2920,7 @@ tags:
 				updatedContent = updatedContent.replace(fullMatch, localImageMarkdown);
 				
 			} catch (error) {
-				console.error('Failed to save data URL to vault:', error);
+				getLogger().error('Failed to save data URL to vault:', error);
 				// If saving fails, convert to temporary image for editing
 				const tempId = this.generateTempImageId();
 				const placeholder = `[!Tempimg ${tempId}]`;
@@ -3424,7 +3443,8 @@ tags:
 								imagePath = formattedPath;
 							}
 						}
-						contentToInsert += `![${fileName}](${imagePath})\n\n`;
+						const sourceLabel = this.getImageSourceLabel(imageData);
+						contentToInsert += `![${sourceLabel}](${imagePath})\n\n`;
 					});
 				} else {
 					// Single image
@@ -3448,7 +3468,8 @@ tags:
 						}
 					}
 					
-					contentToInsert += `![Screenshot](${imagePath})\n\n`;
+					const sourceLabel = this.getImageSourceLabel(singleImageData || firstImageFromArray);
+					contentToInsert += `![${sourceLabel}](${imagePath})\n\n`;
 				}
 			}
 
@@ -3476,7 +3497,7 @@ tags:
 			new Notice('Content inserted at cursor');
 			
 		} catch (error) {
-			console.error('Failed to insert content at cursor:', error);
+			getLogger().error('Failed to insert content at cursor:', error);
 			new Notice('Failed to insert content');
 		}
 	}
@@ -3518,7 +3539,7 @@ tags:
 			}
 			
 		} catch (error) {
-			console.error('Failed to delete message:', error);
+			getLogger().error('Failed to delete message:', error);
 			new Notice('Failed to delete message');
 		}
 	}

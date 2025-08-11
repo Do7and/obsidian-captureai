@@ -1,4 +1,4 @@
-import { Modal, Setting, Notice, DropdownComponent } from 'obsidian';
+import { Modal, Setting, Notice, DropdownComponent, requestUrl, RequestUrlResponsePromise, RequestUrlResponse } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, LLMProvider, LLMModel, ModelConfig, DEFAULT_MODEL_SETTINGS } from '../types';
 import { t } from '../i18n';
@@ -66,7 +66,7 @@ export class SetKeysModal extends Modal {
 				// Update UI after models are loaded
 				this.updateAddModelSection(provider.id);
 			}).catch((error) => {
-				console.error(`Failed to load models for ${provider.displayName}:`, error);
+				getLogger().error(`Failed to load models for ${provider.displayName}:`, error);
 				// Still update UI even if loading failed (will use fallback models)
 				this.updateAddModelSection(provider.id);
 			});
@@ -466,7 +466,7 @@ export class SetKeysModal extends Modal {
 		try {
 			const credentials = this.plugin.settings.providerCredentials[provider.id];
 			if (!credentials || !credentials.apiKey) {
-				console.warn(`No API key found for provider ${provider.id}`);
+				getLogger().warn(`No API key found for provider ${provider.id}`);
 				this.availableModels.set(provider.id, provider.models || []);
 				return;
 			}
@@ -481,10 +481,10 @@ export class SetKeysModal extends Modal {
 						getLogger().log(`✅ Fetched ${fetchedModels.length} models for ${provider.displayName}`);
 						return;
 					} else {
-						console.warn(`No models returned from API for ${provider.displayName}, using fallback`);
+						getLogger().warn(`No models returned from API for ${provider.displayName}, using fallback`);
 					}
 				} catch (error) {
-					console.warn(`API fetch failed for ${provider.displayName}, using fallback:`, error);
+					getLogger().warn(`API fetch failed for ${provider.displayName}, using fallback:`, error);
 				}
 			}
 			
@@ -493,7 +493,7 @@ export class SetKeysModal extends Modal {
 			this.availableModels.set(provider.id, fallbackModels);
 			getLogger().log(`Using ${fallbackModels.length} fallback models for ${provider.displayName}`);
 		} catch (error) {
-			console.error(`Failed to load models for ${provider.displayName}:`, error);
+			getLogger().error(`Failed to load models for ${provider.displayName}:`, error);
 			// Fallback to static models on error
 			this.availableModels.set(provider.id, provider.models || []);
 		}
@@ -548,27 +548,27 @@ export class SetKeysModal extends Modal {
 					return provider.models || [];
 			}
 
-			// Create an AbortController for timeout
-			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+			// Create an timeoutPromise for timeout
 
-			const response = await fetch(url, {
+			getLogger().log("URL debug:", JSON.stringify(url));
+			getLogger().log("headers debug:", JSON.stringify(headers));
+			const response = await requestUrl( {
+				url:url,
 				method: 'GET',
 				headers: headers,
-				signal: controller.signal
+
 			});
 
-			clearTimeout(timeoutId);
 
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+			if (response.status < 200 || response.status >= 300) {
+				throw new Error(`HTTP ${response.status}: ${response.text}`);
 			}
 
-			const data = await response.json();
+			const data = response.json;
 			return this.parseModelsResponse(provider.id, data);
 
 		} catch (error) {
-			console.error(`API call failed for ${provider.displayName}:`, error);
+			getLogger().error(`API call failed for ${provider.displayName}:`, error);
 			throw error;
 		}
 	}
@@ -708,7 +708,7 @@ export class SetKeysModal extends Modal {
 					break;
 			}
 		} catch (error) {
-			console.error(`Failed to parse models response for ${providerId}:`, error);
+			getLogger().error(`Failed to parse models response for ${providerId}:`, error);
 		}
 		
 		return [];
@@ -898,7 +898,7 @@ export class SetKeysModal extends Modal {
 			// Refresh all UI components that depend on model configurations
 			this.refreshModelDependentComponents();
 		}).catch((error) => {
-			console.error('Vision test failed, using default capability:', error);
+			getLogger().error('Vision test failed, using default capability:', error);
 			
 			// On error, fall back to the original model definition
 			this.plugin.settings.modelConfigs.push(modelConfig);
@@ -962,7 +962,7 @@ export class SetKeysModal extends Modal {
 			
 			return result;
 		} catch (error) {
-			console.error('Vision capability test failed:', error);
+			getLogger().error('Vision capability test failed:', error);
 			throw error;
 		}
 	}
@@ -973,7 +973,7 @@ export class SetKeysModal extends Modal {
 			throw new Error(`Unknown provider: ${modelConfig.providerId}`);
 		}
 
-		let response: Response;
+		let response: RequestUrlResponse;
 		
 		// Remove data URL prefix to get just the base64
 		const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
@@ -999,8 +999,8 @@ export class SetKeysModal extends Modal {
 					throw new Error(`Vision testing not implemented for provider: ${provider.id}`);
 			}
 
-			if (!response.ok) {
-				const errorText = await response.text();
+			if (response.status < 200 || response.status >= 300) {
+				const errorText = response.text;
 				getLogger().log('Vision test API error response:', errorText);
 				
 				// Check if the error indicates vision is not supported
@@ -1011,11 +1011,11 @@ export class SetKeysModal extends Modal {
 					return false; // Vision not supported
 				}
 				
-				throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+				throw new Error(`API call failed: ${response.status} ${response.text}`);
 			}
 
 			// If we get a successful response, the model supports vision
-			const responseData = await response.json();
+			const responseData = response.json;
 			getLogger().log('Vision test successful, response:', responseData);
 			return true;
 			
@@ -1034,8 +1034,9 @@ export class SetKeysModal extends Modal {
 		}
 	}
 
-	private async testOpenAIVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		return fetch('https://api.openai.com/v1/chat/completions', {
+	private async testOpenAIVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
+		return requestUrl( {
+			url:'https://api.openai.com/v1/chat/completions',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1055,8 +1056,9 @@ export class SetKeysModal extends Modal {
 		});
 	}
 
-	private async testAnthropicVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		return fetch('https://api.anthropic.com/v1/messages', {
+	private async testAnthropicVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
+		return requestUrl( {
+			url:'https://api.anthropic.com/v1/messages',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1077,8 +1079,9 @@ export class SetKeysModal extends Modal {
 		});
 	}
 
-	private async testGoogleVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`, {
+	private async testGoogleVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
+		return requestUrl( {
+			url:`https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
@@ -1095,8 +1098,9 @@ export class SetKeysModal extends Modal {
 		});
 	}
 
-	private async testOpenRouterVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		return fetch('https://openrouter.ai/api/v1/chat/completions', {
+	private async testOpenRouterVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
+		return requestUrl( {
+			url:'https://openrouter.ai/api/v1/chat/completions',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1118,9 +1122,10 @@ export class SetKeysModal extends Modal {
 		});
 	}
 
-	private async testCustomVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async testCustomVision(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		const baseUrl = credentials.baseUrl || 'https://api.openai.com/v1';
-		return fetch(`${baseUrl}/chat/completions`, {
+		return requestUrl( {
+			url:`${baseUrl}/chat/completions`, 
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

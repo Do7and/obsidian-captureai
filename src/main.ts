@@ -1,4 +1,4 @@
-import { Plugin, Notice } from 'obsidian';
+import { Plugin, Notice, addIcon  } from 'obsidian';
 import { ScreenshotManager } from './managers/screenshot-manager';
 import { ImageEditor } from './editors/image-editor';
 import { ImageCaptureSettingTab } from './settings/settings-tab';
@@ -27,6 +27,10 @@ export default class ImageCapturePlugin extends Plugin {
 		this.imageEditor = new ImageEditor(this);
 		this.aiManager = new AIManager(this);
 
+
+		//Register AI chat icon
+		this.registerCustomIcons();
+
 		// Register AI chat view
 		this.registerView(
 			AI_CHAT_VIEW_TYPE,
@@ -43,6 +47,8 @@ export default class ImageCapturePlugin extends Plugin {
 				this.showAIChatPanel();
 			});
 		}
+		
+		
 
 		this.addCommand({
 			id: 'capture-selected-area',
@@ -90,7 +96,7 @@ export default class ImageCapturePlugin extends Plugin {
 				}
 			}
 		} catch (error) {
-			console.error('Failed to perform final auto-save during plugin unload:', error);
+			getLogger().error('Failed to perform final auto-save during plugin unload:', error);
 		}
 		
 		if (this.screenshotManager) {
@@ -117,7 +123,7 @@ export default class ImageCapturePlugin extends Plugin {
 		// Migrate to AI Chat Mode prompts
 		if (!this.settings.aiChatModePrompts) {
 			this.settings.aiChatModePrompts = {
-				analyze: (this.settings as any).screenshotPrompt || DEFAULT_SETTINGS.aiChatModePrompts.analyze,
+				analyze: DEFAULT_SETTINGS.aiChatModePrompts.analyze,
 				ocr: DEFAULT_SETTINGS.aiChatModePrompts.ocr,
 				chat: DEFAULT_SETTINGS.aiChatModePrompts.chat,
 				custom: DEFAULT_SETTINGS.aiChatModePrompts.custom
@@ -133,7 +139,7 @@ export default class ImageCapturePlugin extends Plugin {
 
 		// Remove old screenshotPrompt if it exists
 		if ('screenshotPrompt' in this.settings) {
-			delete (this.settings as any).screenshotPrompt;
+			delete (this.settings ).screenshotPrompt;
 			needsSave = true;
 		}
 
@@ -156,7 +162,7 @@ export default class ImageCapturePlugin extends Plugin {
 		const aiLeaf = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
 		
 		if (aiLeaf && (aiLeaf.view as any).addImageToQueue) {
-			(aiLeaf.view as any).addImageToQueue(imageDataUrl, fileName, localPath);
+			(aiLeaf.view as any).addImageToQueue(imageDataUrl, fileName, localPath, 'screenshot');
 		} else {
 			throw new Error('AI Chat panel not found or does not support image queue');
 		}
@@ -194,7 +200,7 @@ export default class ImageCapturePlugin extends Plugin {
 				this.app.workspace.revealLeaf(leaf);
 			}
 		} catch (error) {
-			console.error('Failed to show AI chat panel:', error);
+			getLogger().error('Failed to show AI chat panel:', error);
 			throw new Error(`Failed to create AI chat panel: ${error.message}`);
 		}
 	}
@@ -221,11 +227,38 @@ export default class ImageCapturePlugin extends Plugin {
 				await this.showAIChatPanel();
 			}
 		} catch (error) {
-			console.error('Failed to toggle AI chat panel:', error);
+			getLogger().error('Failed to toggle AI chat panel:', error);
 			new Notice(t('plugin.aiChatPanelToggleFailed', { message: error.message }));
 		}
 	}
+	private registerCustomIcons(): void {
+        // 添加AI聊天图标
+        addIcon('captureai-icon', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100" height="100" fill="none" stroke="currentColor" stroke-width="2">
+  <defs>
+    <mask id="mask-out-camera" maskUnits="userSpaceOnUse">
+      <rect width="64" height="64" fill="white"/>
+      <g transform="rotate(-15,32,32)" fill="currentColor" stroke="none">
+        <rect x="7" y="21" width="32" height="24" rx="5" ry="5"/>
+        <rect x="10" y="16" width="15" height="8" rx="3"/>
+      </g>
+    </mask>
+  </defs>
 
+  <g stroke="currentColor" stroke-width="2" fill="none" opacity="0.6" mask="url(#mask-out-camera)">
+    <ellipse cx="32" cy="31" rx="30" ry="14" transform="rotate(20,34,31)" />
+    <ellipse cx="32" cy="27" rx="30" ry="14" transform="rotate(-20,30,27)" />
+    <circle cx="54" cy="22" r="2" fill="currentColor" stroke="none"/>
+    <circle cx="18" cy="46" r="2" fill="currentColor" stroke="none"/>
+  </g>
+
+  <g transform="rotate(-15,32,32)" stroke="currentColor" stroke-width="2" fill="none">
+    <rect x="9" y="23" width="28" height="20" rx="3" ry="3"/>
+    <circle cx="22" cy="33" r="6"/>
+    <circle cx="22" cy="33" r="2.5" fill="currentColor" stroke="none"/>
+    <rect x="12" y="18" width="10" height="4" rx="1"/>
+  </g>
+</svg>`);
+    }
 	async testAdvancedCapture() {
 		try {
 			new Notice(t('notice.testingAdvancedCapture'));
@@ -278,7 +311,7 @@ export default class ImageCapturePlugin extends Plugin {
 									fs.writeFile(filePath, base64Data, 'base64', (err: any) => {
 										if (err) {
 											new Notice(t('notice.failedToSaveScreenshot', { message: err.message }));
-											console.error('Failed to save screenshot:', err);
+											getLogger().error('Failed to save screenshot:', err);
 										} else {
 											new Notice(t('notice.screenshotSavedToFile', { fileName }));
 											getLogger().log(`Screenshot saved to: ${filePath}`);
@@ -302,7 +335,7 @@ export default class ImageCapturePlugin extends Plugin {
 			new Notice(t('notice.advancedCaptureTestCompleted'));
 		} catch (error: any) {
 			new Notice(t('notice.advancedTestError', { message: error.message }));
-			console.error('Error in advanced test:', error);
+			getLogger().error('Error in advanced test:', error);
 		}
 	}
 
@@ -322,7 +355,7 @@ export default class ImageCapturePlugin extends Plugin {
 			if ((window as any).require) {
 				getLogger().log('✅ Found window.require, attempting to load electron...');
 				try {
-					const electron = (window as any).require('electron');
+					const electron = (window ).require('electron');
 					getLogger().log('✅ Successfully required electron');
 					getLogger().log('🔍 Electron properties:', Object.keys(electron));
 					
@@ -340,7 +373,7 @@ export default class ImageCapturePlugin extends Plugin {
 					
 					return api;
 				} catch (requireError: any) {
-					console.error('❌ Failed to require electron:', requireError);
+					getLogger().error('❌ Failed to require electron:', requireError);
 				}
 			}
 			
@@ -352,12 +385,12 @@ export default class ImageCapturePlugin extends Plugin {
 				userAgent: navigator.userAgent
 			});
 			
-			console.error('❌ No Electron API found');
+			getLogger().error('❌ No Electron API found');
 			return null;
 			
 		} catch (error: any) {
-			console.error('❌ Error accessing Electron API:', error);
-			console.error('Error details:', {
+			getLogger().error('❌ Error accessing Electron API:', error);
+			getLogger().error('Error details:', {
 				name: error.name,
 				message: error.message,
 				stack: error.stack

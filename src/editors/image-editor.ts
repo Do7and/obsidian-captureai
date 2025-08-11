@@ -1,4 +1,4 @@
-import { Modal, Notice, setIcon } from 'obsidian';
+import { Modal, Notice, setIcon, requestUrl } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { EditTool, Region, StrokeSize, StrokeSetting, LLM_PROVIDERS } from '../types';
 import { t } from '../i18n';
@@ -662,7 +662,7 @@ export class ImageEditor extends Modal {
 			new Notice(t('imageEditor.imageAddedToQueue'));
 			
 		} catch (error: any) {
-			console.error('Add to AI queue without save failed:', error);
+			getLogger().error('Add to AI queue without save failed:', error);
 			new Notice(t('imageEditor.addToQueueFailed', { message: error.message }));
 		}
 	}
@@ -675,12 +675,12 @@ export class ImageEditor extends Modal {
 			const dataUrl = this.createFinalImage();
 			
 			// Convert data URL to blob
-			const response = await fetch(dataUrl);
-			const blob = await response.blob();
+			const response = await requestUrl(dataUrl);
+			const blob = new Blob([response.arrayBuffer], { type: response.headers['content-type'] || 'image/png' });
 			
 			// Copy to clipboard using ClipboardItem
-			if (navigator.clipboard && (window as any).ClipboardItem) {
-				const item = new (window as any).ClipboardItem({
+			if (navigator.clipboard && (window ).ClipboardItem) {
+				const item = new (window ).ClipboardItem({
 					'image/png': blob
 				});
 				await navigator.clipboard.write([item]);
@@ -700,13 +700,13 @@ export class ImageEditor extends Modal {
 					tempCanvas.toBlob(async (blob) => {
 						if (blob && navigator.clipboard) {
 							try {
-								const item = new (window as any).ClipboardItem({
+								const item = new (window ).ClipboardItem({
 									'image/png': blob
 								});
 								await navigator.clipboard.write([item]);
 								new Notice('✅ 图片已复制到剪贴板');
 							} catch (fallbackError) {
-								console.warn('Clipboard copy failed:', fallbackError);
+								getLogger().warn('Clipboard copy failed:', fallbackError);
 								new Notice('❌ 复制失败，请使用保存功能');
 							}
 						}
@@ -720,7 +720,7 @@ export class ImageEditor extends Modal {
 			this.close();
 			
 		} catch (error: any) {
-			console.error('Copy to clipboard without save failed:', error);
+			getLogger().error('Copy to clipboard without save failed:', error);
 			new Notice(t('imageEditor.copyFailed', { message: error.message }));
 		}
 	}
@@ -1480,7 +1480,7 @@ export class ImageEditor extends Modal {
 			
 		} catch (error: any) {
 			new Notice(t('imageEditor.copyFailed', { message: error.message }));
-			console.error('Save and copy markdown failed:', error);
+			getLogger().error('Save and copy markdown failed:', error);
 		}
 	}
 	
@@ -1518,7 +1518,7 @@ export class ImageEditor extends Modal {
 			return savePath;
 			
 		} catch (error: any) {
-			console.error('Failed to save image to vault:', error);
+			getLogger().error('Failed to save image to vault:', error);
 			// Return null on error
 			return null;
 		}
@@ -1556,12 +1556,12 @@ export class ImageEditor extends Modal {
 				
 			} catch (error: any) {
 				notice.hide();
-				console.error('Add to AI queue failed:', error);
+				getLogger().error('Add to AI queue failed:', error);
 				new Notice(t('imageEditor.addToQueueFailed', { message: error.message }));
 			}
 			
 		} catch (error: any) {
-			console.error('Save and add to AI queue failed:', error);
+			getLogger().error('Save and add to AI queue failed:', error);
 			new Notice(t('imageEditor.operationFailed', { message: error.message }));
 		}
 	}

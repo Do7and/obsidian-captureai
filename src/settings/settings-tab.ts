@@ -273,6 +273,21 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					}
 				});
 
+			// Default AI Chat Mode Setting
+			new Setting(promptsContainer)
+				.setName(t('settings.defaultAIChatMode.name'))
+				.setDesc(t('settings.defaultAIChatMode.desc'))
+				.addDropdown(dropdown => dropdown
+					.addOption('analyze', t('aiChat.modes.analyze'))
+					.addOption('ocr', t('aiChat.modes.ocr'))
+					.addOption('chat', t('aiChat.modes.chat'))
+					.addOption('custom', t('aiChat.modes.custom'))
+					.setValue(this.plugin.settings.defaultAIChatMode || 'analyze')
+					.onChange(async (value) => {
+						this.plugin.settings.defaultAIChatMode = value as any;
+						await this.plugin.saveSettings();
+					}));
+
 			// AI Chat Mode Prompts Section
 			promptsContainer.createEl('h4', { text: t('settings.aiChatModePrompts'), cls: 'mode-prompts-header' });
 			

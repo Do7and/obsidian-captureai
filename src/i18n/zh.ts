@@ -25,7 +25,7 @@ export default {
   // AI Settings
   "settings.aiFunction": "AI 会话功能",
   "settings.enableAI.name": "启用 AI",
-  "settings.enableAI.desc": "启用图像分析的 AI 功能",
+  "settings.enableAI.desc": "启用发送图像给 AI 的功能",
   "settings.aiApiConfig": "AI API 配置",
   "settings.apiKey.name": "API 密钥",
   "settings.apiKey.desc": "所选提供商的 API 密钥",
@@ -49,6 +49,8 @@ export default {
   "settings.globalPrompt.desc": "AI 会话的全局系统提示词",
   // AI Chat Mode Prompts
   "settings.aiChatModePrompts": "AI会话模式提示词",
+  "settings.defaultAIChatMode.name": "默认AI会话模式",
+  "settings.defaultAIChatMode.desc": "打开AI会话面板时的默认模式",
   "settings.analyzePrompt.name": "图像分析模式提示词",
   "settings.analyzePrompt.desc": "详细分析图像时使用的提示词",
   "settings.ocrPrompt.name": "OCR模式提示词",

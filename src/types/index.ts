@@ -147,6 +147,7 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 		displayName: 'OpenAI',
 		requiresApiKey: true,
 		requiresBaseUrl: false,
+		defaultBaseUrl: 'https://api.openai.com/v1/chat/completions',
 		apiKeyLink: 'https://platform.openai.com/api-keys',
 		models: [
 			{ id: 'gpt-4o', name: 'GPT-4o', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
@@ -163,6 +164,7 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 		displayName: 'Anthropic (Claude)',
 		requiresApiKey: true,
 		requiresBaseUrl: false,
+		defaultBaseUrl: 'https://api.anthropic.com/v1/messages',
 		apiKeyLink: 'https://console.anthropic.com/',
 		models: [
 			{ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 199988 },

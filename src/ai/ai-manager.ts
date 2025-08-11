@@ -1,7 +1,8 @@
-import { Notice, WorkspaceLeaf, TFile } from 'obsidian';
+import { Notice, WorkspaceLeaf, TFile, requestUrl, RequestUrlResponsePromise, RequestUrlResponse } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, ModelConfig } from '../types';
 import { AI_CHAT_VIEW_TYPE } from './ai-chat-view';
+import { getLogger } from '../utils/logger';
 
 export interface AIMessage {
 	id: string;
@@ -145,7 +146,7 @@ export class AIManager {
 			this.updateAIPanel();
 
 		} catch (error) {
-			console.error('AI API call failed:', error);
+			getLogger().error('AI API call failed:', error);
 			
 			// Remove typing indicator more reliably
 			const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
@@ -442,7 +443,7 @@ export class AIManager {
 			}
 		};
 
-		let response: Response;
+		let response: RequestUrlResponse;
 
 		if (modelConfig.providerId === 'openai') {
 			response = await this.callOpenAIWithContext(messages, adjustedModelConfig, credentials);
@@ -460,22 +461,22 @@ export class AIManager {
 			throw new Error(`Unsupported provider: ${modelConfig.providerId}`);
 		}
 
-		getLogger().log(`API Response Status: ${response.status}, URL: ${response.url}`);
+		getLogger().log(`API Response Status: ${response.status}`);
 
-		if (!response.ok) {
-			const errorText = await response.text();
-			console.error(`API call failed. Status: ${response.status}, URL: ${response.url}, Response: ${errorText}`);
+		if (response.status < 200 || response.status >= 300) {
+			const errorText = response.text;
+			getLogger().error(`API call failed. Status: ${response.status}, Response: ${errorText}`);
 			throw new Error(`API call failed: ${response.status} ${errorText}`);
 		}
 
-		const responseText = await response.text();
+		const responseText = response.text;
 		getLogger().log('API Response Length:', responseText.length);
 		getLogger().log('API Response Preview:', responseText.substring(0, 200) + '...');
 		getLogger().log('API Response End:', responseText.substring(Math.max(0, responseText.length - 200)));
 		
 		// Check if response appears to be truncated (doesn't end properly)
 		if (responseText.includes('<think>') && !responseText.includes('</think>')) {
-			console.warn('⚠️ Thinking response appears to be truncated - missing closing tag');
+			getLogger().warn('⚠️ Thinking response appears to be truncated - missing closing tag');
 		}
 		
 		// Parse response based on provider
@@ -512,126 +513,6 @@ export class AIManager {
 		throw new Error('Unknown provider response format');
 	}
 
-	private async callAIAPIWithMultipleImages(message: string, imageDataUrls: string[], modelConfig: ModelConfig): Promise<string> {
-		// Vision capability is now determined during model addition, so we can trust modelConfig.isVisionCapable
-		if (!modelConfig.isVisionCapable) {
-			throw new Error('Selected model does not support vision');
-		}
-
-		// Get provider credentials
-		const credentials = this.plugin.settings.providerCredentials[modelConfig.providerId];
-		if (!credentials || !credentials.verified || !credentials.apiKey.trim()) {
-			throw new Error('Provider credentials not verified');
-		}
-
-		getLogger().log(`Calling AI API with ${imageDataUrls.length} images - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
-
-		let response: Response;
-
-		if (modelConfig.providerId === 'openai') {
-			response = await this.callOpenAIWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'anthropic') {
-			response = await this.callClaudeWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'google') {
-			response = await this.callGoogleWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'openrouter') {
-			response = await this.callOpenRouterWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'custom' || modelConfig.providerId.startsWith('custom_')) {
-			response = await this.callCustomAPIWithMultipleImages(message, imageDataUrls, modelConfig, credentials);
-		} else {
-			// Fallback to single image for unsupported providers
-			return await this.callAIAPI(message, imageDataUrls[0], modelConfig);
-		}
-
-		getLogger().log(`Multi-image API Response Status: ${response.status}`);
-
-		if (!response.ok) {
-			const errorText = await response.text();
-			console.error(`Multi-image API call failed. Status: ${response.status}, Response: ${errorText}`);
-			throw new Error(`API call failed: ${response.status} ${errorText}`);
-		}
-
-		const responseText = await response.text();
-		getLogger().log('Multi-image API Response:', responseText.substring(0, 200) + '...');
-		
-		let data;
-		try {
-			data = JSON.parse(responseText);
-		} catch (parseError) {
-			console.error('Failed to parse JSON response:', parseError);
-			throw new Error(`Invalid JSON response from API. Response starts with: ${responseText.substring(0, 100)}`);
-		}
-		return this.extractResponseContent(data, modelConfig.providerId);
-	}
-
-	private async callAIAPI(message: string, imageDataUrl: string, modelConfig: ModelConfig): Promise<string> {
-		// Vision capability is now determined during model addition, so we can trust modelConfig.isVisionCapable
-		if (!modelConfig.isVisionCapable) {
-			throw new Error('Selected model does not support vision');
-		}
-
-		// Get provider credentials
-		const credentials = this.plugin.settings.providerCredentials[modelConfig.providerId];
-		if (!credentials || !credentials.verified || !credentials.apiKey.trim()) {
-			throw new Error('Provider credentials not verified');
-		}
-
-		getLogger().log(`Calling AI API - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
-		getLogger().log(`API Key present: ${!!credentials.apiKey}`);
-		if (credentials.baseUrl) {
-			getLogger().log(`Base URL: ${credentials.baseUrl}`);
-		}
-
-		// Extract base64 and MIME type from data URL
-		const base64Image = imageDataUrl.split(',')[1];
-		const mimeType = this.getMimeTypeFromDataUrl(imageDataUrl) || 'image/png';
-
-		let response: Response;
-
-		if (modelConfig.providerId === 'openai') {
-			response = await this.callOpenAI(message, imageDataUrl, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'anthropic') {
-			response = await this.callClaude(message, imageDataUrl, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'google') {
-			response = await this.callGoogle(message, imageDataUrl, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'cohere') {
-			response = await this.callCohere(message, base64Image, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'openrouter') {
-			response = await this.callOpenRouter(message, imageDataUrl, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'custom' || modelConfig.providerId.startsWith('custom_')) {
-			response = await this.callCustomAPI(message, imageDataUrl, modelConfig, credentials);
-		} else {
-			throw new Error(`Unsupported provider: ${modelConfig.providerId}`);
-		}
-
-		getLogger().log(`API Response Status: ${response.status}, URL: ${response.url}`);
-
-		if (!response.ok) {
-			const errorText = await response.text();
-			console.error(`API call failed. Status: ${response.status}, URL: ${response.url}, Response: ${errorText}`);
-			throw new Error(`API call failed: ${response.status} ${errorText}`);
-		}
-
-		const responseText = await response.text();
-		getLogger().log('API Response Length:', responseText.length);
-		getLogger().log('API Response Preview:', responseText.substring(0, 200) + '...');
-		getLogger().log('API Response End:', responseText.substring(Math.max(0, responseText.length - 200)));
-		
-		// Check if response appears to be truncated (doesn't end properly)
-		if (responseText.includes('<think>') && !responseText.includes('</think>')) {
-			console.warn('⚠️ Thinking response appears to be truncated - missing closing tag');
-		}
-		
-		let data;
-		try {
-			data = JSON.parse(responseText);
-		} catch (parseError) {
-			console.error('Failed to parse JSON response:', parseError);
-			console.error('Response text:', responseText);
-			throw new Error(`Invalid JSON response from API. Response starts with: ${responseText.substring(0, 100)}`);
-		}
-		return this.extractResponseContent(data, modelConfig.providerId);
-	}
 
 	private async callTextOnlyAPI(message: string, modelConfig: ModelConfig): Promise<string> {
 		const provider = LLM_PROVIDERS.find(p => p.id === modelConfig.providerId);
@@ -648,7 +529,7 @@ export class AIManager {
 
 		getLogger().log(`Calling text-only AI API - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
 
-		let response: Response;
+		let response: RequestUrlResponse;
 
 		if (modelConfig.providerId === 'openai') {
 			response = await this.callOpenAITextOnly(message, modelConfig, credentials);
@@ -664,237 +545,27 @@ export class AIManager {
 			throw new Error(`Unsupported provider for text chat: ${modelConfig.providerId}`);
 		}
 
-		getLogger().log(`Text API Response Status: ${response.status}, URL: ${response.url}`);
+		getLogger().log(`Text API Response Status: ${response.status}`);
 
-		if (!response.ok) {
-			const errorText = await response.text();
-			console.error(`Text API call failed. Status: ${response.status}, Response: ${errorText}`);
+		if (response.status < 200 || response.status >= 300) {
+			const errorText = response.text;
+			getLogger().error(`Text API call failed. Status: ${response.status}, Response: ${errorText}`);
 			throw new Error(`API call failed: ${response.status} ${errorText}`);
 		}
 
-		const responseText = await response.text();
+		const responseText = response.text;
 		getLogger().log('Text API Response:', responseText.substring(0, 200) + '...');
 		
 		let data;
 		try {
 			data = JSON.parse(responseText);
 		} catch (parseError) {
-			console.error('Failed to parse JSON response:', parseError);
+			getLogger().error('Failed to parse JSON response:', parseError);
 			throw new Error(`Invalid JSON response from API. Response starts with: ${responseText.substring(0, 100)}`);
 		}
 		return this.extractResponseContent(data, modelConfig.providerId);
 	}
 
-	private async callOpenAI(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		return fetch('https://api.openai.com/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${credentials.apiKey}`
-			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: [
-					{
-						role: 'system',
-						content: this.getEffectiveSystemPrompt()
-					},
-					{
-						role: 'user',
-						content: [
-							{ type: 'text', text: message },
-							{ 
-								type: 'image_url', 
-								image_url: { 
-									url: imageDataUrl
-								} 
-							}
-						]
-					}
-				],
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature,
-				top_p: modelConfig.settings.topP,
-				frequency_penalty: modelConfig.settings.frequencyPenalty,
-				presence_penalty: modelConfig.settings.presencePenalty
-			})
-		});
-	}
-
-	private async callClaude(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const messages = [];
-		
-		const base64Data = imageDataUrl.split(',')[1];
-		const mimeType = this.getMimeTypeFromDataUrl(imageDataUrl) || 'image/png';
-		
-		messages.push({
-			role: 'user',
-			content: [
-				{ type: 'text', text: message },
-				{
-					type: 'image',
-					source: {
-						type: 'base64',
-						media_type: mimeType,
-						data: base64Data
-					}
-				}
-			]
-		});
-
-		const requestBody: any = {
-			model: modelConfig.modelId,
-			max_tokens: modelConfig.settings.maxTokens,
-			temperature: modelConfig.settings.temperature,
-			messages: messages,
-			system: this.getEffectiveSystemPrompt()
-		};
-
-		return fetch('https://api.anthropic.com/v1/messages', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'x-api-key': credentials.apiKey,
-				'anthropic-version': '2023-06-01'
-			},
-			body: JSON.stringify(requestBody)
-		});
-	}
-
-	private async callGoogle(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		// Gemini API implementation
-		const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`;
-		
-		const base64Data = imageDataUrl.split(',')[1];
-		const mimeType = this.getMimeTypeFromDataUrl(imageDataUrl) || 'image/png';
-		
-		return fetch(url, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				contents: [{
-					parts: [
-						{ text: message },
-						{
-							inline_data: {
-								mime_type: mimeType,
-								data: base64Data
-							}
-						}
-					]
-				}],
-				generationConfig: {
-					temperature: modelConfig.settings.temperature,
-					maxOutputTokens: modelConfig.settings.maxTokens
-				}
-			})
-		});
-	}
-
-	private async callCohere(message: string, base64Image: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		// Note: Cohere doesn't support vision models in the same way
-		// This is a placeholder implementation
-		throw new Error('Cohere vision models not yet supported');
-	}
-
-	private async callOpenRouter(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		// OpenRouter uses OpenAI-compatible API format
-		return fetch('https://openrouter.ai/api/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${credentials.apiKey}`,
-				'HTTP-Referer': 'https://obsidian.md', // Optional: for analytics
-				'X-Title': 'Obsidian CaptureAI Plugin' // Optional: for analytics
-			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: [
-					{
-						role: 'system',
-						content: this.getEffectiveSystemPrompt()
-					},
-					{
-						role: 'user',
-						content: [
-							{ type: 'text', text: message },
-							{ 
-								type: 'image_url', 
-								image_url: { 
-									url: imageDataUrl
-								} 
-							}
-						]
-					}
-				],
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature,
-				top_p: modelConfig.settings.topP,
-				frequency_penalty: modelConfig.settings.frequencyPenalty,
-				presence_penalty: modelConfig.settings.presencePenalty
-			})
-		});
-	}
-
-	private async callCustomAPI(message: string, imageDataUrl: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		// Use customProvider from modelConfig if available (new structure)
-		const customConfig = modelConfig.customProvider;
-		let baseUrl: string, apiPath: string, apiKey: string;
-
-		if (customConfig) {
-			// New structure: get config from modelConfig.customProvider
-			baseUrl = customConfig.baseUrl;
-			apiPath = customConfig.apiPath || '/v1/chat/completions';
-			apiKey = customConfig.apiKey;
-		} else {
-			// Fallback to old structure: get config from credentials
-			if (!credentials?.baseUrl) {
-				throw new Error('Base URL is required for custom provider');
-			}
-			baseUrl = credentials.baseUrl;
-			apiPath = credentials.apiPath || '/v1/chat/completions';
-			apiKey = credentials.apiKey;
-		}
-
-		// Use custom API path if provided, otherwise default to "/v1/chat/completions"
-		const fullUrl = `${baseUrl.replace(/\/+$/, '')}${apiPath}`;
-
-		getLogger().log(`Custom API URL: ${fullUrl}`);
-
-		// Default to OpenAI-compatible format for custom APIs
-		return fetch(fullUrl, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${apiKey}`
-			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: [
-					{
-						role: 'system',
-						content: this.getEffectiveSystemPrompt()
-					},
-					{
-						role: 'user',
-						content: [
-							{ type: 'text', text: message },
-							{ 
-								type: 'image_url', 
-								image_url: { 
-									url: imageDataUrl
-								} 
-							}
-						]
-					}
-				],
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature
-			})
-		});
-	}
 
 	private extractResponseContent(data: any, providerId: string): string {
 		try {
@@ -909,7 +580,7 @@ export class AIManager {
 			}
 			return 'Unknown response format';
 		} catch (error) {
-			console.error('Failed to extract response content:', error);
+			getLogger().error('Failed to extract response content:', error);
 			return 'Failed to parse AI response';
 		}
 	}
@@ -1030,7 +701,7 @@ export class AIManager {
 				this.plugin.app.workspace.revealLeaf(aiLeaf);
 			}
 		} catch (error) {
-			console.error('Failed to show AI panel:', error);
+			getLogger().error('Failed to show AI panel:', error);
 			throw new Error(`Failed to create AI panel: ${error.message}`);
 		}
 	}
@@ -1142,7 +813,7 @@ export class AIManager {
 				return `data:${mimeType};base64,${base64}`;
 			}
 		} catch (error) {
-			console.warn('Failed to load image from path:', path, error);
+			getLogger().warn('Failed to load image from path:', path, error);
 		}
 		
 		return null;
@@ -1224,8 +895,9 @@ export class AIManager {
 	}
 
 	// Text-only API methods for better chat experience
-	private async callOpenAITextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		return fetch('https://api.openai.com/v1/chat/completions', {
+	private async callOpenAITextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
+		return requestUrl( {
+			url:'https://api.openai.com/v1/chat/completions',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1252,7 +924,7 @@ export class AIManager {
 		});
 	}
 
-	private async callClaudeTextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callClaudeTextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		const requestBody: any = {
 			model: modelConfig.modelId,
 			max_tokens: modelConfig.settings.maxTokens,
@@ -1264,7 +936,8 @@ export class AIManager {
 			system: this.getEffectiveSystemPrompt()
 		};
 
-		return fetch('https://api.anthropic.com/v1/messages', {
+		return requestUrl( {
+			url:'https://api.anthropic.com/v1/messages',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1275,10 +948,11 @@ export class AIManager {
 		});
 	}
 
-	private async callGoogleTextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callGoogleTextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`;
 		
-		return fetch(url, {
+		return requestUrl( {
+			url:url,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
@@ -1295,8 +969,9 @@ export class AIManager {
 		});
 	}
 
-	private async callOpenRouterTextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		return fetch('https://openrouter.ai/api/v1/chat/completions', {
+	private async callOpenRouterTextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
+		return requestUrl( {
+			url:'https://openrouter.ai/api/v1/chat/completions',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1325,7 +1000,7 @@ export class AIManager {
 		});
 	}
 
-	private async callCustomAPITextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callCustomAPITextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		// Use customProvider from modelConfig if available (new structure)
 		const customConfig = modelConfig.customProvider;
 		let baseUrl: string, apiPath: string, apiKey: string;
@@ -1348,7 +1023,8 @@ export class AIManager {
 		// Use custom API path if provided, otherwise default to "/v1/chat/completions"
 		const fullUrl = `${baseUrl.replace(/\/+$/, '')}${apiPath}`;
 
-		return fetch(fullUrl, {
+		return requestUrl( {
+			url:fullUrl,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1400,232 +1076,8 @@ export class AIManager {
 		this.currentConversationId = null;
 	}
 
-	// Multi-image API methods
-	private async callOpenAIWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const imageContent = dataUrls.map(dataUrl => {
-			const base64Data = dataUrl.split(',')[1];
-			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
-			return {
-				type: 'image_url',
-				image_url: {
-					url: `data:${mimeType};base64,${base64Data}`
-				}
-			};
-		});
-
-		return fetch('https://api.openai.com/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${credentials.apiKey}`
-			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: [
-					{
-						role: 'system',
-						content: this.getEffectiveSystemPrompt()
-					},
-					{
-						role: 'user',
-						content: [
-							{ type: 'text', text: message },
-							...imageContent
-						]
-					}
-				],
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature,
-				top_p: modelConfig.settings.topP,
-				frequency_penalty: modelConfig.settings.frequencyPenalty,
-				presence_penalty: modelConfig.settings.presencePenalty
-			})
-		});
-	}
-
-	private async callClaudeWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const imageContent = dataUrls.map(dataUrl => {
-			const base64Data = dataUrl.split(',')[1];
-			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
-			return {
-				type: 'image',
-				source: {
-					type: 'base64',
-					media_type: mimeType,
-					data: base64Data
-				}
-			};
-		});
-
-		const messages = [{
-			role: 'user',
-			content: [
-				{ type: 'text', text: message },
-				...imageContent
-			]
-		}];
-
-		const requestBody: any = {
-			model: modelConfig.modelId,
-			max_tokens: modelConfig.settings.maxTokens,
-			temperature: modelConfig.settings.temperature,
-			messages: messages,
-			system: this.getEffectiveSystemPrompt()
-		};
-
-		return fetch('https://api.anthropic.com/v1/messages', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'x-api-key': credentials.apiKey,
-				'anthropic-version': '2023-06-01'
-			},
-			body: JSON.stringify(requestBody)
-		});
-	}
-
-	private async callGoogleWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const imageParts = dataUrls.map(dataUrl => {
-			const base64Data = dataUrl.split(',')[1];
-			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
-			return {
-				inline_data: {
-					mime_type: mimeType,
-					data: base64Data
-				}
-			};
-		});
-
-		const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`;
-		
-		return fetch(url, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				contents: [{
-					parts: [
-						{ text: message },
-						...imageParts
-					]
-				}],
-				generationConfig: {
-					temperature: modelConfig.settings.temperature,
-					maxOutputTokens: modelConfig.settings.maxTokens
-				}
-			})
-		});
-	}
-
-	private async callOpenRouterWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		const imageContent = dataUrls.map(dataUrl => {
-			const base64Data = dataUrl.split(',')[1];
-			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
-			return {
-				type: 'image_url',
-				image_url: {
-					url: `data:${mimeType};base64,${base64Data}`
-				}
-			};
-		});
-
-		return fetch('https://openrouter.ai/api/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${credentials.apiKey}`,
-				'HTTP-Referer': 'https://obsidian.md',
-				'X-Title': 'Obsidian CaptureAI Plugin'
-			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: [
-					{
-						role: 'system',
-						content: this.getEffectiveSystemPrompt()
-					},
-					{
-						role: 'user',
-						content: [
-							{ type: 'text', text: message },
-							...imageContent
-						]
-					}
-				],
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature,
-				top_p: modelConfig.settings.topP,
-				frequency_penalty: modelConfig.settings.frequencyPenalty,
-				presence_penalty: modelConfig.settings.presencePenalty
-			})
-		});
-	}
-
-	private async callCustomAPIWithMultipleImages(message: string, dataUrls: string[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
-		// Use customProvider from modelConfig if available (new structure)
-		const customConfig = modelConfig.customProvider;
-		let baseUrl: string, apiPath: string, apiKey: string;
-
-		if (customConfig) {
-			// New structure: get config from modelConfig.customProvider
-			baseUrl = customConfig.baseUrl;
-			apiPath = customConfig.apiPath || '/v1/chat/completions';
-			apiKey = customConfig.apiKey;
-		} else {
-			// Fallback to old structure: get config from credentials
-			if (!credentials?.baseUrl) {
-				throw new Error('Base URL is required for custom provider');
-			}
-			baseUrl = credentials.baseUrl;
-			apiPath = credentials.apiPath || '/v1/chat/completions';
-			apiKey = credentials.apiKey;
-		}
-
-		// Use custom API path if provided, otherwise default to "/v1/chat/completions"
-		const fullUrl = `${baseUrl.replace(/\/+$/, '')}${apiPath}`;
-
-		const imageContent = dataUrls.map(dataUrl => {
-			const base64Data = dataUrl.split(',')[1];
-			const mimeType = this.getMimeTypeFromDataUrl(dataUrl) || 'image/png';
-			return {
-				type: 'image_url',
-				image_url: {
-					url: `data:${mimeType};base64,${base64Data}`
-				}
-			};
-		});
-
-		// Default to OpenAI-compatible format for custom APIs
-		return fetch(fullUrl, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${apiKey}`
-			},
-			body: JSON.stringify({
-				model: modelConfig.modelId,
-				messages: [
-					{
-						role: 'system',
-						content: this.getEffectiveSystemPrompt()
-					},
-					{
-						role: 'user',
-						content: [
-							{ type: 'text', text: message },
-							...imageContent
-						]
-					}
-				],
-				max_tokens: modelConfig.settings.maxTokens,
-				temperature: modelConfig.settings.temperature
-			})
-		});
-	}
-
 	// Context-aware API calls for different providers
-	private async callOpenAIWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callOpenAIWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		// Import logger
 		const { getLogger } = require('../utils/logger');
 		const logger = getLogger();
@@ -1643,7 +1095,8 @@ export class AIManager {
 		logger.log(`📤 OpenAI API Request Body:`, JSON.stringify(requestBody, null, 2));
 		logger.log(`🔑 Using API Key: ${credentials.apiKey.substring(0, 10)}...`);
 
-		return fetch('https://api.openai.com/v1/chat/completions', {
+		return requestUrl( {
+			url:'https://api.openai.com/v1/chat/completions',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1653,7 +1106,7 @@ export class AIManager {
 		});
 	}
 
-	private async callClaudeWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callClaudeWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		// Filter out system messages for Claude and extract system prompt
 		let systemPrompt = '';
 		const filteredMessages = messages.filter(msg => {
@@ -1664,7 +1117,8 @@ export class AIManager {
 			return true;
 		});
 
-		return fetch('https://api.anthropic.com/v1/messages', {
+		return requestUrl( {
+			url:'https://api.anthropic.com/v1/messages',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1682,7 +1136,7 @@ export class AIManager {
 		});
 	}
 
-	private async callGoogleWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callGoogleWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		const baseUrl = credentials.baseUrl || 'https://generativelanguage.googleapis.com';
 		
 		// Convert messages to Gemini format
@@ -1703,7 +1157,8 @@ export class AIManager {
 			}) : [{ text: msg.content }]
 		}));
 
-		return fetch(`${baseUrl}/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`, {
+		return requestUrl( {
+			url:`${baseUrl}/v1beta/models/${modelConfig.modelId}:generateContent?key=${credentials.apiKey}`,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
@@ -1719,7 +1174,7 @@ export class AIManager {
 		});
 	}
 
-	private async callCohereWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callCohereWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		// Cohere's chat API format
 		const chatHistory = messages.filter(msg => msg.role !== 'system' && msg.role !== 'user').map(msg => ({
 			role: msg.role === 'assistant' ? 'CHATBOT' : 'USER',
@@ -1733,7 +1188,8 @@ export class AIManager {
 			? latestUserMessage.content 
 			: latestUserMessage.content.find((part: any) => part.type === 'text')?.text || '';
 
-		return fetch('https://api.cohere.ai/v1/chat', {
+		return requestUrl( {
+			url:'https://api.cohere.ai/v1/chat',
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1750,7 +1206,7 @@ export class AIManager {
 		});
 	}
 
-	private async callOpenRouterWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callOpenRouterWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		// Import logger
 		const { getLogger } = require('../utils/logger');
 		const logger = getLogger();
@@ -1771,7 +1227,8 @@ export class AIManager {
 		logger.log(`🔑 Using API Key: ${credentials.apiKey.substring(0, 10)}...`);
 		logger.log(`🌐 Base URL: ${baseUrl}`);
 
-		return fetch(`${baseUrl}/chat/completions`, {
+		return requestUrl( {
+			url:`${baseUrl}/chat/completions`,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1783,7 +1240,7 @@ export class AIManager {
 		});
 	}
 
-	private async callCustomAPIWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<Response> {
+	private async callCustomAPIWithContext(messages: any[], modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
 		// Import logger
 		const { getLogger } = require('../utils/logger');
 		const logger = getLogger();
@@ -1805,7 +1262,8 @@ export class AIManager {
 		logger.log(`🌐 Full URL: ${fullUrl}`);
 
 		// For custom APIs, we'll use OpenAI format as the default
-		return fetch(fullUrl, {
+		return requestUrl( {
+			url:fullUrl,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

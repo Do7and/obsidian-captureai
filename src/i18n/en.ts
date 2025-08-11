@@ -49,6 +49,8 @@ export default {
   "settings.globalPrompt.desc": "Global system prompt for AI analysis",
   // AI Chat Mode Prompts
   "settings.aiChatModePrompts": "AI Chat Mode Prompts",
+  "settings.defaultAIChatMode.name": "Default AI Chat Mode",
+  "settings.defaultAIChatMode.desc": "The default mode when opening AI Chat panel",
   "settings.analyzePrompt.name": "Analyze mode prompt",
   "settings.analyzePrompt.desc": "Prompt used when analyzing images in detail",
   "settings.ocrPrompt.name": "OCR mode prompt", 

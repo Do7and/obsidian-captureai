@@ -2,6 +2,7 @@ import { Modal, Setting, Notice, setIcon  } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { ModelConfig, ModelSettings, LLM_PROVIDERS, DEFAULT_MODEL_SETTINGS } from '../types';
 import { t } from '../i18n';
+import { getLogger } from '../utils/logger';
 
 export class ManageModelsModal extends Modal {
 	private plugin: ImageCapturePlugin;

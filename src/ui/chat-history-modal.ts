@@ -99,7 +99,7 @@ export class ChatHistoryModal extends Modal {
 				}
 			}
 		} catch (error: any) {
-			console.error('Failed to load conversations:', error);
+			getLogger().error('Failed to load conversations:', error);
 			const errorMsg = autoSavedList.createEl('div', { text: `Error loading conversations: ${error.message}`, cls: 'chat-history-error' });
 		}
 	}
@@ -154,13 +154,13 @@ export class ChatHistoryModal extends Modal {
 						new Notice('❌ Failed to parse conversation');
 					}
 				} catch (error: any) {
-					console.error('Failed to load conversation:', error);
+					getLogger().error('Failed to load conversation:', error);
 					new Notice(`❌ Failed to load conversation: ${error.message}`);
 				}
 			});
 
 		} catch (error: any) {
-			console.error('Failed to create conversation item:', error);
+			getLogger().error('Failed to create conversation item:', error);
 		}
 	}
 
@@ -193,7 +193,7 @@ export class ChatHistoryModal extends Modal {
 					try {
 						conversation.createdAt = new Date(createdMatch[1].trim());
 					} catch (error) {
-						console.warn('Failed to parse created timestamp:', createdMatch[1]);
+						getLogger().warn('Failed to parse created timestamp:', createdMatch[1]);
 					}
 				}
 				
@@ -203,7 +203,7 @@ export class ChatHistoryModal extends Modal {
 					try {
 						conversation.lastUpdated = new Date(lastModifiedMatch[1].trim());
 					} catch (error) {
-						console.warn('Failed to parse lastModified timestamp:', lastModifiedMatch[1]);
+						getLogger().warn('Failed to parse lastModified timestamp:', lastModifiedMatch[1]);
 					}
 				}
 				
@@ -240,7 +240,7 @@ export class ChatHistoryModal extends Modal {
 			return conversation.messages.length > 0 ? conversation : null;
 
 		} catch (error: any) {
-			console.error('Failed to parse conversation from markdown:', error);
+			getLogger().error('Failed to parse conversation from markdown:', error);
 			return null;
 		}
 	}
@@ -305,7 +305,7 @@ export class ChatHistoryModal extends Modal {
 				try {
 					timestamp = this.parseTimestampAsLocal(timestampStr);
 				} catch (error) {
-					console.warn('Could not parse timestamp:', timestampStr);
+					getLogger().warn('Could not parse timestamp:', timestampStr);
 				}
 				
 				currentMessage = {
@@ -348,7 +348,7 @@ export class ChatHistoryModal extends Modal {
 				try {
 					currentMessage.timestamp = this.parseTimestampAsLocal(timestampStr);
 				} catch (e) {
-					console.warn('Could not parse timestamp:', timestampStr);
+					getLogger().warn('Could not parse timestamp:', timestampStr);
 				}
 				
 				await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation, tempImagesMap);
