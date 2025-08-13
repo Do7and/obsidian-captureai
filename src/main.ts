@@ -139,7 +139,7 @@ export default class ImageCapturePlugin extends Plugin {
 
 		// Remove old screenshotPrompt if it exists
 		if ('screenshotPrompt' in this.settings) {
-			delete (this.settings ).screenshotPrompt;
+			delete (this.settings as any).screenshotPrompt;
 			needsSave = true;
 		}
 

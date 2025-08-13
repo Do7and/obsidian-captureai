@@ -17,16 +17,25 @@ export class ManageModelsModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		// Modal header
-		const headerEl = contentEl.createEl('div', { cls: 'modal-header' });
-		headerEl.createEl('h2', { text: t('ui.manageModels') });
-		headerEl.createEl('p', { 
+		// Create fixed header modal structure
+		contentEl.addClass('modal-with-fixed-header');
+		
+		// Create fixed header
+		const headerEl = contentEl.createEl('div', { cls: 'modal-fixed-header' });
+		
+		// Header content
+		const headerContent = headerEl.createEl('div', { cls: 'modal-header' });
+		headerContent.createEl('h2', { text: t('ui.manageModels') });
+		headerContent.createEl('p', { 
 			text: t('manageModels.description'),
 			cls: 'modal-description'
 		});
-
-		// Models container
-		const modelsEl = contentEl.createEl('div', { cls: 'models-container' });
+		
+		// Create scrollable content area
+		const scrollableContent = contentEl.createEl('div', { cls: 'modal-scrollable-content' });
+		
+		// Models container (now in scrollable area)
+		const modelsEl = scrollableContent.createEl('div', { cls: 'models-container' });
 
 		if (this.plugin.settings.modelConfigs.length === 0) {
 			// Simplified empty state
@@ -335,12 +344,24 @@ class ConfirmDeleteModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h3', { text: t('manageModels.confirmDeleteTitle') });
-		contentEl.createEl('p', { 
+		// Create fixed header modal structure
+		contentEl.addClass('modal-with-fixed-header');
+		
+		// Create fixed header
+		const headerEl = contentEl.createEl('div', { cls: 'modal-fixed-header' });
+		
+		// Header content
+		const headerContent = headerEl.createEl('div', { cls: 'modal-header' });
+		headerContent.createEl('h3', { text: t('manageModels.confirmDeleteTitle') });
+		
+		// Create scrollable content area
+		const scrollableContent = contentEl.createEl('div', { cls: 'modal-scrollable-content' });
+		
+		scrollableContent.createEl('p', { 
 			text: t('manageModels.confirmDeleteMessage', { modelName: this.modelConfig.name })
 		});
 
-		const buttonsEl = contentEl.createEl('div', { cls: 'button-group' });
+		const buttonsEl = scrollableContent.createEl('div', { cls: 'button-group' });
 		
 		const cancelBtn = buttonsEl.createEl('button', { text: t('manageModels.confirmDeleteCancel'), cls: 'cancel-btn' });
 		cancelBtn.addEventListener('click', () => this.close());

@@ -4,6 +4,7 @@ import { LLM_PROVIDERS, LLMProvider, LLMModel } from '../types';
 import { SetKeysModal } from '../ui/set-keys-modal';
 import { ManageModelsModal } from '../ui/manage-models-modal';
 import { i18n, t } from '../i18n';
+import { getLogger } from '../utils/logger';
 
 export class ImageCaptureSettingTab extends PluginSettingTab {
 	plugin: ImageCapturePlugin;
@@ -63,6 +64,18 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.enableDebugLogging = value;
 					await this.plugin.saveSettings();
+				}));
+
+		// 显示仅发送按钮设置
+		new Setting(containerEl)
+			.setName(t('settings.showSendOnlyButton.name'))
+			.setDesc(t('settings.showSendOnlyButton.desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showSendOnlyButton)
+				.onChange(async (value) => {
+					this.plugin.settings.showSendOnlyButton = value;
+					await this.plugin.saveSettings();
+					this.refreshModelDependentComponents();
 				}));
 
 		// Screenshot功能设置分类
@@ -458,6 +471,10 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 			if (view && typeof view.updateContent === 'function') {
 				view.updateContent();
 			}
+			// Also update send-only button visibility
+			if (view && typeof view.updateSendOnlyButtonVisibility === 'function') {
+				view.updateSendOnlyButtonVisibility();
+			}
 		});
 	}
 
@@ -489,5 +506,16 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 			}
 		});
 		observer.observe(document.body, { childList: true, subtree: true });
-}
+	}
+
+	private refreshAIChatViews() {
+		// 使用轻量级方法只更新按钮显示状态，而不是重新创建整个输入区域
+		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
+		aiChatLeaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && typeof view.updateSendOnlyButtonVisibility === 'function') {
+				view.updateSendOnlyButtonVisibility();
+			}
+		});
+	}
 }

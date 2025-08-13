@@ -3,6 +3,7 @@ import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, ModelConfig } from '../types';
 import { AI_CHAT_VIEW_TYPE } from './ai-chat-view';
 import { getLogger } from '../utils/logger';
+import { t } from '../i18n';
 
 export interface AIMessage {
 	id: string;
@@ -20,6 +21,8 @@ export interface AIConversation {
 	messages: AIMessage[];
 	createdAt: Date;
 	lastUpdated: Date;
+	// 添加对话状态追踪
+	lastModeUsed?: string; // 记录最后使用的 mode
 }
 
 export class AIManager {
@@ -108,13 +111,13 @@ export class AIManager {
 			const { textContent } = this.parseMarkdownContent(userMsg.content, userMsg.tempImages);
 			
 			// Call AI API with context support using images array
-			// Include modeprompt since this is from the send area
+			// 智能判断逻辑会自动决定是否需要 mode prompt
 			const response = await this.callAIWithContext(
 				conversation, 
 				textContent || '', // 删除默认的分析文本，使用空字符串
 				images.map(img => img.dataUrl), 
 				defaultModelConfig,
-				true // Include modeprompt for send area calls
+				true // 保持兼容性，实际逻辑在 buildContextMessages 中处理
 			);
 
 			// Remove typing indicator more reliably
@@ -245,9 +248,10 @@ export class AIManager {
 			});
 		}
 
-		// Add historical messages if conversation exists
-		if (conversation && conversation.messages.length > 0) {
-			let historicalMessages = conversation.messages.slice(); // Copy array
+		// Add historical messages if conversation exists (excluding the most recent message to avoid duplication)
+		if (conversation && conversation.messages.length > 1) {
+			// Exclude the last message since it will be processed as current message
+			let historicalMessages = conversation.messages.slice(0, -1);
 			let imageCount = 0;
 
 			// Filter out error messages to prevent context pollution
@@ -357,13 +361,23 @@ export class AIManager {
 			}
 		}
 
-		// Add current message with modeprompt if needed
+		// Add current message with智能 mode prompt 判断
 		let finalCurrentMessage = currentMessage;
-		if (includeModeprompt) {
-			const currentMode = this.getCurrentMode();
+		const currentMode = this.getCurrentMode();
+		const hasImages: boolean = !!(currentImages && currentImages.length > 0);
+		
+		// 使用智能判断逻辑决定是否应用 mode prompt
+		const shouldApply = this.shouldApplyModePrompt(conversation, hasImages, currentMode);
+		
+		if (shouldApply) {
 			const modePrompt = this.getModePrompt(currentMode);
 			if (modePrompt && modePrompt.trim()) {
 				finalCurrentMessage = modePrompt + '\n\n' + currentMessage;
+			}
+			
+			// 更新对话的 mode 状态
+			if (conversation) {
+				conversation.lastModeUsed = currentMode;
 			}
 		}
 		
@@ -591,12 +605,56 @@ export class AIManager {
 			title,
 			messages: [],
 			createdAt: new Date(),
-			lastUpdated: new Date()
+			lastUpdated: new Date(),
+			lastModeUsed: undefined // 初始状态没有使用过任何 mode
 		};
 		
 		this.conversations.set(conversation.id, conversation);
 		this.currentConversationId = conversation.id;
 		return conversation;
+	}
+
+	/**
+	 * 智能判断是否需要应用 mode prompt
+	 * @param conversation 当前对话
+	 * @param hasImages 当前消息是否包含图片
+	 * @param currentMode 当前 mode
+	 * @returns 是否需要应用 mode prompt
+	 */
+	shouldApplyModePrompt(conversation: AIConversation | null, hasImages: boolean, currentMode: string): boolean {
+		// 获取图片相关的 mode 列表
+		const imageRelatedModes = ['analyze', 'ocr'];
+		const isImageRelatedMode = imageRelatedModes.includes(currentMode);
+		
+		// 获取当前 mode 的 prompt 内容
+		const currentModePrompt = this.getModePrompt(currentMode);
+		const hasModePrompt = currentModePrompt && currentModePrompt.trim();
+		
+		// 如果当前 mode 没有设置 prompt，直接返回 false
+		if (!hasModePrompt) {
+			return false;
+		}
+		
+		// 情况1：新对话
+		if (!conversation || conversation.messages.length === 0) {
+			// 新对话时，如果有 mode prompt 设置就应用
+			return true;
+		}
+		
+		// 情况2：mode 发生了变化
+		if (conversation.lastModeUsed !== currentMode) {
+			// Mode 切换了，需要应用新的 mode prompt
+			return true;
+		}
+		
+		// 情况3：图片相关 mode + 有图片
+		if (isImageRelatedMode && hasImages) {
+			// 每次发图片都需要相关的分析指令
+			return true;
+		}
+		
+		// 情况4：其他情况不应用
+		return false;
 	}
 
 	/**
@@ -841,7 +899,7 @@ export class AIManager {
 		const tempImageCount = this.countTempImagesInConversation(conversation);
 		if (tempImageCount > 5) {
 			new Notice(
-				`📸 当前会话已有${tempImageCount}张临时图片，建议保存会话以避免内存占用过高`,
+				t('notice.tempImageLimitWarning', { count: tempImageCount.toString() }),
 				8000
 			);
 		}

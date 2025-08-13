@@ -19,16 +19,25 @@ export class SetKeysModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		// Modal header
-		const headerEl = contentEl.createEl('div', { cls: 'modal-header' });
-		headerEl.createEl('h2', { text: t('setKeys.title') });
-		headerEl.createEl('p', { 
+		// Create fixed header modal structure
+		contentEl.addClass('modal-with-fixed-header');
+		
+		// Create fixed header
+		const headerEl = contentEl.createEl('div', { cls: 'modal-fixed-header' });
+		
+		// Header content
+		const headerContent = headerEl.createEl('div', { cls: 'modal-header' });
+		headerContent.createEl('h2', { text: t('setKeys.title') });
+		headerContent.createEl('p', { 
 			text: t('setKeys.description'),
 			cls: 'modal-description'
 		});
 
-		// Providers container
-		const providersEl = contentEl.createEl('div', { cls: 'providers-container' });
+		// Create scrollable content area
+		const scrollableContent = contentEl.createEl('div', { cls: 'modal-scrollable-content' });
+		
+		// Providers container (now in scrollable area)
+		const providersEl = scrollableContent.createEl('div', { cls: 'providers-container' });
 
 		// Create settings for each provider
 		LLM_PROVIDERS.forEach(provider => {
@@ -391,7 +400,7 @@ export class SetKeysModal extends Modal {
 
 		const credentials = this.plugin.settings.providerCredentials[providerId];
 		if (!credentials || !credentials.apiKey.trim()) {
-			new Notice('Please enter an API key first');
+			new Notice(t('notice.enterApiKeyFirst'));
 			return;
 		}
 
@@ -1165,13 +1174,24 @@ class ModelSelectionModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h3', { text: `Add Model from ${this.provider.displayName}` });
-		contentEl.createEl('p', { 
+		// Create fixed header modal structure
+		contentEl.addClass('modal-with-fixed-header');
+		
+		// Create fixed header
+		const headerEl = contentEl.createEl('div', { cls: 'modal-fixed-header' });
+		
+		// Header content
+		const headerContent = headerEl.createEl('div', { cls: 'modal-header' });
+		headerContent.createEl('h3', { text: `Add Model from ${this.provider.displayName}` });
+		headerContent.createEl('p', { 
 			text: 'Select a model to add to your configuration:',
 			cls: 'modal-description'
 		});
 
-		const modelsEl = contentEl.createEl('div', { cls: 'models-list' });
+		// Create scrollable content area
+		const scrollableContent = contentEl.createEl('div', { cls: 'modal-scrollable-content' });
+		
+		const modelsEl = scrollableContent.createEl('div', { cls: 'models-list' });
 
 		this.models.forEach(model => {
 			const modelEl = modelsEl.createEl('div', { cls: 'model-item' });

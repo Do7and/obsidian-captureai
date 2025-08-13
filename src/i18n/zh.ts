@@ -9,6 +9,8 @@ export default {
   "settings.useRelativePath.desc": "在 Markdown 文件中使用图像的相对路径。禁用时使用绝对路径。",
   "settings.enableDebugLogging.name": "启用调试日志",
   "settings.enableDebugLogging.desc": "启用控制台调试日志用于故障排除。建议禁用。",
+  "settings.showSendOnlyButton.name": "显示仅发送按钮",
+  "settings.showSendOnlyButton.desc": "在发送按钮旁显示一个仅发送到聊天的按钮，不会发给AI处理",
   "settings.imageFormat.name": "图像格式",
   "settings.imageFormat.desc": "选择保存图像的格式",
   "settings.language.name": "语言",
@@ -183,6 +185,7 @@ export default {
   "ui.remove": "移除",
   "ui.captureAI": "截图捕获",
   "ui.aiChatPanel": "AI 会话面板",
+  "ui.sendOnlyButton": "仅发送消息（不调用AI）",
   
   // Chat History Modal
   "ui.chatHistory": "会话历史",
@@ -497,4 +500,27 @@ export default {
       <li>检查控制台 (Ctrl+Shift+I) 查看错误消息</li>
     </ul>
   `,
+
+  // Missing Notice translations
+  "notice.imageAndTextCopied": "图片和文本已复制到剪贴板",
+  "notice.textCopiedImageFailed": "文本已复制到剪贴板（图片复制失败）",
+  "notice.failedToCopyMessage": "复制消息失败",
+  "notice.pleaseConfigureModel": "请在设置 > 设置密钥中配置至少一个AI模型",
+  "notice.pleaseDropImageFilesOnly": "请只拖放图片文件",
+  "notice.noConversationToSave": "❌ 没有要保存的会话",
+  "notice.openInMarkdownNote": "请在markdown笔记中打开光标位置再使用此功能",
+  "notice.contentInsertedAtCursor": "内容已插入到光标位置",
+  "notice.failedToInsertContent": "插入内容失败",
+  "notice.noActiveConversation": "没有活跃的会话",
+  "notice.messageNotFound": "未找到消息",
+  "notice.messageDeleted": "消息已删除",
+  "notice.failedToDeleteMessage": "删除消息失败",
+  "notice.enterApiKeyFirst": "请先输入API密钥",
+  "notice.imageCopiedToClipboard": "✅ 图片已复制到剪贴板",
+  "notice.copyFailedUseSave": "❌ 复制失败，请使用保存功能",
+  "notice.failedToParseConversation": "❌ 解析会话失败",
+  "notice.tempImageLimitWarning": "📸 当前会话已有{{count}}张临时图片，建议保存会话以避免内存占用过高",
+
+  // Missing placeholder translations
+  "placeholder.editMessageContent": "编辑消息内容...",
 };

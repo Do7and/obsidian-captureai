@@ -9,6 +9,8 @@ export default {
   "settings.useRelativePath.desc": "Use relative paths for images in markdown files. When disabled, uses absolute paths.",
   "settings.enableDebugLogging.name": "Enable Debug Logging",
   "settings.enableDebugLogging.desc": "Enable debug logging to console for troubleshooting. Recommended to disable.",
+  "settings.showSendOnlyButton.name": "Show Send-Only Button",
+  "settings.showSendOnlyButton.desc": "Show a button next to the send button that adds messages to chat without sending to AI",
   "settings.imageFormat.name": "Image format",
   "settings.imageFormat.desc": "Choose the format for saved images",
   "settings.language.name": "Language",
@@ -183,6 +185,7 @@ export default {
   "ui.remove": "Remove",
   "ui.captureAI": "CaptureAI",
   "ui.aiChatPanel": "AI Chat Panel",
+  "ui.sendOnlyButton": "Send message only (no AI response)",
   
   // Chat History Modal
   "ui.chatHistory": "Chat History",
@@ -492,4 +495,27 @@ export default {
       <li>Check the Console (Ctrl+Shift+I) for error messages</li>
     </ul>
   `,
+
+  // Missing Notice translations
+  "notice.imageAndTextCopied": "Image and text copied to clipboard",
+  "notice.textCopiedImageFailed": "Text copied to clipboard (image copy failed)",
+  "notice.failedToCopyMessage": "Failed to copy message",
+  "notice.pleaseConfigureModel": "Please configure at least one AI model in Settings > Set Keys",
+  "notice.pleaseDropImageFilesOnly": "Please drop image files only",
+  "notice.noConversationToSave": "❌ No conversation to save",
+  "notice.openInMarkdownNote": "Please open cursor position in a markdown note to use this function",
+  "notice.contentInsertedAtCursor": "Content inserted at cursor",
+  "notice.failedToInsertContent": "Failed to insert content",
+  "notice.noActiveConversation": "No active conversation",
+  "notice.messageNotFound": "Message not found",
+  "notice.messageDeleted": "Message deleted",
+  "notice.failedToDeleteMessage": "Failed to delete message",
+  "notice.enterApiKeyFirst": "Please enter an API key first",
+  "notice.imageCopiedToClipboard": "✅ Image copied to clipboard",
+  "notice.copyFailedUseSave": "❌ Copy failed, please use save function",
+  "notice.failedToParseConversation": "❌ Failed to parse conversation",
+  "notice.tempImageLimitWarning": "📸 Current conversation has {{count}} temporary images, recommend saving conversation to avoid high memory usage",
+
+  // Missing placeholder translations
+  "placeholder.editMessageContent": "Edit message content...",
 };

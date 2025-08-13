@@ -155,11 +155,11 @@ export class ImageEditor extends Modal {
 		this.cropModeActive = !!extendedRegion;
 		
 		// Calculate modal size (same as before)
-		const toolbarHeight = 60;
+		const toolbarHeight = 80; // 增加到80px支持双行
 		const buttonBarHeight = 60;
 		
-		const minModalWidth = 500;
-		const minModalHeight = 400;
+		const minModalWidth = 800;
+		const minModalHeight = 600;
 		
 		const maxModalWidth = window.innerWidth * 0.9;
 		const maxModalHeight = window.innerHeight * 0.9;
@@ -190,6 +190,9 @@ export class ImageEditor extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
+		
+		// Create fixed header modal structure for image editor
+		contentEl.addClass('modal-with-fixed-header');
 		contentEl.addClass('image-editor-container');
 		
 		// Add tooltip styles
@@ -206,7 +209,13 @@ export class ImageEditor extends Modal {
 		// Also set contentEl to fill the modal without overflow
 		contentEl.addClass('image-editor-content-fullsize');
 		
-		this.createEditorInterface(contentEl);
+		// Create fixed header (minimal for image editor)
+		const headerEl = contentEl.createEl('div', { cls: 'modal-fixed-header image-editor-header' });
+		
+		// Create scrollable content area (though image editor shouldn't need scrolling)
+		const scrollableContent = contentEl.createEl('div', { cls: 'modal-scrollable-content image-editor-content' });
+		
+		this.createEditorInterface(scrollableContent);
 		this.loadImage();
 		
 		// Add tooltip styles for image editor
@@ -231,7 +240,7 @@ export class ImageEditor extends Modal {
 		const canvasDisplayHeight = (this as any).calculatedCanvasHeight || 200;
 		
 		// Define fixed UI element heights
-		const toolbarHeight = 60;
+		const toolbarHeight = 80; // 增加到80px支持双行
 		const textSectionHeight = 100;
 		const buttonBarHeight = 60;
 		
@@ -684,7 +693,7 @@ export class ImageEditor extends Modal {
 					'image/png': blob
 				});
 				await navigator.clipboard.write([item]);
-				new Notice('✅ 图片已复制到剪贴板');
+				new Notice(t('notice.imageCopiedToClipboard'));
 			} else {
 				// Fallback: create a temporary canvas for copying
 				const tempCanvas = document.createElement('canvas');
@@ -704,10 +713,10 @@ export class ImageEditor extends Modal {
 									'image/png': blob
 								});
 								await navigator.clipboard.write([item]);
-								new Notice('✅ 图片已复制到剪贴板');
+								new Notice(t('notice.imageCopiedToClipboard'));
 							} catch (fallbackError) {
 								getLogger().warn('Clipboard copy failed:', fallbackError);
-								new Notice('❌ 复制失败，请使用保存功能');
+								new Notice(t('notice.copyFailedUseSave'));
 							}
 						}
 					}, 'image/png');

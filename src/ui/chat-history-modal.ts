@@ -2,6 +2,7 @@ import { Modal, Notice, TFile } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIConversation } from '../ai/ai-manager';
 import { t } from '../i18n';
+import { getLogger } from '../utils/logger';
 
 interface ConversationHistoryItem {
 	file: TFile;
@@ -29,11 +30,20 @@ export class ChatHistoryModal extends Modal {
 		// Set modal size to be more responsive
 		this.modalEl.addClass('chat-history-modal-responsive');
 
-		// Title
-		const titleEl = contentEl.createEl('h2', { text: t('ui.chatHistory'), cls: 'chat-history-title' });
+		// Create fixed header modal structure
+		contentEl.addClass('modal-with-fixed-header');
+		
+		// Create fixed header
+		const headerEl = contentEl.createEl('div', { cls: 'modal-fixed-header' });
+		
+		// Title in header
+		const titleEl = headerEl.createEl('h2', { text: t('ui.chatHistory'), cls: 'chat-history-title' });
 
-		// Main container
-		const mainContainer = contentEl.createEl('div', { cls: 'chat-history-container' });
+		// Create scrollable content area
+		const scrollableContent = contentEl.createEl('div', { cls: 'modal-scrollable-content' });
+		
+		// Main container (now in scrollable area)
+		const mainContainer = scrollableContent.createEl('div', { cls: 'chat-history-container' });
 
 		// Auto-saved conversations section
 		const autoSavedSection = mainContainer.createEl('div', { cls: 'chat-history-section' });
@@ -151,7 +161,7 @@ export class ChatHistoryModal extends Modal {
 						this.close();
 						new Notice(`✅ Loaded conversation: ${title}`);
 					} else {
-						new Notice('❌ Failed to parse conversation');
+						new Notice(t('notice.failedToParseConversation'));
 					}
 				} catch (error: any) {
 					getLogger().error('Failed to load conversation:', error);

@@ -124,6 +124,8 @@ export interface ImageCaptureSettings {
 	};
 	// Debug settings
 	enableDebugLogging: boolean;        // Enable debug logging to console
+	// Send-only button settings
+	showSendOnlyButton: boolean;        // Whether to show the "send only" button
 	// Internal tracking for UI refresh
 	_modelConfigsLastCount?: number;   // Internal: tracks model count for settings refresh
 }
@@ -316,7 +318,9 @@ export const DEFAULT_SETTINGS: ImageCaptureSettings = {
 		contextStrategy: 'recent'
 	},
 	// Debug settings
-	enableDebugLogging: false
+	enableDebugLogging: false,
+	// Send-only button settings
+	showSendOnlyButton: false
 };
 
 export interface EditTool {

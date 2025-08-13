@@ -468,7 +468,7 @@ export class AIChatView extends ItemView {
 
 	private async callAIForText(message: string, conversation: AIConversation): Promise<string> {
 		// Use the new context-aware API for text-only conversations
-		// Include modeprompt since this is from the send area
+		// 智能判断逻辑已经在 buildContextMessages 内部处理，这里不再需要手动传递 includeModeprompt
 		return await this.aiManager.callAIWithContext(conversation, message, undefined, undefined, true);
 	}
 
@@ -839,15 +839,15 @@ export class AIChatView extends ItemView {
 					'text/plain': new Blob([text], { type: 'text/plain' })
 				})
 			]);
-			new Notice('Image and text copied to clipboard');
+			new Notice(t('notice.imageAndTextCopied'));
 		} catch (error) {
 			getLogger().error('Failed to copy image and text:', error);
 			// Fallback to copying just text
 			try {
 				await navigator.clipboard.writeText(text);
-				new Notice('Text copied to clipboard (image copy failed)');
+				new Notice(t('notice.textCopiedImageFailed'));
 			} catch (textError) {
-				new Notice('Failed to copy message');
+				new Notice(t('notice.failedToCopyMessage'));
 			}
 		}
 	}
@@ -1060,6 +1060,15 @@ export class AIChatView extends ItemView {
 		// Model selector with upward popup
 		const modelSelectorContainer = bottomRow.createEl('div', { cls: 'model-selector-container' });
 		this.createModelSelector(modelSelectorContainer);
+		
+		// Send-only button (always create, but toggle visibility based on settings)
+		const sendOnlyButton = bottomRow.createEl('button', { 
+			cls: 'ai-chat-send-only-button',
+			attr: { title: t('ui.sendOnlyButton') }
+		});
+		setIcon(sendOnlyButton, 'book-up');
+		// Control visibility based on settings
+		sendOnlyButton.toggleClass('invisible', !this.plugin.settings.showSendOnlyButton); 
 
 		// Send button (moved to bottom row, with tooltip)
 		const sendButton = bottomRow.createEl('button', { 
@@ -1068,6 +1077,7 @@ export class AIChatView extends ItemView {
 		});
 
 		setIcon(sendButton, 'send');
+
 
 		// Setup drag and drop on the entire input area
 		this.setupDragAndDrop(inputArea);
@@ -1104,7 +1114,7 @@ export class AIChatView extends ItemView {
 
 			// Check if any models are configured
 			if (!checkModelConfigured()) {
-				new Notice('Please configure at least one AI model in Settings > Set Keys');
+				new Notice(t('notice.pleaseConfigureModel'));
 				return;
 			}
 
@@ -1171,7 +1181,73 @@ export class AIChatView extends ItemView {
 			}
 		};
 
+		// Send-only message function (adds to chat without AI response)
+		const sendOnlyMessage = async () => {
+			const message = textInput.value.trim();
+			const imageDataList = (inputArea as any)._currentImageDataList || [];
+			
+			if (!message && imageDataList.length === 0) return;
+
+			try {
+				// Create or get current conversation
+				let conversation = this.aiManager.getCurrentConversationData();
+				if (!conversation) {
+					// Create a new conversation with temporary title
+					conversation = this.aiManager.createNewConversation('新对话');
+				}
+
+				// Clear inputs
+				textInput.value = '';
+				this.clearImagePreview(inputArea);
+
+				// Add user message to conversation
+				let finalContent = message;
+				let tempImages: { [key: string]: string } = {};
+
+				// Handle images if present
+				if (imageDataList.length > 0) {
+					const imageReferences: string[] = [];
+					
+					for (let i = 0; i < imageDataList.length; i++) {
+						const img = imageDataList[i];
+						const imageId = `temp_${Date.now()}_${i}`;
+						
+						// Store temp image data
+						tempImages[imageId] = img.dataUrl;
+						
+						// Add image reference to content
+						imageReferences.push(`![${img.fileName}](temp:${imageId})`);
+					}
+					
+					// Combine text and image references
+					finalContent = imageReferences.join('\n') + (message ? '\n\n' + message : '');
+				}
+
+				const userMessage = {
+					id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+					type: 'user' as const,
+					content: finalContent,
+					timestamp: new Date(),
+					tempImages: Object.keys(tempImages).length > 0 ? tempImages : undefined
+				};
+
+				conversation.messages.push(userMessage);
+				await this.updateContent();
+
+				// Reset auto-save content tracking
+				this.lastAutoSaveContent = null;
+
+			} catch (error) {
+				getLogger().error('Failed to send message only:', error);
+				// Restore inputs on error
+				textInput.value = message;
+			}
+		};
+
 		sendButton.addEventListener('click', sendMessage);
+
+		// Add event listener for send-only button (always add since button always exists)
+		sendOnlyButton.addEventListener('click', sendOnlyMessage);
 
 		// Send on Enter (not Shift+Enter) - only if models are configured
 		textInput.addEventListener('keydown', (e) => {
@@ -1180,7 +1256,7 @@ export class AIChatView extends ItemView {
 				if (checkModelConfigured()) {
 					sendMessage();
 				} else {
-					new Notice('Please configure at least one AI model in Settings > Set Keys');
+					new Notice(t('notice.pleaseConfigureModel'));
 				}
 			}
 		});
@@ -1624,7 +1700,7 @@ export class AIChatView extends ItemView {
 			const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
 			
 			if (imageFiles.length === 0) {
-				new Notice('Please drop image files only');
+				new Notice(t('notice.pleaseDropImageFilesOnly'));
 				return;
 			}
 
@@ -1945,8 +2021,8 @@ export class AIChatView extends ItemView {
 
 	private async callAIForFollowUp(message: string, imageDataUrl: string, conversation: AIConversation): Promise<string> {
 		// Use the new context-aware API for follow-up questions
-		// Don't include modeprompt for follow-up calls (only initial send area calls should have it)
-		return await this.aiManager.callAIWithContext(conversation, message, [imageDataUrl], undefined, false);
+		// 智能判断逻辑会自动决定是否需要 mode prompt（比如图片相关的 mode 每次都会应用）
+		return await this.aiManager.callAIWithContext(conversation, message, [imageDataUrl], undefined, true);
 	}
 
 	private async renderMarkdown(container: HTMLElement, content: string): Promise<void> {
@@ -2308,7 +2384,7 @@ export class AIChatView extends ItemView {
 		try {
 			const conversation = this.aiManager.getCurrentConversationData();
 			if (!conversation || conversation.messages.length === 0) {
-				new Notice('❌ No conversation to save');
+				new Notice(t('notice.noConversationToSave'));
 				return;
 			}
 
@@ -2853,6 +2929,11 @@ tags:
 				newConversation.createdAt = conversation.createdAt;
 			}
 			
+			// Preserve the lastModeUsed field for compatibility with smart mode logic
+			if (conversation.lastModeUsed !== undefined) {
+				newConversation.lastModeUsed = conversation.lastModeUsed;
+			}
+			
 			// Copy all messages from the loaded conversation and process images
 			for (const message of conversation.messages) {
 				// Check if this message has data URLs that should be converted to local files
@@ -3331,7 +3412,7 @@ tags:
 		
 		const textarea = container.createEl('textarea', {
 			cls: 'message-edit-textarea',
-			attr: { placeholder: 'Edit message content...' }
+			attr: { placeholder: t('placeholder.editMessageContent') }
 		});
 		
 		textarea.value = content;
@@ -3422,7 +3503,7 @@ tags:
 			}
 			
 			if (!editor || !activeView) {
-				new Notice('请在markdown笔记中打开光标位置再使用此功能');
+				new Notice(t('notice.openInMarkdownNote'));
 				return;
 			}
 
@@ -3494,11 +3575,11 @@ tags:
 			}
 			editor.setCursor(newCursor);
 
-			new Notice('Content inserted at cursor');
+			new Notice(t('notice.contentInsertedAtCursor'));
 			
 		} catch (error) {
 			getLogger().error('Failed to insert content at cursor:', error);
-			new Notice('Failed to insert content');
+			new Notice(t('notice.failedToInsertContent'));
 		}
 	}
 
@@ -3509,14 +3590,14 @@ tags:
 		try {
 			const conversation = this.aiManager.getCurrentConversationData();
 			if (!conversation) {
-				new Notice('No active conversation');
+				new Notice(t('notice.noActiveConversation'));
 				return;
 			}
 
 			// Find message index
 			const messageIndex = conversation.messages.findIndex(m => m.id === messageId);
 			if (messageIndex === -1) {
-				new Notice('Message not found');
+				new Notice(t('notice.messageNotFound'));
 				return;
 			}
 
@@ -3535,12 +3616,12 @@ tags:
 				// Refresh the view
 				await this.updateContent();
 				
-				new Notice('Message deleted');
+				new Notice(t('notice.messageDeleted'));
 			}
 			
 		} catch (error) {
 			getLogger().error('Failed to delete message:', error);
-			new Notice('Failed to delete message');
+			new Notice(t('notice.failedToDeleteMessage'));
 		}
 	}
 
@@ -3615,5 +3696,26 @@ tags:
 			
 			modal.open();
 		});
+	}
+
+	// 轻量级方法：只更新send-only按钮的显示状态
+	updateSendOnlyButtonVisibility() {
+		const sendOnlyButton = this.containerEl.querySelector('.ai-chat-send-only-button') as HTMLElement;
+		if (sendOnlyButton) {
+			sendOnlyButton.toggleClass('invisible', !this.plugin.settings.showSendOnlyButton); 
+		}
+	}
+
+	// 重新创建输入区域以应用设置变化（如显示/隐藏仅发送按钮）
+	recreateInputArea() {
+		// 找到输入区域并重新创建
+		const inputArea = this.containerEl.querySelector('.ai-chat-input-area');
+		if (inputArea) {
+			// 清除现有输入区域
+			inputArea.remove();
+			// 重新创建输入区域，传递当前对话
+			const currentConversation = this.aiManager.getCurrentConversationData();
+			this.createInputArea(this.containerEl, currentConversation);
+		}
 	}
 }

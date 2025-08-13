@@ -1172,7 +1172,7 @@
 
 .ai-chat-input {
 	flex: 1;
-	border: none;
+	border: 2px var(--interactive-accent);
 	outline: none;
 	background: transparent;
 	color: var(--text-normal);
@@ -1257,6 +1257,42 @@
 	background-color: var(--background-modifier-border);
 	color: var(--text-muted);
 	border-color: var(--background-modifier-border);
+}
+
+/* Send-only button styles - similar to send button but slightly different */
+.ai-chat-send-only-button {
+	background: transparent !important;
+	border: none !important;
+	outline: none !important;
+	box-shadow: none !important;
+	color: #9CA3AF; /* More muted gray to differentiate from send button */
+	font-size: 16px;
+	padding: 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: color 0.2s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	margin-left: 4px; /* Small gap from send button */
+}
+
+.ai-chat-send-only-button.invisible{
+	display: none;
+}
+
+.ai-chat-send-only-button:hover:not(:disabled) {
+	color: #6B7280 !important; /* Darker gray on hover */
+}
+
+.theme-dark .ai-chat-send-only-button {
+	color: #4B5563; /* More muted gray for dark theme */
+}
+
+.theme-dark .ai-chat-send-only-button:hover:not(:disabled) {
+	color: #9CA3AF !important; /* Lighter gray on hover in dark theme */
 }
 
 .ai-chat-right-actions {
@@ -2347,18 +2383,20 @@
 }
 
 .image-editor-toolbar-fixed {
-	height: var(--toolbar-height);
+	min-height: var(--toolbar-height); /* 改为min-height，允许自动扩展 */
 	flex-shrink: 0;
 }
 
 .image-editor-main-toolbar {
 	display: flex;
-	align-items: center;
+	align-items: flex-start; /* 改为flex-start支持多行 */
+	align-content: flex-start; /* 确保多行内容从顶部对齐 */
 	padding: 12px;
 	background: var(--background-secondary);
 	border-bottom: 1px solid var(--background-modifier-border);
 	gap: 8px;
 	flex-wrap: wrap;
+	min-height: 56px; /* 设置最小高度，确保双行显示 */
 }
 
 .image-editor-tool-button {
@@ -2945,4 +2983,74 @@
 	z-index: 2147483649;
 	pointer-events: none;
 	display: none;
+}
+
+/* ============================================ */
+/* Fixed Header Modal Structure */
+/* ============================================ */
+
+/* Container for modal with fixed header */
+.modal-with-fixed-header {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+
+/* Fixed header area that doesn't scroll */
+.modal-fixed-header {
+	flex-shrink: 0; /* Don't shrink */
+	padding: 4px 20px 4px 20px; /* 减少上下padding */
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	position: relative;
+}
+
+/* Scrollable content area */
+.modal-scrollable-content {
+	flex: 1; /* Take remaining space */
+	overflow-y: auto;
+	padding: 20px 24px;
+}
+
+/* Close button positioning for fixed header */
+.modal-fixed-header .modal-close-button {
+	position: absolute;
+	top: 4px; /* 减少top值 */
+	right: 16px;
+	background: none;
+	border: none;
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 20px;
+	line-height: 1;
+	padding: 4px;
+	border-radius: 3px;
+	transition: color 0.2s ease;
+}
+
+.modal-fixed-header .modal-close-button:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+/* Special handling for image editor modal */
+.image-editor-header {
+	padding: 12px 16px 8px 16px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	min-height: 40px;
+}
+
+.image-editor-content {
+	padding: 0;
+	height: 100%;
+	overflow: hidden;
+}
+
+/* Adjust image editor layout to work with fixed header */
+.modal-with-fixed-header.image-editor-container .image-editor-container-layout {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
 }
