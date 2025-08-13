@@ -1,7 +1,7 @@
 {
 	"id": "captureai",
 	"name": "CaptureAI",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "0.15.0",
 	"description": "Capture screenshots and gain insights from visual content with AI.",
 	"author": "Do7and",
