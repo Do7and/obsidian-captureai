@@ -76,19 +76,21 @@ export class ChatHistoryModal extends Modal {
 			// Get all markdown files
 			const allFiles = vault.getMarkdownFiles();
 
-			// Filter auto-saved conversations
+			// Filter auto-saved conversations (support both old and new timestamp formats)
 			const autoSavedFiles = allFiles.filter(file => 
-				file.path.startsWith(autoSaveLocation) && file.name.startsWith('auto-saved-')
+				file.path.startsWith(autoSaveLocation) && 
+				(file.name.startsWith('auto-saved-') || file.name.includes('_auto-saved-'))
 			);
 
 			// Filter manually saved conversations
 			const manualSavedFiles = allFiles.filter(file => 
 				file.path.startsWith(manualSaveLocation) && 
-				(file.name.startsWith('ai-conversation-') || !file.name.startsWith('auto-saved-'))
+				(file.name.startsWith('ai-conversation-') || (!file.name.startsWith('auto-saved-') && !file.name.includes('_auto-saved-')))
 			);
 
-			// Sort by modification time (newest first)
-			autoSavedFiles.sort((a, b) => b.stat.mtime - a.stat.mtime);
+			// Sort auto-saved files by filename (which includes timestamp) in descending order (newest first)
+			autoSavedFiles.sort((a, b) => b.name.localeCompare(a.name));
+			// Sort manually saved files by modification time (newest first)
 			manualSavedFiles.sort((a, b) => b.stat.mtime - a.stat.mtime);
 
 			// Display auto-saved conversations
@@ -114,6 +116,22 @@ export class ChatHistoryModal extends Modal {
 		}
 	}
 
+	/**
+	 * Extract timestamp from filename and format it for display
+	 * Format: YYYY-MM-DD_HH-mm-ss_auto-saved-{shortId}.md
+	 */
+	private formatAutoSavedFileName(fileName: string): string {
+		// Check if it's a timestamped filename
+		const timestampMatch = fileName.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})_auto-saved-(.+)\.md$/);
+		if (timestampMatch) {
+			const [, year, month, day, hours, minutes, seconds, shortId] = timestampMatch;
+			return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} (${shortId})`;
+		}
+		
+		// Fallback to original filename if not timestamped
+		return fileName.replace(/^auto-saved-/, '').replace(/\.md$/, '');
+	}
+
 	private async createConversationItem(container: HTMLElement, file: TFile, isAutoSaved: boolean) {
 		try {
 			// Read the file content to extract conversation info
@@ -121,7 +139,13 @@ export class ChatHistoryModal extends Modal {
 			
 			// Extract title from content (look for # AI Conversation or first header)
 			const titleMatch = content.match(/^# (.+)$/m);
-			const title = titleMatch ? titleMatch[1] : file.basename;
+			let title = titleMatch ? titleMatch[1] : file.basename;
+			
+			// For auto-saved files, enhance the title with timestamp information
+			if (isAutoSaved) {
+				const formattedName = this.formatAutoSavedFileName(file.name);
+				title = `${title} - ${formattedName}`;
+			}
 			
 			// Extract creation date from content if available
 			const createdMatch = content.match(/\*\*Created:\*\* (.+)/);

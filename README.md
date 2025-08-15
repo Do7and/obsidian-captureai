@@ -1,12 +1,18 @@
 # CaptureAI - Obsidian Plugin
 
-<p align="center">
-  <img src="captureai-logo.svg" width="120" height="120" alt="CaptureAI Logo" />
-  <h3 align="center">Capture, Analyze, and Organize Visual Information with AI</h3>
-</p>
+<div align="center">
+  <img src="captureai-logo.svg?raw=true" width="120" height="120" alt="CaptureAI Logo">
+  <h3 style="margin-top: 0px;">Capture, Analyze, and Organize Visual Information with AI</h3>
+</div>
+<div align="center">
 
-[![GitHub release](https://img.shields.io/github/release/Do7and/captureai.svg)](https://github.com/Do7and/captureai/releases)
-[![AGPL License 3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.en.html)
+[![Obsidian Plugin](https://img.shields.io/badge/Obsidian-Plugin-blueviolet?style=flat-square&logo=obsidian)](https://obsidian.md/plugins?id=captureai)
+[![GitHub release](https://img.shields.io/github/v/release/Do7and/captureai?style=flat-square&sort=semver)](https://github.com/Do7and/captureai/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/Do7and/captureai?style=flat-square)](https://github.com/Do7and/captureai/stargazers)
+[![License: AGPL 3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg?style=flat-square)](https://www.gnu.org/licenses/agpl-3.0.en.html)
+
+
+</div>
 
 ---
 
@@ -14,7 +20,12 @@
 
 ---
 
-English | [简体中文](README.zh.md) 
+<div align="center">
+
+English | [简体中文](README.zh.md)
+
+</div>
+
 
 ## Features
 
@@ -69,19 +80,27 @@ English | [简体中文](README.zh.md)
 
 ## Installation
 
-### From Obsidian Community Plugins (Coming Soon)
+### From Obsidian Community Plugins (❌Coming Soon)
 1. Open Obsidian  
 2. Go to Settings > Community Plugins  
 3. Disable "Safe Mode"  
-4. Click "Browse" and search for CaptureAI  
+4. Click "Browse" and search for CaptureAI  (The plugin is currently under review and not yet available in the community plugins)  
 5. Click "Install"  
 6. Enable the plugin after installation  
 
-### Manual Installation
+### Manual Installation✅
 1. Download the latest release archive  
 2. Extract into your Vault's `.obsidian/plugins/captureai` folder  
 3. Restart Obsidian  
 4. Enable CaptureAI in Settings > Community Plugins  
+
+### Use BRAT Plugin To Add✅
+1. Open Obsidian  
+2. Go to Settings > Community Plugins  
+3. Disable "Safe Mode"  
+4. Click "Browse" and search for/install BRAT plugin  
+5. In the BRAT settings panel, configure your GitHub Personal Access Token  
+6. Choose "Add beta plugin" and add: do7and/obsidian-captureai
 
 ---
 

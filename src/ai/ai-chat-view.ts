@@ -439,9 +439,6 @@ export class AIChatView extends ItemView {
 			};
 			conversation.messages.push(assistantMessage);
 			
-			// Update conversation title with smart title based on content
-			this.aiManager.updateConversationTitle(conversation.id);
-			
 			await this.updateContent();
 
 		} catch (error) {
@@ -1129,52 +1126,122 @@ export class AIChatView extends ItemView {
 			setIcon(sendButton, 'hourglass');
 
 			try {
+				// Get or create conversation
+				let conversation = this.aiManager.getCurrentConversationData();
+				if (!conversation) {
+					conversation = this.aiManager.createNewConversation('新对话');
+				}
+
+				// Step 1: 构建消息体（包含历史上下文、mode prompt等）
+				let messagesToSend: any[] = [];
+				let currentImages: string[] = [];
+				
 				if (imageDataList.length > 0 && isVisionCapable) {
-					// Send all images with optional text for vision-capable models
+					// Process images for vision-capable models
+					currentImages = imageDataList.map((img: any) => img.dataUrl);
 					this.clearImagePreview(inputArea);
-					await this.plugin.aiManager.sendImagesToAI(imageDataList.map((img: any) => ({
-						dataUrl: img.dataUrl,
-						fileName: img.fileName,
-						localPath: img.localPath
-					})), message || '');
-					
-					// Reset auto-save content tracking since conversation content changed
-					this.lastAutoSaveContent = null;
 				} else if (imageDataList.length > 0 && !isVisionCapable) {
 					// For non-vision models, keep images in preview and only send text
-					if (message) {
-						if (conversation && conversation.messages.length > 0) {
-							await this.sendFollowUpMessage(conversation, message);
-						} else {
-							await this.sendTextMessage(message);
-						}
-						// Reset auto-save content tracking since conversation content changed
-						this.lastAutoSaveContent = null;
-						
-						// Keep images in preview but update warning message
-						this.updateImagePreviewForNonVisionModel(inputArea, imageDataList);
-					} else {
-						// If no text message, just show a notice and keep images
+					if (!message) {
 						new Notice(t('aiChat.nonVisionModelCannotSendImages'));
 						this.updateImagePreviewForNonVisionModel(inputArea, imageDataList);
+						return;
 					}
-				} else if (conversation && conversation.messages.length > 0) {
-					// Follow-up text message in existing conversation
-					await this.sendFollowUpMessage(conversation, message);
-					
-					// Reset auto-save content tracking since conversation content changed
-					this.lastAutoSaveContent = null;
-				} else {
-					// New text-only conversation
-					await this.sendTextMessage(message);
-					
-					// Reset auto-save content tracking since conversation content changed
-					this.lastAutoSaveContent = null;
+					this.updateImagePreviewForNonVisionModel(inputArea, imageDataList);
 				}
+
+				// Build messages for AI (this includes system prompt, context, mode prompt, current message)
+				messagesToSend = await this.aiManager.buildContextMessages(
+					conversation, 
+					message, 
+					currentImages, 
+					currentModel, 
+					true
+				);
+
+				// Step 2: 添加用户消息到对话界面显示
+				let finalContent = message;
+				let tempImages: { [key: string]: string } = {};
+
+				// Handle images for display in chat
+				if (currentImages.length > 0) {
+					const imageReferences: string[] = [];
+					
+					for (let i = 0; i < imageDataList.length; i++) {
+						const img = imageDataList[i];
+						const imageId = `temp_${Date.now()}_${i}`;
+						
+						// Store temp image data
+						tempImages[imageId] = img.dataUrl;
+						
+						// Add image reference to content
+						imageReferences.push(`![${img.fileName}](temp:${imageId})`);
+					}
+					
+					// Combine text and image references
+					finalContent = imageReferences.join('\n') + (message ? '\n\n' + message : '');
+				}
+
+				// Add user message to conversation for display
+				const userMessage = {
+					id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+					type: 'user' as const,
+					content: finalContent,
+					timestamp: new Date(),
+					tempImages: Object.keys(tempImages).length > 0 ? tempImages : undefined
+				};
+
+				conversation.messages.push(userMessage);
+				await this.updateContent();
+
+				// Add typing indicator
+				const typingMessage = {
+					id: 'typing_' + Date.now(),
+					type: 'assistant' as const,
+					content: '',
+					timestamp: new Date(),
+					isTyping: true
+				};
+				conversation.messages.push(typingMessage);
+				await this.updateContent();
+
+				// Step 3: 发送预构建的消息体给AI
+				const response = await this.aiManager.sendPreBuiltMessagesToAI(messagesToSend, currentModel);
+
+				// Remove typing indicator
+				const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
+				if (typingIndex > -1) {
+					conversation.messages.splice(typingIndex, 1);
+				}
+
+				// Add AI response
+				const assistantMessage = {
+					id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+					type: 'assistant' as const,
+					content: response,
+					timestamp: new Date()
+				};
+				conversation.messages.push(assistantMessage);
+				
+				await this.updateContent();
+
+				// Reset auto-save content tracking since conversation content changed
+				this.lastAutoSaveContent = null;
+
 			} catch (error) {
 				getLogger().error('Failed to send message:', error);
+				// Remove typing indicator on error
+				const conversation = this.aiManager.getCurrentConversationData();
+				if (conversation) {
+					const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
+					if (typingIndex > -1) {
+						conversation.messages.splice(typingIndex, 1);
+						await this.updateContent();
+					}
+				}
 				// Restore text input on error
 				textInput.value = message;
+				new Notice(`❌ Error: ${error.message}`);
 			} finally {
 				sendButton.disabled = false;
 				setIcon(sendButton, 'send');
@@ -1993,9 +2060,6 @@ export class AIChatView extends ItemView {
 			};
 			conversation.messages.push(assistantMessage);
 			
-			// Update conversation title with smart title based on content
-			this.aiManager.updateConversationTitle(conversation.id);
-			
 			this.updateContent();
 
 		} catch (error) {
@@ -2311,6 +2375,41 @@ export class AIChatView extends ItemView {
 		}
 	}
 	
+	/**
+	 * Generate timestamp-based filename for auto-save
+	 * Format: YYYY-MM-DD_HH-mm-ss_auto-saved-{shortId}.md
+	 * This ensures files sort naturally by creation time
+	 */
+	private generateTimestampedFileName(conversationId: string): string {
+		const now = new Date();
+		const year = now.getFullYear();
+		const month = String(now.getMonth() + 1).padStart(2, '0');
+		const day = String(now.getDate()).padStart(2, '0');
+		const hours = String(now.getHours()).padStart(2, '0');
+		const minutes = String(now.getMinutes()).padStart(2, '0');
+		const seconds = String(now.getSeconds()).padStart(2, '0');
+		
+		const conversationIdShort = conversationId.slice(-8);
+		const fileName = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}_auto-saved-${conversationIdShort}.md`;
+		
+		// Ensure filename is safe across all operating systems
+		return this.sanitizeTimestampFileName(fileName);
+	}
+
+	/**
+	 * Sanitize timestamp-based filename to ensure cross-platform compatibility
+	 */
+	private sanitizeTimestampFileName(fileName: string): string {
+		// Replace any potentially problematic characters with safe alternatives
+		// Our timestamp format should already be safe, but this is a safety net
+		return fileName
+			.replace(/[<>:"/\\|?*]/g, '-') // Replace Windows forbidden characters
+			.replace(/[\x00-\x1F\x80-\x9F]/g, '') // Remove control characters
+			.replace(/^\.+/, '') // Remove leading dots
+			.replace(/\.+$/, '.md') // Ensure it ends with .md
+			.substring(0, 255); // Limit length for file systems
+	}
+
 	private async autoSaveConversationWithTimestamp(): Promise<void> {
 		if (!this.plugin.settings.autoSaveConversations) {
 			return;
@@ -2323,9 +2422,13 @@ export class AIChatView extends ItemView {
 				return;
 			}
 
-			// Use conversation ID for consistent filename - this will overwrite the same file
-			const conversationIdShort = conversation.id.slice(-8); // Last 8 chars of conversation ID
-			const fileName = `auto-saved-${conversationIdShort}.md`;
+			// Update conversation title based on content before saving
+			this.aiManager.updateConversationTitle(conversation.id);
+
+			// Generate timestamped filename for auto-save (creates new file each time)
+			const conversationIdShort = conversation.id.slice(-8); // Last 8 chars of conversation ID  
+			const fileName = this.generateTimestampedFileName(conversation.id);
+			getLogger().log('Auto-save using timestamped filename:', fileName);
 
 			// Generate markdown content first to check for changes (auto-save mode, without timestamp update for comparison)
 			const markdownContent = await this.generateConversationMarkdown(conversation, 'auto', false);
@@ -2387,6 +2490,9 @@ export class AIChatView extends ItemView {
 				new Notice(t('notice.noConversationToSave'));
 				return;
 			}
+
+			// Update conversation title based on content before saving
+			this.aiManager.updateConversationTitle(conversation.id);
 
 			// Generate or use existing conversation ID
 			const conversationId = conversation.id.startsWith('loaded_') ? 
@@ -2471,7 +2577,8 @@ export class AIChatView extends ItemView {
 	}
 
 	/**
-	 * Sanitize filename by removing or replacing invalid characters
+	 * Sanitize conversation title for use as filename (used in manual save)
+	 * Replaces invalid filename characters with underscores
 	 */
 	private sanitizeFileName(title: string): string {
 		// Replace invalid filename characters with underscores
@@ -2511,11 +2618,11 @@ export class AIChatView extends ItemView {
 
 			const files = vault.getMarkdownFiles().filter(file => 
 				file.path.startsWith(autoSaveLocation) && 
-				file.name.startsWith('auto-saved-')
+				(file.name.startsWith('auto-saved-') || file.name.includes('_auto-saved-'))
 			);
 
-			// Sort by modification time (newest first)
-			files.sort((a, b) => b.stat.mtime - a.stat.mtime);
+			// Sort by filename (which includes timestamp) in descending order (newest first)
+			files.sort((a, b) => b.name.localeCompare(a.name));
 
 			// Delete excess files
 			if (files.length > maxConversations) {
@@ -3454,9 +3561,6 @@ tags:
 			if (messageIndex > -1) {
 				conversation.messages[messageIndex].content = newContent;
 				conversation.lastUpdated = new Date();
-				
-				// Update conversation title if this affects the title
-				this.aiManager.updateConversationTitle(conversation.id);
 			}
 		}
 	}
@@ -3609,9 +3713,6 @@ tags:
 				// Remove message from conversation
 				conversation.messages.splice(messageIndex, 1);
 				conversation.lastUpdated = new Date();
-				
-				// Update conversation title after deletion
-				this.aiManager.updateConversationTitle(conversation.id);
 				
 				// Refresh the view
 				await this.updateContent();

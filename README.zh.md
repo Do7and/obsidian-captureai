@@ -1,141 +1,161 @@
-# CaptureAI - Obsidian Plugin
 
-<p align="center">
-  <img src="captureai-logo.svg" width="120" height="120" alt="CaptureAI Logo" />
-  <h3 align="center">Capture, Analyze, and Organize Visual Information with AI</h3>
-</p>
+<h1 align="center">CaptureAI</h1>
 
-[![GitHub release](https://img.shields.io/github/release/Do7and/captureai.svg)](https://github.com/Do7and/captureai/releases)
-[![AGPL License 3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.en.html)
+<div align="center">
+  <img src="captureai-logo.svg?raw=true" width="120" height="120" alt="CaptureAI Logo">
+  <h3 style="margin-top: 0px;">Capture, Analyze, and Organize Visual Information with AI</h3>
+</div>
+
+<!-- 这是一个注释，在渲染后的页面中不会显示 [![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=%23483699&label=downloads&query=%24%5B%22captureai%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&style=flat-square)](https://obsidian.md/plugins?id=captureai)-->
+
+<div align="center">
+
+[![Obsidian Plugin](https://img.shields.io/badge/Obsidian-Plugin-blueviolet?style=flat-square&logo=obsidian)](https://obsidian.md/plugins?id=captureai)
+[![GitHub release](https://img.shields.io/github/v/release/Do7and/captureai?style=flat-square&sort=semver)](https://github.com/Do7and/captureai/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/Do7and/captureai?style=flat-square)](https://github.com/Do7and/captureai/stargazers)
+[![License: AGPL 3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg?style=flat-square)](https://www.gnu.org/licenses/agpl-3.0.en.html)
+
+</div>
+
+
 
 ---
 
 **CaptureAI** 是一款强大的 Obsidian 插件，支持截图捕获和 AI 智能分析，改变你与视觉内容的交互方式，提升你的知识管理效率。
 
 ---
+
+<div align="center">
+
 [English](README.md) | 简体中文
 
+</div>
 
-## Features
+## 功能特性
 
-### 📸 Advanced Screenshot Capture
-- 支持区域截图，直观的选区工具
-- 预览时编辑：画笔、高亮、形状工具
-- 直接拖动边缘调整截图区域，无需额外裁剪工具
+### 📸 高级截图捕捉
+- 支持区域截图，直观的选区工具  
+- 预览时可编辑：画笔、高亮、形状工具  
+- 直接拖动边缘调整截图区域，无需额外裁剪  
 
-### 🤖 AI Integration & Analysis
-- 多 AI 模型支持（OpenAI、Anthropic、Google、自定义）
-- 自动识别视觉模型能力，智能选择
-- 四种工作模式：Analyze、OCR、Chat、Custom
-- 支持图像上下文对话
-- 系统提示词定制，满足多场景需求
-- 思考/推理块特殊样式与处理
+### 🤖 AI 集成与分析
+- 支持多种 AI 模型（OpenAI、Anthropic、Google、自定义）  
+- 自动识别视觉模型能力并智能选择  
+- 四种工作模式：分析（Analyze）、文字识别（OCR）、对话（Chat）、自定义（Custom）  
+- 支持基于图像的上下文对话  
+- 系统提示词可定制，适配多场景需求  
+- 特殊样式的“思考/推理”内容块  
 
-### 💬 Enhanced Chat Interface
-- 消息块设计，配备操作按钮
-- 支持插入光标、复制、编辑/阅读视图切换、删除
-- 支持 LaTeX 和 Markdown 渲染
-- 模型切换时上下文保持 
-- 会话与笔记的对应模型
+### 💬 增强型对话界面
+- 消息块设计，配备快捷操作按钮  
+- 支持插入光标、复制、编辑/阅读切换、删除  
+- 支持 LaTeX 与 Markdown 渲染  
+- 切换模型时保持上下文  
+- 会话与笔记之间自动匹配模型  
 
-### 🖼️ Intelligent Image Management
-- 多来源图像管理：
-  - 来自截图
-  - 从 Markdown 文件拖入
-  - Vault 中拖入图片
-  - 外部文件浏览器/网页拖入
-  - 文件浏览器选择
-- 支持Base64临时图片，无需存储到 Vault
-- 保存会话时自动保存到配置路径
-- 智能复制，路径自动处理
+### 🖼️ 智能图像管理
+- 多来源图像管理：  
+  - 截图捕获  
+  - 从 Markdown 文件拖入  
+  - 从 Vault 拖入  
+  - 从外部浏览器或网页拖入  
+  - 文件浏览器选择  
+- 支持 Base64 临时图片，无需存储到 Vault  
+- 保存会话时自动保存到指定路径  
+- 智能复制并自动处理路径  
 
-### 📝 Smart Conversation Management
-- 自动保存会话，带变更检测
-- 手动保存并自定义命名
-- 支持创建及修改时间戳追踪
-- 会话与笔记双向同步
-
----
-
-## How It Works
-
-1. **Capture**：用区域捕获工具选择屏幕任意区域  
-2. **Edit**：用多种绘图工具标注截图  
-3. **Analyze**：选择四种 AI 模式之一发送分析  
-4. **Converse**：基于图像上下文进行智能对话  
-5. **Organize**：保存会话为笔记或从历史访问
+### 📝 智能会话管理
+- 自动保存会话并检测变更  
+- 手动保存并自定义命名  
+- 支持创建/修改时间追踪  
+- 会话与笔记双向同步  
 
 ---
 
-## Installation
+## 工作流程
 
-### From Obsidian Community Plugins (Coming Soon)
+1. **捕捉**：用区域捕获工具选择屏幕任意区域  
+2. **编辑**：用绘图工具标注截图  
+3. **分析**：选择 AI 模式发送分析  
+4. **对话**：基于图像上下文进行交流  
+5. **整理**：保存会话为笔记或访问历史记录  
+
+---
+
+## 安装方式
+
+### 从 Obsidian 社区插件安装（❌即将上线）
 1. 打开 Obsidian  
-2. 进入设置 > 社区插件  
-3. 关闭「安全模式」  
-4. 点击「浏览」搜索 CaptureAI  
-5. 点击安装  
-6. 安装完成后启用插件  
+2. 进入 设置 > 社区插件  
+3. 关闭“安全模式”  
+4. 点击“浏览”并搜索 CaptureAI（插件正在审核中）  
+5. 安装并启用插件  
 
-### Manual Installation
+### 手动安装 ✅
 1. 下载最新版本压缩包  
 2. 解压到 Vault 的 `.obsidian/plugins/captureai` 文件夹  
 3. 重启 Obsidian  
-4. 设置 > 社区插件中启用 CaptureAI  
+4. 在 设置 > 社区插件 中启用 CaptureAI  
+
+### 使用 BRAT 插件添加 ✅
+1. 打开 Obsidian  
+2. 进入 设置 > 社区插件  
+3. 关闭“安全模式”  
+4. 搜索并安装 BRAT  
+5. 在 BRAT 设置中配置 GitHub Personal Access Token  
+6. 选择 “Add beta plugin”，添加：`do7and/obsidian-captureai`  
 
 ---
 
-## Configuration
+## 配置
 
-### AI Model Setup
-1. 进入设置 > CaptureAI  
-2. 配置各 AI 服务的 API Key  
-3. 管理和添加支持视觉能力的模型  
-4. 设定各操作模式默认模型
+### AI 模型设置
+1. 打开 设置 > CaptureAI  
+2. 配置各 AI 服务 API Key  
+3. 管理与添加支持视觉的模型  
+4. 设置各模式的默认模型  
 
-### Image Handling
+### 图像处理
 - 设置截图保存路径  
 - 配置临时图片大小限制  
-- 定义其他图片源的存储路径  
-- 自定义复制时的格式
+- 定义其他来源图片的存储路径  
+- 自定义复制时的输出格式  
 
-### UI Customization
+### 界面自定义
 - 调整快捷键  
 - 配置界面显示偏好  
-- 设定自动保存参数
+- 设置自动保存参数  
 
 ---
 
-## Usage Examples
+## 使用场景示例
 
-### Academic Research
-- 截取教科书页并用 OCR 提取文字  
-- 分析图表获取数据洞察  
-- 用 AI 生成带注释的学习笔记  
+### 学术研究
+- 截取教材页并用 OCR 提取文字  
+- 分析图表获取数据  
+- 用 AI 生成注释笔记  
 
-### Programming Assistance
-- 截取代码片段，获取说明和建议  
+### 编程辅助
+- 截取代码并获取解释或建议  
 - UI 设计反馈  
 - 结合视觉参考记录调试过程  
 
-### Creative Work
+### 创意工作
 - 设计稿标注反馈  
 - 分析视觉内容助力创作  
-- 利用 AI 标签整理视觉灵感  
+- 用 AI 标签整理灵感  
 
 ---
 
+## 开发计划
 
-## Roadmap
-
-- [ ] 修bug  
+- [ ] 修复已知问题  
 
 ---
 
-## Contributing
+## 参与贡献
 
-欢迎贡献！请按照以下步骤：
-
+欢迎贡献！流程如下：  
 1. Fork 本仓库  
 2. 新建分支 (`git checkout -b feature/AmazingFeature`)  
 3. 提交代码 (`git commit -m 'Add some AmazingFeature'`)  
@@ -144,24 +164,24 @@
 
 ---
 
-## Support
+## 技术支持
 
-- 🐛 在 [GitHub Issues](https://github.com/Do7and/captureai/issues) 报告问题  
+- 🐛 在 [GitHub Issues](https://github.com/Do7and/captureai/issues) 提交问题  
 - 💡 在 [GitHub Discussions](https://github.com/Do7and/captureai/discussions) 提建议  
 
 ---
 
-## License
+## 许可证
 
-版权所有 © 2025 Do7and
+版权所有 © 2025 Do7and  
 
-本项目采用 GNU Affero 通用公共许可证 第3版（AGPL-3.0）授权。  
-许可证全文请见：[AGPL v3.0 许可证](https://www.gnu.org/licenses/agpl-3.0.en.html)。
+本项目使用 GNU Affero 通用公共许可证 第3版（AGPL-3.0）授权。  
+查看完整许可证：[AGPL v3.0](https://www.gnu.org/licenses/agpl-3.0.en.html)  
 
 ---
 
-## Acknowledgments
+## 致谢
 
 - 感谢 Obsidian 团队打造优秀的知识管理平台  
-- 灵感来源于 AI 与个人知识管理的交叉发展  
-- 图标来自 Lucide Icons 库
+- 灵感来源于 AI 与个人知识管理的结合  
+- 图标来自 Lucide Icons  

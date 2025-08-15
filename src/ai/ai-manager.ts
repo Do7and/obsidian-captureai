@@ -138,9 +138,6 @@ export class AIManager {
 			};
 			conversation.messages.push(assistantMsg);
 
-			// Update conversation title with smart title based on content
-			this.updateConversationTitle(conversation.id);
-
 			// Update last used timestamp
 			defaultModelConfig.lastUsed = new Date();
 			await this.plugin.saveSettings();
@@ -240,7 +237,7 @@ export class AIManager {
 		
 		const isVisionCapable = targetModelConfig?.isVisionCapable || false;
 
-		// 1. Add system prompt (global, no modeprompt here)
+		// 1. Add system prompt (global system prompt)
 		if (contextSettings.includeSystemPrompt) {
 			messages.push({
 				role: 'system',
@@ -248,10 +245,10 @@ export class AIManager {
 			});
 		}
 
-		// Add historical messages if conversation exists (excluding the most recent message to avoid duplication)
-		if (conversation && conversation.messages.length > 1) {
-			// Exclude the last message since it will be processed as current message
-			let historicalMessages = conversation.messages.slice(0, -1);
+		// 2. Add historical context messages (不包含当前要发送的消息)
+		if (conversation && conversation.messages.length > 0) {
+			// Get all historical messages (不包含当前发送的消息)
+			let historicalMessages = conversation.messages.slice();
 			let imageCount = 0;
 
 			// Filter out error messages to prevent context pollution
@@ -260,6 +257,8 @@ export class AIManager {
 				if (msg.type === 'assistant' && msg.content.startsWith('Error:')) {
 					return false;
 				}
+				// Skip typing indicators
+				if (msg.isTyping) return false;
 				return true;
 			});
 
@@ -293,8 +292,6 @@ export class AIManager {
 
 			// Convert historical messages to API format
 			for (const msg of historicalMessages) {
-				if (msg.isTyping) continue; // Skip typing indicators
-
 				const role = msg.type === 'user' ? 'user' : 'assistant';
 				
 				// Parse message content to separate images and text
@@ -361,30 +358,60 @@ export class AIManager {
 			}
 		}
 
-		// Add current message with智能 mode prompt 判断
-		let finalCurrentMessage = currentMessage;
+		// 3. Handle mode prompt logic
 		const currentMode = this.getCurrentMode();
 		const hasImages: boolean = !!(currentImages && currentImages.length > 0);
 		
-		// 使用智能判断逻辑决定是否应用 mode prompt
-		const shouldApply = this.shouldApplyModePrompt(conversation, hasImages, currentMode);
-		
-		if (shouldApply) {
-			const modePrompt = this.getModePrompt(currentMode);
-			if (modePrompt && modePrompt.trim()) {
-				finalCurrentMessage = modePrompt + '\n\n' + currentMessage;
-			}
+		// 判断是否需要添加 mode prompt
+		if (hasImages) {
+			// 有图片时，判断是否需要添加 mode prompt
+			const shouldApply = this.shouldApplyModePrompt(conversation, hasImages, currentMode);
 			
-			// 更新对话的 mode 状态
-			if (conversation) {
-				conversation.lastModeUsed = currentMode;
+			if (shouldApply) {
+				const modePrompt = this.getModePrompt(currentMode);
+				if (modePrompt && modePrompt.trim()) {
+					// 添加独立的 mode prompt 消息块，使用 system role
+					messages.push({
+						role: 'system',
+						content: modePrompt
+					});
+				}
+				
+				// 更新对话的 mode 状态
+				if (conversation) {
+					conversation.lastModeUsed = currentMode;
+				}
 			}
+		} else {
+			// 没有图片时，检查 mode 是否是图片相关
+			const isImageRelatedMode = this.isImageRelatedMode(currentMode);
+			if (!isImageRelatedMode) {
+				// 非图片相关的 mode，可以添加 mode prompt
+				const shouldApply = this.shouldApplyModePrompt(conversation, hasImages, currentMode);
+				
+				if (shouldApply) {
+					const modePrompt = this.getModePrompt(currentMode);
+					if (modePrompt && modePrompt.trim()) {
+						messages.push({
+							role: 'system',
+							content: modePrompt
+						});
+					}
+					
+					// 更新对话的 mode 状态
+					if (conversation) {
+						conversation.lastModeUsed = currentMode;
+					}
+				}
+			}
+			// 如果是图片相关的 mode 但没有图片，则不添加 mode prompt（避免歧义）
 		}
-		
+
+		// 4. Add current user message (纯净的用户消息，不包含 mode prompt)
 		if (currentImages && currentImages.length > 0 && isVisionCapable) {
-			// Current message with images - only if model supports vision
+			// Current message with images - multimodal format
 			const messageContent = [
-				{ type: 'text', text: finalCurrentMessage }
+				{ type: 'text', text: currentMessage }
 			];
 			
 			// Add current images
@@ -400,10 +427,10 @@ export class AIManager {
 				content: messageContent
 			});
 		} else {
-			// Current text-only message (either no images or model doesn't support vision)
+			// Current text-only message
 			messages.push({
 				role: 'user',
-				content: finalCurrentMessage
+				content: currentMessage
 			});
 		}
 
@@ -426,6 +453,21 @@ export class AIManager {
 		
 		// Call appropriate API with context
 		return await this.callAPIWithContextMessages(contextMessages, targetModelConfig);
+	}
+
+	// New method: Send pre-built messages to AI (separated from message construction)
+	async sendPreBuiltMessagesToAI(messages: any[], modelConfig?: ModelConfig): Promise<string> {
+		// Use provided model config or default
+		const targetModelConfig = modelConfig || this.plugin.settings.modelConfigs.find(
+			mc => mc.id === this.plugin.settings.defaultModelConfigId
+		);
+		
+		if (!targetModelConfig) {
+			throw new Error('No model configured');
+		}
+
+		// Send the pre-built messages directly to API
+		return await this.callAPIWithContextMessages(messages, targetModelConfig);
 	}
 
 	// New function to call API with pre-built context messages
