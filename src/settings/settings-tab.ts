@@ -66,17 +66,6 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// 显示仅发送按钮设置
-		new Setting(containerEl)
-			.setName(t('settings.showSendOnlyButton.name'))
-			.setDesc(t('settings.showSendOnlyButton.desc'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showSendOnlyButton)
-				.onChange(async (value) => {
-					this.plugin.settings.showSendOnlyButton = value;
-					await this.plugin.saveSettings();
-					this.refreshModelDependentComponents();
-				}));
 
 		// Screenshot功能设置分类
 		containerEl.createEl('h3', { text: t('settings.screenshotFunction') });
@@ -207,6 +196,19 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.otherSourceImageLocation = value;
 						await this.plugin.saveSettings();
+					}));
+
+
+			// 显示仅发送按钮设置
+			new Setting(containerEl)
+				.setName(t('settings.showSendOnlyButton.name'))
+				.setDesc(t('settings.showSendOnlyButton.desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.showSendOnlyButton)
+					.onChange(async (value) => {
+						this.plugin.settings.showSendOnlyButton = value;
+						await this.plugin.saveSettings();
+						this.refreshModelDependentComponents();
 					}));
 
 			// 第三块：会话记录相关设置

@@ -94,7 +94,7 @@ export class ManageModelsModal extends Modal {
 		
 		// Set as default button
 		if (modelConfig.id !== this.plugin.settings.defaultModelConfigId) {
-			const defaultBtn = actionsEl.createEl('button', { text: t('manageModels.setDefaultButton'), cls: 'default-btn' });
+			const defaultBtn = actionsEl.createEl('button', { text: t('manageModels.setDefaultButton'), cls: 'btn-base btn-small btn-primary' });
 			defaultBtn.addEventListener('click', async () => {
 				this.plugin.settings.defaultModelConfigId = modelConfig.id;
 				await this.plugin.saveSettings();
@@ -104,13 +104,13 @@ export class ManageModelsModal extends Modal {
 		}
 
 		// Delete button
-		const deleteBtn = actionsEl.createEl('button', { cls: 'delete-btn' });
+		const deleteBtn = actionsEl.createEl('button', { cls: 'btn-base btn-icon' });
 		setIcon(deleteBtn, 'trash-2');
 		deleteBtn.title = t('manageModels.deleteButtonTitle');
 		deleteBtn.addEventListener('click', () => this.confirmDelete(modelConfig, index));
 
 		// Settings toggle button
-		const toggleBtn = actionsEl.createEl('button', { cls: 'toggle-settings-btn' });
+		const toggleBtn = actionsEl.createEl('button', { cls: 'btn-base btn-icon toggle-settings-btn' });
 		setIcon(toggleBtn, 'settings');
 		toggleBtn.title = t('manageModels.configureButtonTitle');
 
@@ -122,12 +122,10 @@ export class ManageModelsModal extends Modal {
 			isExpanded = !isExpanded;
 			if (isExpanded) {
 				settingsEl.style.display = 'block';
-				toggleBtn.textContent = '⚙️';
 				toggleBtn.classList.add('expanded');
 				this.renderModelSettings(settingsEl, modelConfig);
 			} else {
 				settingsEl.style.display = 'none';
-				toggleBtn.textContent = '⚙️';
 				toggleBtn.classList.remove('expanded');
 			}
 		});
@@ -245,7 +243,7 @@ export class ManageModelsModal extends Modal {
 		// Reset to defaults button
 		const resetBtn = settingsForm.createEl('button', { 
 			text: t('manageModels.resetToDefaultsButton'),
-			cls: 'reset-btn'
+			cls: 'btn-base btn-danger'
 		});
 		resetBtn.addEventListener('click', async () => {
 			modelConfig.settings = { ...DEFAULT_MODEL_SETTINGS };
@@ -363,10 +361,10 @@ class ConfirmDeleteModal extends Modal {
 
 		const buttonsEl = scrollableContent.createEl('div', { cls: 'button-group' });
 		
-		const cancelBtn = buttonsEl.createEl('button', { text: t('manageModels.confirmDeleteCancel'), cls: 'cancel-btn' });
+		const cancelBtn = buttonsEl.createEl('button', { text: t('manageModels.confirmDeleteCancel'), cls: 'btn-base' });
 		cancelBtn.addEventListener('click', () => this.close());
 
-		const deleteBtn = buttonsEl.createEl('button', { text: t('manageModels.confirmDeleteConfirm'), cls: 'delete-btn' });
+		const deleteBtn = buttonsEl.createEl('button', { text: t('manageModels.confirmDeleteConfirm'), cls: 'btn-base btn-danger' });
 		deleteBtn.addEventListener('click', () => {
 			this.onConfirm();
 			this.close();

@@ -28,6 +28,9 @@ export class ImageEditor extends Modal {
 	
 	// UI elements
 	private fileNameInput: HTMLInputElement | null = null;
+	private fileNameWarning: HTMLElement | null = null;
+	private fileNameInvalidWarning: HTMLElement | null = null;
+	private saveButtons: HTMLButtonElement[] = []; // Store buttons that require valid filename
 
 	// Four-layer system simulation properties
 	// Layer 1: Preview page with center hole (handled by UI)
@@ -307,7 +310,7 @@ export class ImageEditor extends Modal {
 		
 		tools.forEach(tool => {
 			const button = toolbar.createEl('button', { 
-				cls: this.currentTool === tool.name ? 'active image-editor-tool-button' : 'image-editor-tool-button'
+				cls: this.currentTool === tool.name ? 'btn-base btn-icon active image-editor-tool-button' : 'btn-base btn-icon image-editor-tool-button'
 			});
 			button.createEl('span', {}, (span) => {
 				setIcon(span, tool.icon);
@@ -357,20 +360,20 @@ export class ImageEditor extends Modal {
 		// Note: Crop frame is automatically shown for extended regions
 		
 		// History buttons
-		const undoButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
+		const undoButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
 		setIcon(undoButton, 'undo');
 
-		undoButton.setAttribute('data-tooltip', '撤销');
+		undoButton.setAttribute('data-tooltip', t('imageEditor.undoTooltip'));
 		undoButton.addEventListener('click', () => this.undo());
 		
-		const redoButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
+		const redoButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
 		setIcon(redoButton, 'redo');
-		redoButton.setAttribute('data-tooltip', '重做');
+		redoButton.setAttribute('data-tooltip', t('imageEditor.redoTooltip'));
 		redoButton.addEventListener('click', () => this.redo());
 		
-		const clearButton = toolbar.createEl('button', { cls: 'non-tool image-editor-history-button' });
+		const clearButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
 		setIcon(clearButton, 'trash-2');
-		clearButton.setAttribute('data-tooltip', '清空画布');
+		clearButton.setAttribute('data-tooltip', t('imageEditor.clearCanvasTooltip'));
 		clearButton.addEventListener('click', () => this.clearCanvas());
 		
 		// Separator
@@ -532,10 +535,14 @@ export class ImageEditor extends Modal {
 		// Use CSS class for base styling
 		buttonBar.className = 'image-editor-action-buttons-container';
 		
-		// File name input section
-		const fileNameSection = buttonBar.createDiv({ cls: 'image-editor-filename-section image-editor-filename-section-layout' });
+		// File name input section with vertical layout for warnings
+		const fileNameSection = buttonBar.createDiv({ cls: 'image-editor-filename-section' });
 		
-		const fileNameLabel = fileNameSection.createEl('label', { 
+		// Create input row (label + input in same line)
+		const inputRow = fileNameSection.createDiv({ cls: 'image-editor-filename-section-layout' });
+		
+		// File name label
+		const fileNameLabel = inputRow.createEl('label', { 
 			text: t('imageEditor.fileNameLabel'),
 			cls: 'image-editor-filename-label-style'
 		});
@@ -544,15 +551,54 @@ export class ImageEditor extends Modal {
 		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const defaultFileName = `screenshot-${timestamp}.png`;
 		
-		const fileNameInput = fileNameSection.createEl('input', { 
+		const fileNameInput = inputRow.createEl('input', { 
 			type: 'text',
 			placeholder: t('imageEditor.fileNamePlaceholder'),
 			value: defaultFileName,
-			cls: 'image-editor-filename-input-style'
+			cls: 'input-base image-editor-filename-input-style'
 		});
 		
 		// Store reference to filename input
 		this.fileNameInput = fileNameInput;
+		
+		// Create warning container OUTSIDE inputRow but INSIDE fileNameSection
+		const warningsContainer = fileNameSection.createDiv({ cls: 'image-editor-filename-warnings-container' });
+		
+		// Create warning element for invalid filename
+		const invalidWarningElement = warningsContainer.createEl('div', { 
+			cls: 'image-editor-filename-warning'
+		});
+		invalidWarningElement.style.cssText = `
+			color: #dc3545;
+			font-size: 12px;
+			display: none;
+			text-align: left;
+		`;
+		this.fileNameInvalidWarning = invalidWarningElement;
+		
+		// Create warning element for file conflicts
+		const conflictWarningElement = warningsContainer.createEl('div', { 
+			cls: 'image-editor-filename-warning'
+		});
+		conflictWarningElement.style.cssText = `
+			color: #f59e0b;
+			font-size: 12px;
+			display: none;
+			text-align: left;
+		`;
+		this.fileNameWarning = conflictWarningElement;
+		
+		// Add event listener to check file validity and conflicts
+		fileNameInput.addEventListener('input', () => {
+			getLogger().log('File name input changed, checking validity and conflicts');
+			this.validateFileName();
+		});
+		
+		// Initial check
+		setTimeout(() => {
+			getLogger().log('Running initial file name validation');
+			this.validateFileName();
+		}, 100);
 		
 		// Button row
 		const buttonRow = buttonBar.createDiv({ cls: 'image-editor-button-row image-editor-button-row-layout' });
@@ -611,6 +657,7 @@ export class ImageEditor extends Modal {
 		// Original Save and Send to AI button (with save)
 		if (aiEnabled) {
 			const aiButton = buttonRow.createEl('button', { text: t('imageEditor.aiButton') });
+			this.saveButtons.push(aiButton); // Add to save buttons array
 			if (aiButtonEnabled) {
 				this.styleActionButton(aiButton, 'var(--interactive-accent)', 'var(--text-on-accent)');
 			} else {
@@ -629,7 +676,7 @@ export class ImageEditor extends Modal {
 				aiButton.title = tooltip;
 			}
 			aiButton.addEventListener('click', () => {
-				if (aiButtonEnabled) {
+				if (aiButtonEnabled && !aiButton.disabled) {
 					this.saveAndAddToAIQueue();
 				}
 			});
@@ -637,13 +684,18 @@ export class ImageEditor extends Modal {
 		
 		// Original save button
 		const saveButton = buttonRow.createEl('button', { text: t('imageEditor.saveButton') });
+		this.saveButtons.push(saveButton); // Add to save buttons array
 		this.styleActionButton(saveButton, 'var(--interactive-accent)', 'var(--text-on-accent)');
-		saveButton.addEventListener('click', () => this.saveAndCopyMarkdown());
+		saveButton.addEventListener('click', () => {
+			if (!saveButton.disabled) {
+				this.saveAndCopyMarkdown();
+			}
+		});
 	}
 
 	private styleActionButton(button: HTMLButtonElement, bgColor: string, textColor: string) {
-		// Use CSS class for base styling
-		button.className = 'image-editor-action-button-base';
+		// Use unified button base class
+		button.className = 'btn-base image-editor-action-button-base';
 		// Use style attribute only for dynamic colors
 		button.setAttr('style', `background: ${bgColor}; color: ${textColor};`);
 	}
@@ -1644,6 +1696,181 @@ export class ImageEditor extends Modal {
 		
 		// If no crop mode, return full canvas
 		return this.canvas.toDataURL('image/png');
+	}
+
+	/**
+	 * Validate filename for legality and check for conflicts
+	 */
+	private async validateFileName(): Promise<void> {
+		getLogger().log('validateFileName called');
+		if (!this.fileNameInput || !this.fileNameWarning || !this.fileNameInvalidWarning) {
+			getLogger().log('Missing filename validation elements');
+			return;
+		}
+		
+		const fileName = this.getFileName();
+		getLogger().log('Validating file name:', fileName);
+		
+		// Check file name validity first
+		const isValidName = this.isValidFileName(fileName);
+		if (!isValidName) {
+			this.showInvalidFileNameWarning();
+			this.hideFileNameWarning();
+			this.disableSaveButtons();
+			return;
+		} else {
+			this.hideInvalidFileNameWarning();
+			this.enableSaveButtons();
+		}
+		
+		// Then check for conflicts
+		await this.checkFileNameConflict();
+	}
+
+	/**
+	 * Check if filename contains invalid characters
+	 */
+	private isValidFileName(fileName: string): boolean {
+		if (!fileName || fileName.trim() === '') {
+			return false;
+		}
+		
+		// Check for invalid characters: \ / : * ? " < > |
+		const invalidChars = /[\\/:*?"<>|]/;
+		if (invalidChars.test(fileName)) {
+			return false;
+		}
+		
+		// Check for reserved names on Windows
+		const reservedNames = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
+		if (reservedNames.test(fileName)) {
+			return false;
+		}
+		
+		// Check for names that start or end with space/period
+		if (fileName.startsWith(' ') || fileName.endsWith(' ') || 
+		    fileName.startsWith('.') || fileName.endsWith('.')) {
+			return false;
+		}
+		
+		// Check for extremely long filenames
+		if (fileName.length > 255) {
+			return false;
+		}
+		
+		return true;
+	}
+
+	/**
+	 * Enable save buttons
+	 */
+	private enableSaveButtons(): void {
+		this.saveButtons.forEach(button => {
+			button.disabled = false;
+			button.style.opacity = '1';
+			button.style.cursor = 'pointer';
+		});
+	}
+
+	/**
+	 * Disable save buttons due to invalid filename
+	 */
+	private disableSaveButtons(): void {
+		this.saveButtons.forEach(button => {
+			button.disabled = true;
+			button.style.opacity = '0.5';
+			button.style.cursor = 'not-allowed';
+		});
+	}
+
+	/**
+	 * Show invalid filename warning
+	 */
+	private showInvalidFileNameWarning(): void {
+		getLogger().log('Showing invalid filename warning');
+		if (!this.fileNameInvalidWarning) return;
+		
+		this.fileNameInvalidWarning.textContent = t('imageEditor.fileNameInvalidWarning');
+		this.fileNameInvalidWarning.title = t('imageEditor.fileNameInvalidTooltip');
+		this.fileNameInvalidWarning.style.display = 'block';
+		getLogger().log('Invalid warning element updated:', this.fileNameInvalidWarning.textContent);
+	}
+	
+	/**
+	 * Hide invalid filename warning
+	 */
+	private hideInvalidFileNameWarning(): void {
+		getLogger().log('Hiding invalid filename warning');
+		if (!this.fileNameInvalidWarning) return;
+		
+		this.fileNameInvalidWarning.style.display = 'none';
+		this.fileNameInvalidWarning.textContent = '';
+		this.fileNameInvalidWarning.title = '';
+	}
+	private async checkFileNameConflict(): Promise<void> {
+		getLogger().log('checkFileNameConflict called');
+		if (!this.fileNameInput || !this.fileNameWarning) {
+			getLogger().log('Missing fileNameInput or fileNameWarning elements');
+			return;
+		}
+		
+		const fileName = this.getFileName();
+		getLogger().log('Checking file name:', fileName);
+		if (!fileName) {
+			this.hideFileNameWarning();
+			return;
+		}
+		
+		try {
+			// Determine the target save path
+			let targetPath = fileName;
+			const saveLocation = this.plugin.settings.defaultSaveLocation;
+			if (saveLocation && saveLocation.trim() !== '') {
+				targetPath = `${saveLocation}/${fileName}`;
+			}
+			getLogger().log('Checking target path:', targetPath);
+			
+			// Check if file exists in vault
+			const vault = this.plugin.app.vault;
+			const fileExists = await vault.adapter.exists(targetPath);
+			getLogger().log('File exists:', fileExists);
+			
+			if (fileExists) {
+				this.showFileNameWarning();
+			} else {
+				this.hideFileNameWarning();
+			}
+			
+		} catch (error) {
+			// On error, hide warning to avoid false positives
+			getLogger().warn('Failed to check file existence:', error);
+			this.hideFileNameWarning();
+		}
+	}
+	
+	/**
+	 * Show the file name conflict warning
+	 */
+	private showFileNameWarning(): void {
+		getLogger().log('Showing file name warning');
+		if (!this.fileNameWarning) return;
+		
+		this.fileNameWarning.textContent = t('imageEditor.fileNameConflictWarning');
+		this.fileNameWarning.title = t('imageEditor.fileNameConflictTooltip');
+		this.fileNameWarning.style.display = 'block';
+		getLogger().log('Warning element updated:', this.fileNameWarning.textContent);
+	}
+	
+	/**
+	 * Hide the file name conflict warning
+	 */
+	private hideFileNameWarning(): void {
+		getLogger().log('Hiding file name warning');
+		if (!this.fileNameWarning) return;
+		
+		this.fileNameWarning.style.display = 'none';
+		this.fileNameWarning.textContent = '';
+		this.fileNameWarning.title = '';
 	}
 
 	cleanup() {

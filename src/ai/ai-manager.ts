@@ -657,6 +657,16 @@ export class AIManager {
 	}
 
 	/**
+	 * 判断指定的mode是否与图片相关
+	 * @param mode 要检查的mode
+	 * @returns 是否是图片相关的mode
+	 */
+	isImageRelatedMode(mode: string): boolean {
+		const imageRelatedModes = ['analyze', 'ocr'];
+		return imageRelatedModes.includes(mode);
+	}
+
+	/**
 	 * 智能判断是否需要应用 mode prompt
 	 * @param conversation 当前对话
 	 * @param hasImages 当前消息是否包含图片

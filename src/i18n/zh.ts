@@ -282,6 +282,13 @@ export default {
   "imageEditor.tempCopyTooltip": "将图片复制到剪贴板而不保存到仓库",
   "imageEditor.noDefaultModelTooltip": "未选择默认模型或模型不支持视觉功能",
   "imageEditor.credentialsNotVerifiedTooltip": "API凭据未验证。请使用设置 > 设置密钥来验证。",
+  "imageEditor.undoTooltip": "撤销",
+  "imageEditor.redoTooltip": "重做", 
+  "imageEditor.clearCanvasTooltip": "清空画布",
+  "imageEditor.fileNameConflictWarning": "文件名已存在，保存时将被覆盖",
+  "imageEditor.fileNameConflictTooltip": "该文件名在目标目录中已存在",
+  "imageEditor.fileNameInvalidWarning": "文件名包含非法字符或格式不正确",
+  "imageEditor.fileNameInvalidTooltip": "文件名不能包含以下字符: \\ / : * ? \" < > |",
 
   // Set Keys Modal
   "setKeys.title": "AI 提供商设置",

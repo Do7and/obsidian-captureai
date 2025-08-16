@@ -558,7 +558,7 @@ export class AIChatView extends ItemView {
 		
 		// 1. Insert at cursor button
 		const insertBtn = actionButtons.createEl('button', { 
-			cls: 'message-action-btn',
+			cls: 'btn-transparent btn-transparent-sm message-action-btn',
 			attr: { 
 				title: t('aiChat.insertToCursorButton'),
 				'data-tooltip': t('aiChat.insertToCursorButton')
@@ -574,7 +574,7 @@ export class AIChatView extends ItemView {
 		
 		// 2. Copy button  
 		const copyBtn = actionButtons.createEl('button', { 
-			cls: 'message-action-btn',
+			cls: 'btn-transparent btn-transparent-sm message-action-btn',
 			attr: { 
 				title: t('aiChat.copyMessageButton'),
 				'data-tooltip': t('aiChat.copyMessageButton')
@@ -589,7 +589,7 @@ export class AIChatView extends ItemView {
 		
 		// 3. Toggle edit/read view button
 		const editBtn = actionButtons.createEl('button', { 
-			cls: 'message-action-btn',
+			cls: 'btn-transparent btn-transparent-sm message-action-btn',
 			attr: { 
 				title: t('aiChat.switchEditViewButton'),
 				'data-tooltip': t('aiChat.switchEditViewButton')
@@ -605,7 +605,7 @@ export class AIChatView extends ItemView {
 		
 		// 4. Delete button
 		const deleteBtn = actionButtons.createEl('button', { 
-			cls: 'message-action-btn delete-btn',
+			cls: 'btn-transparent btn-transparent-sm message-action-btn delete-btn',
 			attr: { 
 				title: t('aiChat.deleteMessageButton'),
 				'data-tooltip': t('aiChat.deleteMessageButton')
@@ -953,7 +953,7 @@ export class AIChatView extends ItemView {
 		
 		// Save button with Lucide save icon
 		const saveBtn = rightActions.createEl('button', { 
-			cls: 'ai-chat-action-btn',
+			cls: 'btn-transparent btn-transparent-md ai-chat-action-btn',
 			attr: { 
 				title: t('aiChat.saveConversationButton'),
 				'data-tooltip': t('aiChat.saveConversationButton')
@@ -964,7 +964,7 @@ export class AIChatView extends ItemView {
 
 		// Chat History button with Lucide history icon
 		const historyBtn = rightActions.createEl('button', { 
-			cls: 'ai-chat-action-btn',
+			cls: 'btn-transparent btn-transparent-md ai-chat-action-btn',
 			attr: { 
 				title: t('aiChat.loadHistoryButton'),
 				'data-tooltip': t('aiChat.loadHistoryButton')
@@ -975,7 +975,7 @@ export class AIChatView extends ItemView {
 
 		// New chat button with Lucide plus icon
 		const newChatBtn = rightActions.createEl('button', { 
-			cls: 'ai-chat-action-btn',
+			cls: 'btn-transparent btn-transparent-md ai-chat-action-btn',
 			attr: { 
 				title: t('aiChat.newConversationButton'),
 				'data-tooltip': t('aiChat.newConversationButton')
@@ -987,7 +987,7 @@ export class AIChatView extends ItemView {
 		
 		// Menu button with Lucide more-vertical icon
 		const menuBtn = rightActions.createEl('button', { 
-			cls: 'ai-chat-action-btn',
+			cls: 'btn-transparent btn-transparent-md ai-chat-action-btn',
 			attr: { 
 				title: t('aiChat.menuButton'),
 				'data-tooltip': t('aiChat.menuButton')
@@ -1540,7 +1540,7 @@ export class AIChatView extends ItemView {
 		}
 		
 		const clearAllBtn = headerEl.createEl('button', { 
-			cls: 'ai-chat-action-btn',
+			cls: 'btn-transparent btn-transparent-md ai-chat-action-btn',
 			attr: { 
 				title: t('aiChat.clearAllImages'),
 				'data-tooltip': t('aiChat.clearAllImages')
@@ -3331,7 +3331,7 @@ tags:
 			
 			// Update button icon to view icon
 			setIcon(editBtn, 'eye');
-			editBtn.setAttribute('data-tooltip', 'Switch to Read View');
+			editBtn.setAttribute('data-tooltip', t('aiChat.switchEditViewButton'));
 			
 			messageContent.addClass('editing-mode');
 		}

@@ -94,14 +94,14 @@ export class SetKeysModal extends Modal {
 		const apiKeyInput = apiKeyInputContainer.createEl('input', { 
 			type: 'password',
 			placeholder: t('setKeys.apiKeyPlaceholder'),
-			cls: 'api-key-input'
+			cls: 'input-base api-key-input'
 		});
 		apiKeyInput.value = apiKey;
 		
 		// Verify button inline with input
 		const verifyButton = apiKeyInputContainer.createEl('button', { 
 			text: t('setKeys.verifyButton'),
-			cls: 'verify-button-inline'
+			cls: 'btn-base verify-button-inline'
 		});
 		
 		apiKeyInput.addEventListener('input', async (e) => {
@@ -206,7 +206,7 @@ export class SetKeysModal extends Modal {
 			addModelInputContainer.addClass('custom-provider');
 			
 			modelInput = addModelInputContainer.createEl('input', { 
-				cls: 'model-text-input',
+				cls: 'input-base model-text-input',
 				attr: {
 					type: 'text',
 					placeholder: t('setKeys.customModelPlaceholder')
@@ -231,12 +231,12 @@ export class SetKeysModal extends Modal {
 		} else {
 			// For other providers, use dropdown
 			addModelLabel.createEl('div', { text: t('setKeys.addModelDescription'), cls: 'setting-item-description' });
-			modelInput = addModelInputContainer.createEl('select', { cls: 'modellist-dropdown' });
+			modelInput = addModelInputContainer.createEl('select', { cls: 'input-base modellist-dropdown' });
 		}
 		
 		const addModelButton = addModelInputContainer.createEl('button', { 
 			text: t('setKeys.addModelButton'),
-			cls: 'add-model-button'
+			cls: 'btn-base add-model-button'
 		});
 		
 		// Store references for updates
@@ -1207,7 +1207,7 @@ class ModelSelectionModal extends Modal {
 				metaEl.createEl('span', { text: `${model.contextWindow.toLocaleString()} tokens`, cls: 'context-badge' });
 			}
 			
-			const addBtn = modelEl.createEl('button', { text: 'Add', cls: 'add-btn' });
+			const addBtn = modelEl.createEl('button', { text: 'Add', cls: 'btn-base btn-primary' });
 			addBtn.addEventListener('click', () => {
 				this.onSelect(model);
 				this.close();
