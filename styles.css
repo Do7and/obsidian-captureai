@@ -391,7 +391,47 @@ button.btn-transparent-md,
 }
 
 .image-editor-button-bar button {
-	/* 基础样式现在由统一按钮类提供 */
+	/* Essential button styles */
+	padding: 8px 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	cursor: pointer;
+	font-size: 13px;
+	transition: all 0.2s ease;
+	outline: none;
+	white-space: nowrap;
+}
+
+.image-editor-button-bar button:hover {
+	background: var(--background-modifier-hover);
+}
+
+.image-editor-button-bar button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.image-editor-button-bar button.btn-primary {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.image-editor-button-bar button.btn-primary:hover:not(:disabled) {
+	background: var(--interactive-accent-hover);
+}
+
+.image-editor-button-bar button.btn-danger {
+	background: var(--color-red);
+	color: var(--text-on-accent);
+	border-color: var(--color-red);
+}
+
+.image-editor-button-bar button.btn-danger:hover:not(:disabled) {
+	background: var(--color-red);
+	opacity: 0.8;
 }
 
 /* Color picker styling */
@@ -449,6 +489,8 @@ button.btn-transparent-md,
 	.image-editor-toolbar button {
 		padding: 6px 10px;
 		font-size: 12px;
+		min-width: 28px;
+		height: 28px;
 	}
 	
 	.image-editor-button-bar {
@@ -810,6 +852,8 @@ button.btn-transparent-md,
 	overflow-y: auto;
 	overflow-x: hidden;
 	box-sizing: border-box;
+	/* Prevent unnecessary scrollbars on single line content */
+	scrollbar-width: thin;
 }
 
 /* Custom scrollbar styling for better appearance */
@@ -854,7 +898,7 @@ button.btn-transparent-md,
 	gap: var(--spacing-sm);
 	width: 100%;
 	max-width: 100%;
-	overflow-x: hidden;
+	overflow: visible; /* Allow natural expansion */
 	box-sizing: border-box;
 }
 
@@ -927,7 +971,7 @@ button.btn-transparent-md,
 	overflow-wrap: break-word;
 	white-space: pre-wrap;
 	max-width: 100%;
-	overflow-x: hidden;
+	overflow: visible; /* Allow content to expand naturally */
 }
 
 /* Action buttons - now in header on right */
@@ -2554,14 +2598,33 @@ button.ai-chat-action-btn:hover::after,
 
 /* File name warning styles */
 .image-editor-filename-warning {
-	color: #dc3545 !important;
 	font-size: 12px !important;
 	margin-top: 4px !important;
 	padding: 4px 8px !important;
-	background: rgba(220, 53, 69, 0.1) !important;
-	border: 1px solid rgba(220, 53, 69, 0.3) !important;
 	border-radius: 4px !important;
 	word-wrap: break-word !important;
+	text-align: left !important;
+}
+
+.image-editor-filename-warning.warning-invalid {
+	color: #dc3545 !important;
+	background: rgba(220, 53, 69, 0.1) !important;
+	border: 1px solid rgba(220, 53, 69, 0.3) !important;
+}
+
+.image-editor-filename-warning.warning-conflict {
+	color: #f59e0b !important;
+	background: rgba(245, 158, 11, 0.1) !important;
+	border: 1px solid rgba(245, 158, 11, 0.3) !important;
+}
+
+.image-editor-filename-warning.hidden {
+	visibility: hidden !important;
+	height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: none !important;
+	overflow: hidden !important;
 }
 
 .image-editor-canvas {
@@ -2938,6 +3001,8 @@ button.ai-chat-action-btn:hover::after,
 }
 
 .image-editor-filename-section {
+	display: flex !important;
+    flex-direction: column !important;
 	width: 100% !important;
 	margin-bottom: 8px !important;
 }
@@ -2945,6 +3010,8 @@ button.ai-chat-action-btn:hover::after,
 .image-editor-filename-warnings-container {
 	margin-top: 4px !important;
 	width: 100% !important;
+	min-height: 32px !important; /* Reserve space to prevent layout shift */
+	transition: none !important; /* Disable transitions to prevent animation effects */
 }
 
 .image-editor-filename-section-layout {
@@ -2984,6 +3051,13 @@ button.ai-chat-action-btn:hover::after,
 	border-radius: 4px;
 	font-weight: 500;
 	font-size: 14px;
+	background: var(--btn-bg-color, var(--background-primary));
+	color: var(--btn-text-color, var(--text-normal));
+}
+
+.image-editor-action-button-base.disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 /* Screenshot Manager Styles */

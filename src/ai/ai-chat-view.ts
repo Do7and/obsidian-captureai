@@ -1169,13 +1169,27 @@ export class AIChatView extends ItemView {
 					
 					for (let i = 0; i < imageDataList.length; i++) {
 						const img = imageDataList[i];
-						const imageId = `temp_${Date.now()}_${i}`;
 						
-						// Store temp image data
-						tempImages[imageId] = img.dataUrl;
+						// Generate appropriate image ID based on source
+						let imageId: string;
+						let imageRef: string;
 						
-						// Add image reference to content
-						imageReferences.push(`![${img.fileName}](temp:${imageId})`);
+						if (img.source === 'vault' && img.localPath) {
+							// For vault images, use direct path reference
+							imageRef = `![${img.source}](${img.localPath})`;
+						} else {
+							// For temporary images (screenshot, external, etc.), use temp ID
+							imageId = `temp_${Date.now()}_${i}`;
+							// Store both dataUrl and source information
+							tempImages[imageId] = JSON.stringify({
+								dataUrl: img.dataUrl,
+								source: img.source || 'image',
+								fileName: img.fileName
+							});
+							imageRef = `![${img.source || 'image'}](temp:${imageId})`;
+						}
+						
+						imageReferences.push(imageRef);
 					}
 					
 					// Combine text and image references
@@ -1277,13 +1291,27 @@ export class AIChatView extends ItemView {
 					
 					for (let i = 0; i < imageDataList.length; i++) {
 						const img = imageDataList[i];
-						const imageId = `temp_${Date.now()}_${i}`;
 						
-						// Store temp image data
-						tempImages[imageId] = img.dataUrl;
+						// Generate appropriate image ID based on source
+						let imageId: string;
+						let imageRef: string;
 						
-						// Add image reference to content
-						imageReferences.push(`![${img.fileName}](temp:${imageId})`);
+						if (img.source === 'vault' && img.localPath) {
+							// For vault images, use direct path reference
+							imageRef = `![${img.source}](${img.localPath})`;
+						} else {
+							// For temporary images (screenshot, external, etc.), use temp ID
+							imageId = `temp_${Date.now()}_${i}`;
+							// Store both dataUrl and source information
+							tempImages[imageId] = JSON.stringify({
+								dataUrl: img.dataUrl,
+								source: img.source || 'image',
+								fileName: img.fileName
+							});
+							imageRef = `![${img.source || 'image'}](temp:${imageId})`;
+						}
+						
+						imageReferences.push(imageRef);
 					}
 					
 					// Combine text and image references
@@ -1821,7 +1849,12 @@ export class AIChatView extends ItemView {
 			// Ensure save directory exists
 			if (!await adapter.exists(saveLocation)) {
 				getLogger().log('Creating directory:', saveLocation);
-				await vault.createFolder(saveLocation);
+				try {
+					await vault.createFolder(saveLocation);
+				} catch (error) {
+					getLogger().error('Failed to create save directory:', error);
+					throw new Error(`Failed to create directory ${saveLocation}: ${error.message}`);
+				}
 			}
 			
 			// Generate unique filename to avoid conflicts
@@ -2685,11 +2718,24 @@ export class AIChatView extends ItemView {
 				let updatedContent = message.content;
 				
 				// Process each temporary image - convert to data URL format
-				for (const [tempId, dataUrl] of Object.entries(message.tempImages)) {
+				for (const [tempId, tempImageDataString] of Object.entries(message.tempImages)) {
 					try {
+						// Parse the JSON string to get image data with source info
+						let tempImageData;
+						try {
+							tempImageData = JSON.parse(tempImageDataString);
+						} catch (parseError) {
+							// Fallback for old format (plain dataUrl string)
+							tempImageData = {
+								dataUrl: tempImageDataString,
+								source: 'image',
+								fileName: `temp-${tempId}`
+							};
+						}
+						
 						// Replace placeholder with data URL markdown image reference
 						const placeholder = `[!Tempimg ${tempId}]`;
-						const markdownImage = `![screenshot](${dataUrl})`;
+						const markdownImage = `![${tempImageData.source}](${tempImageData.dataUrl})`;
 						updatedContent = updatedContent.replace(placeholder, markdownImage);
 						
 					} catch (error) {
@@ -2716,13 +2762,27 @@ export class AIChatView extends ItemView {
 	 */
 	private async convertTempImagesToVaultFiles(conversation: AIConversation): Promise<AIConversation> {
 		const processedMessages: AIMessage[] = [];
-		const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
-		const imageFolder = `${saveLocation}/images`;
+		const conversationSaveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
+		const otherSourceLocation = this.plugin.settings.otherSourceImageLocation || 'screenshots-capture/othersourceimage';
+		const screenshotSaveLocation = this.plugin.settings.defaultSaveLocation || 'screenshots-capture/savedscreenshots';
 		
-		// Ensure image folder exists
+		// Ensure all folders exist
 		const vault = this.plugin.app.vault;
-		if (!await vault.adapter.exists(imageFolder)) {
-			await vault.createFolder(imageFolder);
+		const conversationImageFolder = `${conversationSaveLocation}/images`;
+		
+		try {
+			if (!await vault.adapter.exists(conversationImageFolder)) {
+				await vault.createFolder(conversationImageFolder);
+			}
+			if (!await vault.adapter.exists(otherSourceLocation)) {
+				await vault.createFolder(otherSourceLocation);
+			}
+			if (!await vault.adapter.exists(screenshotSaveLocation)) {
+				await vault.createFolder(screenshotSaveLocation);
+			}
+		} catch (error) {
+			getLogger().error('Failed to create required folders:', error);
+			throw new Error(`Failed to create required folders: ${error.message}`);
 		}
 		
 		for (const message of conversation.messages) {
@@ -2732,14 +2792,38 @@ export class AIChatView extends ItemView {
 				let updatedContent = message.content;
 				
 				// Process each temporary image - save to vault and use local path
-				for (const [tempId, dataUrl] of Object.entries(message.tempImages)) {
+				for (const [tempId, tempImageDataString] of Object.entries(message.tempImages)) {
 					try {
+						// Parse the JSON string to get image data with source info
+						let tempImageData;
+						try {
+							tempImageData = JSON.parse(tempImageDataString);
+						} catch (parseError) {
+							// Fallback for old format (plain dataUrl string)
+							tempImageData = {
+								dataUrl: tempImageDataString,
+								source: 'image',
+								fileName: `temp-${tempId}`
+							};
+						}
+						
+						// Choose target folder based on source
+						let targetFolder: string;
+						if (tempImageData.source === 'external') {
+							targetFolder = otherSourceLocation;
+						} else if (tempImageData.source === 'screenshot') {
+							targetFolder = screenshotSaveLocation;
+						} else {
+							// For other sources, use conversation images folder
+							targetFolder = conversationImageFolder;
+						}
+						
 						// Save image to vault
-						const savedImagePath = await this.saveTempImageToVault(tempId, dataUrl, imageFolder);
+						const savedImagePath = await this.saveTempImageToVault(tempId, tempImageData.dataUrl, targetFolder);
 						
 						// Replace placeholder with markdown image reference using local path
 						const placeholder = `[!Tempimg ${tempId}]`;
-						const markdownImage = `![${tempId}](${savedImagePath})`;
+						const markdownImage = `![${tempImageData.source}](${savedImagePath})`;
 						updatedContent = updatedContent.replace(placeholder, markdownImage);
 						
 					} catch (error) {
@@ -3176,8 +3260,12 @@ tags:
 			const placeholder = `[!Tempimg ${tempId}]`;
 			updatedContent = updatedContent.replace(fullMatch, placeholder);
 			
-			// Store the data URL in temporary images mapping
-			tempImages[tempId] = dataUrl;
+			// Store the data URL with source info in temporary images mapping
+			tempImages[tempId] = JSON.stringify({
+				dataUrl: dataUrl,
+				source: altText || 'image', // Use alt text as source
+				fileName: `${altText || 'image'}_${tempId}.png`
+			});
 		}
 		
 		return { content: updatedContent, tempImages };
@@ -3404,11 +3492,23 @@ tags:
 			
 			// If we have temporary images data, get the data URL
 			if (tempImages && tempImages[tempId]) {
-				imageReferences.push({
-					alt: `Temp Image ${tempId}`,
-					path: tempImages[tempId], // Use data URL as path
-					fileName: `temp-${tempId}.png`
-				});
+				// Parse the JSON string to get image data with source info
+				let tempImageData;
+				try {
+					tempImageData = JSON.parse(tempImages[tempId]);
+					imageReferences.push({
+						alt: `${tempImageData.source} ${tempId}`,
+						path: tempImageData.dataUrl, // Use data URL as path
+						fileName: tempImageData.fileName || `temp-${tempId}.png`
+					});
+				} catch (parseError) {
+					// Fallback for old format (plain dataUrl string)
+					imageReferences.push({
+						alt: `Temp Image ${tempId}`,
+						path: tempImages[tempId], // Use data URL as path
+						fileName: `temp-${tempId}.png`
+					});
+				}
 			} else {
 				// Fallback: create a placeholder entry
 				imageReferences.push({

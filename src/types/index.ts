@@ -97,6 +97,7 @@ export interface ImageCaptureSettings {
 	otherSourceImageLocation: string; // 其他来源图片保存位置
 	conversationSaveLocation: string;
 	autoSavedConversationLocation: string;
+	tempImageLimit: number; // Maximum number of temporary images before warning
 	enableAIAnalysis: boolean;
 	imageFormat: 'png' | 'jpg';
 	enableRegionSelect: boolean;
@@ -149,7 +150,7 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 		displayName: 'OpenAI',
 		requiresApiKey: true,
 		requiresBaseUrl: false,
-		defaultBaseUrl: 'https://api.openai.com/v1/chat/completions',
+		defaultBaseUrl: 'https://api.openai.com/v1',
 		apiKeyLink: 'https://platform.openai.com/api-keys',
 		models: [
 			{ id: 'gpt-4o', name: 'GPT-4o', hasVision: true, maxTokens: 4096, contextWindow: 128000 },
@@ -166,7 +167,7 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 		displayName: 'Anthropic (Claude)',
 		requiresApiKey: true,
 		requiresBaseUrl: false,
-		defaultBaseUrl: 'https://api.anthropic.com/v1/messages',
+		defaultBaseUrl: 'https://api.anthropic.com/v1',
 		apiKeyLink: 'https://console.anthropic.com/',
 		models: [
 			{ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', hasVision: true, maxTokens: 8192, contextWindow: 199988 },
@@ -194,6 +195,7 @@ export const LLM_PROVIDERS: LLMProvider[] = [
 		displayName: 'Cohere',
 		requiresApiKey: true,
 		requiresBaseUrl: false,
+		defaultBaseUrl: 'https://api.cohere.com/v1',
 		apiKeyLink: 'https://dashboard.cohere.ai/api-keys',
 		models: [
 			{ id: 'command-r-plus', name: 'Command R+', hasVision: false, maxTokens: 4096, contextWindow: 128000 },
@@ -284,12 +286,41 @@ export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
 	systemPrompt: ''
 };
 
+// Default prompts for different languages
+export const DEFAULT_PROMPTS = {
+	en: {
+		globalSystemPrompt: 'You are a helpful AI assistant.',
+		aiChatModePrompts: {
+			analyze: 'Please analyze this image in detail. Describe what you see, identify key elements, patterns, and provide insights about the content, context, and any notable features.',
+			ocr: 'Please extract all text from this image. Provide the text content exactly as it appears, maintaining the structure and formatting where possible. If there are multiple text sections, organize them clearly.',
+			chat: 'You are a helpful AI assistant engaged in a text-based conversation. Answer questions, provide information, and assist with various tasks to the best of your ability. Be concise yet thorough in your responses.',
+			custom: 'Please examine this image and respond according to the custom instructions provided by the user.'
+		}
+	},
+	zh: {
+		globalSystemPrompt: '你是一个有用的AI助手。',
+		aiChatModePrompts: {
+			analyze: '请详细分析这张图片。描述你看到的内容，识别关键元素、模式，并提供关于内容、背景和任何显著特征的见解。',
+			ocr: '请提取这张图片中的所有文字。准确提供文字内容，尽可能保持结构和格式。如果有多个文字部分，请清晰地组织它们。',
+			chat: '你是一个有用的AI助手，参与基于文本的对话。回答问题，提供信息，并尽力协助各种任务。回答要简洁而全面。',
+			custom: '请检查这张图片，并根据用户提供的自定义指令进行回应。'
+		}
+	}
+};
+
+// Helper function to get localized prompts
+export function getLocalizedPrompts(language: string): typeof DEFAULT_PROMPTS.en {
+	const lang = language as keyof typeof DEFAULT_PROMPTS;
+	return DEFAULT_PROMPTS[lang] || DEFAULT_PROMPTS.en;
+}
+
 export const DEFAULT_SETTINGS: ImageCaptureSettings = {
 	language: 'en',
 	defaultSaveLocation: 'screenshots-capture/savedscreenshots',
 	otherSourceImageLocation: 'screenshots-capture/othersourceimage',
 	conversationSaveLocation: 'screenshots-capture/conversations',
 	autoSavedConversationLocation: 'screenshots-capture/autosavedconversations',
+	tempImageLimit: 10,
 	enableAIAnalysis: true,
 	imageFormat: 'png',
 	enableRegionSelect: true,
@@ -300,15 +331,10 @@ export const DEFAULT_SETTINGS: ImageCaptureSettings = {
 	modelConfigs: [],
 	providerCredentials: {},
 	defaultModelConfigId: '',
-	globalSystemPrompt: 'You are a helpful AI assistant.',
+	globalSystemPrompt: DEFAULT_PROMPTS.en.globalSystemPrompt,
 	// AI Chat Mode Settings
 	defaultAIChatMode: 'analyze',
-	aiChatModePrompts: {
-		analyze: 'Please analyze this image in detail. Describe what you see, identify key elements, patterns, and provide insights about the content, context, and any notable features.',
-		ocr: 'Please extract all text from this image. Provide the text content exactly as it appears, maintaining the structure and formatting where possible. If there are multiple text sections, organize them clearly.',
-		chat: 'You are a helpful AI assistant engaged in a text-based conversation. Answer questions, provide information, and assist with various tasks to the best of your ability. Be concise yet thorough in your responses.',
-		custom: 'Please examine this image and respond according to the custom instructions provided by the user.'
-	},
+	aiChatModePrompts: DEFAULT_PROMPTS.en.aiChatModePrompts,
 	// Custom providers storage
 	customProviders: {},
 	contextSettings: {

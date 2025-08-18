@@ -360,12 +360,7 @@ export class SetKeysModal extends Modal {
 				models.forEach(model => {
 					const option = document.createElement('option');
 					option.value = model.id;
-					option.textContent = `${model.name}${model.hasVision ? ' (Vision)' : ' (Text Only)'}`;
-					
-					// Add visual indicator for non-vision models
-					if (!model.hasVision) {
-						option.classList.add('set-keys-option-disabled');
-					}
+					option.textContent = model.name;
 					
 					dropdown.appendChild(option);
 				});
@@ -526,8 +521,14 @@ export class SetKeysModal extends Modal {
 					break;
 				
 				case 'anthropic':
-					// Anthropic doesn't have a public models endpoint, use static list
-					return provider.models || [];
+					// Anthropic has a models endpoint as of 2025
+					url = `${baseUrl}/models`;
+					headers = {
+						'x-api-key': apiKey,
+						'anthropic-version': '2023-06-01',
+						'Content-Type': 'application/json'
+					};
+					break;
 				
 				case 'google':
 					// Google AI Studio models endpoint
@@ -594,29 +595,40 @@ export class SetKeysModal extends Modal {
 								return id.includes('gpt') || id.includes('davinci') || id.includes('curie') || id.includes('babbage') || id.includes('ada');
 							})
 							.map((model: any) => {
+								return {
+									id: model.id,
+									name: model.id,
+									hasVision: true, // Will be tested when adding model
+									contextWindow: 4096 // Default, can be improved
+								};
+							});
+					}
+					break;
+				
+				case 'anthropic':
+					if (data.data && Array.isArray(data.data)) {
+						return data.data
+							.filter((model: any) => {
+								// Include all Claude models
 								const id = model.id?.toLowerCase() || '';
+								return id.includes('claude');
+							})
+							.map((model: any) => {
+								const displayName = model.display_name || model.id;
 								
-								// Priority 1: Check capabilities field from API metadata if available
-								let hasVision = false;
-								if (model.capabilities && Array.isArray(model.capabilities)) {
-									hasVision = model.capabilities.some((cap: string) => 
-										cap.toLowerCase().includes('vision') || 
-										cap.toLowerCase().includes('image')
-									);
-								}
-								
-								// Priority 2: Fallback to model ID detection with enhanced patterns
-								if (!hasVision) {
-									hasVision = id.includes('vision') || 
-												(id.includes('gpt-4') && (id.includes('turbo') || id.includes('preview') || id.includes('o'))) ||
-												id.includes('gpt-4o');
+								// Determine context window based on known models
+								let contextWindow = 200000; // Default for Claude 3+ models
+								const id = model.id?.toLowerCase() || '';
+								if (id.includes('claude-4')) {
+									contextWindow = 1000000; // Claude 4 supports 1M tokens
 								}
 								
 								return {
 									id: model.id,
-									name: model.id,
-									hasVision: hasVision,
-									contextWindow: 4096 // Default, can be improved
+									name: displayName,
+									hasVision: true, // Will be tested when adding model
+									contextWindow: contextWindow,
+									maxTokens: 8192
 								};
 							});
 					}
@@ -631,35 +643,10 @@ export class SetKeysModal extends Modal {
 								return name.includes('gemini') || name.includes('bison') || name.includes('chat');
 							})
 							.map((model: any) => {
-								const name = model.name?.toLowerCase() || '';
-								
-								// Priority 1: Check supportedGenerationMethods from API metadata
-								let hasVision = false;
-								if (model.supportedGenerationMethods && Array.isArray(model.supportedGenerationMethods)) {
-									hasVision = model.supportedGenerationMethods.some((method: string) => 
-										method.toLowerCase().includes('vision') || 
-										method.toLowerCase().includes('multimodal')
-									);
-								}
-								
-								// Priority 2: Check inputModalities if available
-								if (!hasVision && model.inputModalities && Array.isArray(model.inputModalities)) {
-									hasVision = model.inputModalities.some((modality: string) => 
-										modality.toLowerCase().includes('image') || 
-										modality.toLowerCase().includes('vision')
-									);
-								}
-								
-								// Priority 3: Fallback to model name detection with enhanced patterns
-								if (!hasVision) {
-									hasVision = name.includes('vision') || name.includes('gemini-pro') ||
-												name.includes('gemini-1.5') || name.includes('gemini-2');
-								}
-								
 								return {
 									id: model.name.replace('models/', ''),
 									name: model.displayName || model.name.replace('models/', ''),
-									hasVision: hasVision,
+									hasVision: true, // Will be tested when adding model
 									contextWindow: 4096
 								};
 							});
@@ -673,7 +660,7 @@ export class SetKeysModal extends Modal {
 							.map((model: any) => ({
 								id: model.name,
 								name: model.name,
-								hasVision: false, // Cohere doesn't have vision models yet
+								hasVision: true, // Will be tested when adding model
 								contextWindow: model.context_length || 4096
 							}));
 					}
@@ -683,33 +670,10 @@ export class SetKeysModal extends Modal {
 					if (data.data && Array.isArray(data.data)) {
 						return data.data
 							.map((model: any) => {
-								const id = model.id?.toLowerCase() || '';
-								const name = model.name?.toLowerCase() || '';
-								
-								// Priority 1: Check modalities field from API metadata
-								let hasVision = false;
-								if (model.modalities && Array.isArray(model.modalities)) {
-									// Check if model supports image input
-									hasVision = model.modalities.some((modality: string) => 
-										modality.toLowerCase().includes('image') || 
-										modality.toLowerCase().includes('vision')
-									);
-								}
-								
-								// Priority 2: Fallback to model ID/name detection with enhanced patterns
-								if (!hasVision) {
-									hasVision = id.includes('vision') || name.includes('vision') || 
-												id.includes('vl') || name.includes('vl') || // For Qwen VL models
-												(id.includes('gpt-4') && (id.includes('turbo') || id.includes('preview') || id.includes('o'))) ||
-												id.includes('claude-3') || id.includes('gemini') ||
-												id.includes('llama') && (id.includes('vision') || id.includes('vl')) ||
-												id.includes('pixtral') || id.includes('flamingo');
-								}
-								
 								return {
 									id: model.id,
 									name: model.name || model.id,
-									hasVision: hasVision,
+									hasVision: true, // Will be tested when adding model
 									contextWindow: model.context_length || 4096
 								};
 							});
@@ -1200,9 +1164,6 @@ class ModelSelectionModal extends Modal {
 			infoEl.createEl('div', { text: model.name, cls: 'model-name' });
 			
 			const metaEl = infoEl.createEl('div', { cls: 'model-meta' });
-			if (model.hasVision) {
-				metaEl.createEl('span', { text: 'Vision', cls: 'vision-badge' });
-			}
 			if (model.contextWindow) {
 				metaEl.createEl('span', { text: `${model.contextWindow.toLocaleString()} tokens`, cls: 'context-badge' });
 			}

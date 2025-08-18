@@ -58,6 +58,8 @@ export class ScreenshotManager {
 				stack: error.stack
 			});
 			new Notice(t('notice.regionCaptureFailed', { message: error.message }));
+			// Clean up overlay on failure
+			this.removeOverlay();
 		}
 	}
 

@@ -566,26 +566,16 @@ export class ImageEditor extends Modal {
 		
 		// Create warning element for invalid filename
 		const invalidWarningElement = warningsContainer.createEl('div', { 
-			cls: 'image-editor-filename-warning'
+			cls: 'image-editor-filename-warning warning-invalid'
 		});
-		invalidWarningElement.style.cssText = `
-			color: #dc3545;
-			font-size: 12px;
-			display: none;
-			text-align: left;
-		`;
+		invalidWarningElement.classList.add('hidden');
 		this.fileNameInvalidWarning = invalidWarningElement;
 		
 		// Create warning element for file conflicts
 		const conflictWarningElement = warningsContainer.createEl('div', { 
-			cls: 'image-editor-filename-warning'
+			cls: 'image-editor-filename-warning warning-conflict'
 		});
-		conflictWarningElement.style.cssText = `
-			color: #f59e0b;
-			font-size: 12px;
-			display: none;
-			text-align: left;
-		`;
+		conflictWarningElement.classList.add('hidden');
 		this.fileNameWarning = conflictWarningElement;
 		
 		// Add event listener to check file validity and conflicts
@@ -620,11 +610,11 @@ export class ImageEditor extends Modal {
 
 		// New buttons for temporary operations (no save)
 		if (aiEnabled) {
-			const tempAIButton = buttonRow.createEl('button', { text: t('imageEditor.tempSendToAI') });
-			if (aiButtonEnabled) {
-				this.styleActionButton(tempAIButton, 'var(--color-orange)', 'white');
-			} else {
-				this.styleActionButton(tempAIButton, 'var(--background-modifier-border)', 'var(--text-muted)');
+			const tempAIButton = buttonRow.createEl('button', { 
+				text: t('imageEditor.tempSendToAI'),
+				cls: 'btn-base'
+			});
+			if (!aiButtonEnabled) {
 				tempAIButton.disabled = true;
 				
 				// Add tooltip for disabled state
@@ -647,8 +637,10 @@ export class ImageEditor extends Modal {
 		}
 
 		// Temporary copy button (no save)
-		const tempCopyButton = buttonRow.createEl('button', { text: t('imageEditor.tempCopy') });
-		this.styleActionButton(tempCopyButton, 'var(--color-purple)', 'white');
+		const tempCopyButton = buttonRow.createEl('button', { 
+			text: t('imageEditor.tempCopy'),
+			cls: 'btn-base'
+		});
 		tempCopyButton.title = t('imageEditor.tempCopyTooltip');
 		tempCopyButton.addEventListener('click', () => {
 			this.copyToClipboardWithoutSave();
@@ -656,12 +648,12 @@ export class ImageEditor extends Modal {
 
 		// Original Save and Send to AI button (with save)
 		if (aiEnabled) {
-			const aiButton = buttonRow.createEl('button', { text: t('imageEditor.aiButton') });
+			const aiButton = buttonRow.createEl('button', { 
+				text: t('imageEditor.aiButton'),
+				cls: 'btn-base'
+			});
 			this.saveButtons.push(aiButton); // Add to save buttons array
-			if (aiButtonEnabled) {
-				this.styleActionButton(aiButton, 'var(--interactive-accent)', 'var(--text-on-accent)');
-			} else {
-				this.styleActionButton(aiButton, 'var(--background-modifier-border)', 'var(--text-muted)');
+			if (!aiButtonEnabled) {
 				aiButton.disabled = true;
 				
 				// Add tooltip for disabled state
@@ -683,9 +675,11 @@ export class ImageEditor extends Modal {
 		}
 		
 		// Original save button
-		const saveButton = buttonRow.createEl('button', { text: t('imageEditor.saveButton') });
+		const saveButton = buttonRow.createEl('button', { 
+			text: t('imageEditor.saveButton'),
+			cls: 'btn-base'
+		});
 		this.saveButtons.push(saveButton); // Add to save buttons array
-		this.styleActionButton(saveButton, 'var(--interactive-accent)', 'var(--text-on-accent)');
 		saveButton.addEventListener('click', () => {
 			if (!saveButton.disabled) {
 				this.saveAndCopyMarkdown();
@@ -693,12 +687,6 @@ export class ImageEditor extends Modal {
 		});
 	}
 
-	private styleActionButton(button: HTMLButtonElement, bgColor: string, textColor: string) {
-		// Use unified button base class
-		button.className = 'btn-base image-editor-action-button-base';
-		// Use style attribute only for dynamic colors
-		button.setAttr('style', `background: ${bgColor}; color: ${textColor};`);
-	}
 
 	private async sendToAIWithoutSave() {
 		if (!this.canvas) return;
@@ -1714,13 +1702,13 @@ export class ImageEditor extends Modal {
 		// Check file name validity first
 		const isValidName = this.isValidFileName(fileName);
 		if (!isValidName) {
-			this.showInvalidFileNameWarning();
-			this.hideFileNameWarning();
-			this.disableSaveButtons();
+			this.updateInvalidFileNameWarning(true);
+			this.updateFileNameWarning(false);
+			this.updateSaveButtons(false);
 			return;
 		} else {
-			this.hideInvalidFileNameWarning();
-			this.enableSaveButtons();
+			this.updateInvalidFileNameWarning(false);
+			this.updateSaveButtons(true);
 		}
 		
 		// Then check for conflicts
@@ -1762,50 +1750,28 @@ export class ImageEditor extends Modal {
 	}
 
 	/**
-	 * Enable save buttons
+	 * Update save buttons state
 	 */
-	private enableSaveButtons(): void {
+	private updateSaveButtons(enabled: boolean): void {
 		this.saveButtons.forEach(button => {
-			button.disabled = false;
-			button.style.opacity = '1';
-			button.style.cursor = 'pointer';
+			button.disabled = !enabled;
 		});
 	}
 
 	/**
-	 * Disable save buttons due to invalid filename
+	 * Update invalid filename warning
 	 */
-	private disableSaveButtons(): void {
-		this.saveButtons.forEach(button => {
-			button.disabled = true;
-			button.style.opacity = '0.5';
-			button.style.cursor = 'not-allowed';
-		});
-	}
-
-	/**
-	 * Show invalid filename warning
-	 */
-	private showInvalidFileNameWarning(): void {
-		getLogger().log('Showing invalid filename warning');
+	private updateInvalidFileNameWarning(show: boolean): void {
 		if (!this.fileNameInvalidWarning) return;
 		
-		this.fileNameInvalidWarning.textContent = t('imageEditor.fileNameInvalidWarning');
-		this.fileNameInvalidWarning.title = t('imageEditor.fileNameInvalidTooltip');
-		this.fileNameInvalidWarning.style.display = 'block';
-		getLogger().log('Invalid warning element updated:', this.fileNameInvalidWarning.textContent);
-	}
-	
-	/**
-	 * Hide invalid filename warning
-	 */
-	private hideInvalidFileNameWarning(): void {
-		getLogger().log('Hiding invalid filename warning');
-		if (!this.fileNameInvalidWarning) return;
-		
-		this.fileNameInvalidWarning.style.display = 'none';
-		this.fileNameInvalidWarning.textContent = '';
-		this.fileNameInvalidWarning.title = '';
+		this.fileNameInvalidWarning.toggleClass('hidden', !show);
+		if (show) {
+			this.fileNameInvalidWarning.textContent = t('imageEditor.fileNameInvalidWarning');
+			this.fileNameInvalidWarning.title = t('imageEditor.fileNameInvalidTooltip');
+		} else {
+			this.fileNameInvalidWarning.textContent = '';
+			this.fileNameInvalidWarning.title = '';
+		}
 	}
 	private async checkFileNameConflict(): Promise<void> {
 		getLogger().log('checkFileNameConflict called');
@@ -1817,7 +1783,7 @@ export class ImageEditor extends Modal {
 		const fileName = this.getFileName();
 		getLogger().log('Checking file name:', fileName);
 		if (!fileName) {
-			this.hideFileNameWarning();
+			this.updateFileNameWarning(false);
 			return;
 		}
 		
@@ -1836,41 +1802,32 @@ export class ImageEditor extends Modal {
 			getLogger().log('File exists:', fileExists);
 			
 			if (fileExists) {
-				this.showFileNameWarning();
+				this.updateFileNameWarning(true);
 			} else {
-				this.hideFileNameWarning();
+				this.updateFileNameWarning(false);
 			}
 			
 		} catch (error) {
 			// On error, hide warning to avoid false positives
 			getLogger().warn('Failed to check file existence:', error);
-			this.hideFileNameWarning();
+			this.updateFileNameWarning(false);
 		}
 	}
 	
 	/**
-	 * Show the file name conflict warning
+	 * Update file name conflict warning
 	 */
-	private showFileNameWarning(): void {
-		getLogger().log('Showing file name warning');
+	private updateFileNameWarning(show: boolean): void {
 		if (!this.fileNameWarning) return;
 		
-		this.fileNameWarning.textContent = t('imageEditor.fileNameConflictWarning');
-		this.fileNameWarning.title = t('imageEditor.fileNameConflictTooltip');
-		this.fileNameWarning.style.display = 'block';
-		getLogger().log('Warning element updated:', this.fileNameWarning.textContent);
-	}
-	
-	/**
-	 * Hide the file name conflict warning
-	 */
-	private hideFileNameWarning(): void {
-		getLogger().log('Hiding file name warning');
-		if (!this.fileNameWarning) return;
-		
-		this.fileNameWarning.style.display = 'none';
-		this.fileNameWarning.textContent = '';
-		this.fileNameWarning.title = '';
+		this.fileNameWarning.toggleClass('hidden', !show);
+		if (show) {
+			this.fileNameWarning.textContent = t('imageEditor.fileNameConflictWarning');
+			this.fileNameWarning.title = t('imageEditor.fileNameConflictTooltip');
+		} else {
+			this.fileNameWarning.textContent = '';
+			this.fileNameWarning.title = '';
+		}
 	}
 
 	cleanup() {

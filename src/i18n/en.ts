@@ -242,8 +242,8 @@ export default {
 
   // Image Editor messages
   "imageEditor.title": "Image Editor",
-  "imageEditor.saveButton": "Save",
-  "imageEditor.aiButton": "Send to AI",
+  "imageEditor.saveButton": "Copy(Save)",
+  "imageEditor.aiButton": "Send to AI(Save)",
   "imageEditor.cancelButton": "Cancel",
   "imageEditor.undoButton": "Undo",
   "imageEditor.redoButton": "Redo",

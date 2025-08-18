@@ -40,6 +40,8 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					// Update i18n immediately
 					i18n.setLanguage(value);
+					// Update prompts for the new language
+					this.plugin.updatePromptsForLanguage(value);
 					// Refresh the settings display to show new language
 					this.display();
 				}));

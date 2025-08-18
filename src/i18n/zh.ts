@@ -242,8 +242,8 @@ export default {
 
   // Image Editor messages
   "imageEditor.title": "图像编辑器",
-  "imageEditor.saveButton": "保存并复制",
-  "imageEditor.aiButton": "保存复制并发送到 AI",
+  "imageEditor.saveButton": "复制 (保存)",
+  "imageEditor.aiButton": "发送给AI (保存)",
   "imageEditor.cancelButton": "取消",
   "imageEditor.undoButton": "撤销",
   "imageEditor.redoButton": "重做",

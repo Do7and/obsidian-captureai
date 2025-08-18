@@ -859,10 +859,21 @@ export class AIManager {
 		while ((match = tempImageRegex.exec(markdown)) !== null) {
 			const tempId = match[1];
 			if (tempImages && tempImages[tempId]) {
-				tempImageRefs.push({
-					id: tempId,
-					dataUrl: tempImages[tempId]
-				});
+				// Parse the JSON string to get image data with source info
+				let tempImageData;
+				try {
+					tempImageData = JSON.parse(tempImages[tempId]);
+					tempImageRefs.push({
+						id: tempId,
+						dataUrl: tempImageData.dataUrl
+					});
+				} catch (parseError) {
+					// Fallback for old format (plain dataUrl string)
+					tempImageRefs.push({
+						id: tempId,
+						dataUrl: tempImages[tempId]
+					});
+				}
 			}
 			
 			// Remove the temp image placeholder from text content
@@ -949,7 +960,8 @@ export class AIManager {
 	 */
 	private checkTempImageLimit(conversation: AIConversation): void {
 		const tempImageCount = this.countTempImagesInConversation(conversation);
-		if (tempImageCount > 5) {
+		const limit = this.plugin.settings.tempImageLimit || 10; // Use setting value with fallback
+		if (tempImageCount > limit) {
 			new Notice(
 				t('notice.tempImageLimitWarning', { count: tempImageCount.toString() }),
 				8000
@@ -1006,8 +1018,12 @@ export class AIManager {
 
 	// Text-only API methods for better chat experience
 	private async callOpenAITextOnly(message: string, modelConfig: ModelConfig, credentials: any): Promise<RequestUrlResponsePromise> {
+		// Get baseUrl from provider config or credentials
+		const provider = LLM_PROVIDERS.find(p => p.id === 'openai');
+		const baseUrl = credentials.baseUrl || provider?.defaultBaseUrl || 'https://api.openai.com/v1';
+		
 		return requestUrl( {
-			url:'https://api.openai.com/v1/chat/completions',
+			url: `${baseUrl}/chat/completions`,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -1205,8 +1221,12 @@ export class AIManager {
 		logger.log(`📤 OpenAI API Request Body:`, JSON.stringify(requestBody, null, 2));
 		logger.log(`🔑 Using API Key: ${credentials.apiKey.substring(0, 10)}...`);
 
+		// Get baseUrl from provider config or credentials
+		const provider = LLM_PROVIDERS.find(p => p.id === 'openai');
+		const baseUrl = credentials.baseUrl || provider?.defaultBaseUrl || 'https://api.openai.com/v1';
+
 		return requestUrl( {
-			url:'https://api.openai.com/v1/chat/completions',
+			url: `${baseUrl}/chat/completions`,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

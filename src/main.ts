@@ -2,7 +2,7 @@ import { Plugin, Notice, addIcon  } from 'obsidian';
 import { ScreenshotManager } from './managers/screenshot-manager';
 import { ImageEditor } from './editors/image-editor';
 import { ImageCaptureSettingTab } from './settings/settings-tab';
-import { ImageCaptureSettings, DEFAULT_SETTINGS } from './types';
+import { ImageCaptureSettings, DEFAULT_SETTINGS, getLocalizedPrompts, DEFAULT_PROMPTS } from './types';
 import { AIManager } from './ai/ai-manager';
 import { AIChatView, AI_CHAT_VIEW_TYPE } from './ai/ai-chat-view';
 import { i18n, t } from './i18n';
@@ -19,6 +19,9 @@ export default class ImageCapturePlugin extends Plugin {
 		
 		// Initialize i18n with user's language setting
 		i18n.setLanguage(this.settings.language || 'en');
+
+		// Update prompts based on language setting if they haven't been customized
+		this.updatePromptsForLanguage(this.settings.language || 'en');
 
 		// Initialize logger
 		initializeLogger(this);
@@ -141,6 +144,43 @@ export default class ImageCapturePlugin extends Plugin {
 		if ('screenshotPrompt' in this.settings) {
 			delete (this.settings as any).screenshotPrompt;
 			needsSave = true;
+		}
+
+		if (needsSave) {
+			this.saveSettings();
+		}
+	}
+
+	/**
+	 * Update prompts based on language setting
+	 */
+	updatePromptsForLanguage(language: string) {
+		const localizedPrompts = getLocalizedPrompts(language);
+		let needsSave = false;
+
+		// Update global system prompt if it's still the default English one
+		if (this.settings.globalSystemPrompt === DEFAULT_PROMPTS.en.globalSystemPrompt || 
+			this.settings.globalSystemPrompt === DEFAULT_PROMPTS.zh.globalSystemPrompt ||
+			!this.settings.globalSystemPrompt) {
+			this.settings.globalSystemPrompt = localizedPrompts.globalSystemPrompt;
+			needsSave = true;
+		}
+
+		// Update mode prompts if they're still default ones
+		if (this.settings.aiChatModePrompts) {
+			Object.keys(this.settings.aiChatModePrompts).forEach(mode => {
+				const modeKey = mode as keyof typeof this.settings.aiChatModePrompts;
+				const currentPrompt = this.settings.aiChatModePrompts![modeKey];
+				
+				// Check if current prompt is a default prompt from any language
+				const isDefaultEn = currentPrompt === DEFAULT_PROMPTS.en.aiChatModePrompts[modeKey];
+				const isDefaultZh = currentPrompt === DEFAULT_PROMPTS.zh.aiChatModePrompts[modeKey];
+				
+				if (isDefaultEn || isDefaultZh || !currentPrompt) {
+					this.settings.aiChatModePrompts![modeKey] = localizedPrompts.aiChatModePrompts[modeKey];
+					needsSave = true;
+				}
+			});
 		}
 
 		if (needsSave) {
