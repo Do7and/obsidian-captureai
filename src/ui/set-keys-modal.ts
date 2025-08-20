@@ -1,13 +1,27 @@
-import { Modal, Setting, Notice, DropdownComponent, requestUrl, RequestUrlResponsePromise, RequestUrlResponse } from 'obsidian';
+import { Modal, Setting, Notice, DropdownComponent, requestUrl, RequestUrlResponsePromise, RequestUrlResponse, WorkspaceLeaf } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { LLM_PROVIDERS, LLMProvider, LLMModel, ModelConfig, DEFAULT_MODEL_SETTINGS } from '../types';
 import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
 
+// Interface for AI Chat View
+interface AIChatView {
+	updateContent?(): void;
+}
+
 export class SetKeysModal extends Modal {
 	private plugin: ImageCapturePlugin;
 	private verificationStates: Map<string, 'idle' | 'verifying' | 'verified' | 'error'> = new Map();
 	private availableModels: Map<string, LLMModel[]> = new Map();
+	
+	// WeakMap storage for DOM element properties - replaces (element as any) patterns
+	private providerElements = new WeakMap<HTMLElement, {
+		visionCheckbox?: HTMLInputElement;
+		verifyButton?: HTMLButtonElement;
+		addModelButton?: HTMLButtonElement;
+		modelInput?: HTMLSelectElement | HTMLInputElement;
+		isCustomProvider?: boolean;
+	}>();
 
 	constructor(plugin: ImageCapturePlugin) {
 		super(plugin.app);
@@ -227,7 +241,9 @@ export class SetKeysModal extends Modal {
 			visionContainer.setAttribute('title', t('setKeys.visionCapableDescription'));
 			
 			// Store reference
-			(providerEl as any)._visionCheckbox = visionCheckbox;
+			const providerData = this.providerElements.get(providerEl) || {};
+			providerData.visionCheckbox = visionCheckbox;
+			this.providerElements.set(providerEl, providerData);
 		} else {
 			// For other providers, use dropdown
 			addModelLabel.createEl('div', { text: t('setKeys.addModelDescription'), cls: 'setting-item-description' });
@@ -240,10 +256,12 @@ export class SetKeysModal extends Modal {
 		});
 		
 		// Store references for updates
-		(providerEl as any)._verifyButton = verifyButton;
-		(providerEl as any)._addModelButton = addModelButton;
-		(providerEl as any)._modelInput = modelInput;
-		(providerEl as any)._isCustomProvider = provider.id === 'custom';
+		const providerData = this.providerElements.get(providerEl) || {};
+		providerData.verifyButton = verifyButton;
+		providerData.addModelButton = addModelButton;
+		providerData.modelInput = modelInput;
+		providerData.isCustomProvider = provider.id === 'custom';
+		this.providerElements.set(providerEl, providerData);
 
 		// Set initial states
 		this.updateVerifyButton(provider.id);
@@ -283,8 +301,10 @@ export class SetKeysModal extends Modal {
 		const providerEl = this.contentEl.querySelector(`[data-provider="${providerId}"]`) as HTMLElement;
 		if (!providerEl) return;
 
-		const verifyButton = (providerEl as any)._verifyButton as HTMLButtonElement;
-		if (!verifyButton) return;
+		const providerData = this.providerElements.get(providerEl);
+		if (!providerData || !providerData.verifyButton) return;
+		
+		const verifyButton = providerData.verifyButton;
 
 		const state = this.verificationStates.get(providerId) || 'idle';
 		
@@ -321,11 +341,12 @@ export class SetKeysModal extends Modal {
 		const providerEl = this.contentEl.querySelector(`[data-provider="${providerId}"]`) as HTMLElement;
 		if (!providerEl) return;
 
-		const addModelButton = (providerEl as any)._addModelButton as HTMLButtonElement;
-		const modelInput = (providerEl as any)._modelInput as HTMLSelectElement | HTMLInputElement;
-		const isCustomProvider = (providerEl as any)._isCustomProvider as boolean;
+		const providerData = this.providerElements.get(providerEl);
+		if (!providerData || !providerData.addModelButton || !providerData.modelInput) return;
 		
-		if (!addModelButton || !modelInput) return;
+		const addModelButton = providerData.addModelButton;
+		const modelInput = providerData.modelInput;
+		const isCustomProvider = providerData.isCustomProvider;
 
 		const state = this.verificationStates.get(providerId) || 'idle';
 		const isVerified = state === 'verified';
@@ -692,8 +713,8 @@ export class SetKeysModal extends Modal {
 		if (!providerEl) return;
 
 		// Get vision checkbox state
-		const visionCheckbox = (providerEl as any)._visionCheckbox as HTMLInputElement;
-		const hasVision = visionCheckbox ? visionCheckbox.checked : true;
+		let providerData = this.providerElements.get(providerEl);
+		const hasVision = providerData?.visionCheckbox ? providerData.visionCheckbox.checked : true;
 
 		// Get the current custom provider settings
 		const credentials = this.plugin.settings.providerCredentials[provider.id];
@@ -721,9 +742,9 @@ export class SetKeysModal extends Modal {
 		});
 		
 		// Clear the input field
-		const modelInput = (providerEl as any)._modelInput as HTMLInputElement;
-		if (modelInput) {
-			modelInput.value = '';
+		providerData = this.providerElements.get(providerEl);
+		if (providerData && providerData.modelInput) {
+			(providerData.modelInput as HTMLInputElement).value = '';
 		}
 	}
 
@@ -895,8 +916,8 @@ export class SetKeysModal extends Modal {
 		// The settings tab now has an auto-refresh mechanism
 		// We just need to refresh AI chat views here
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
-		aiChatLeaves.forEach(leaf => {
-			const view = leaf.view as any;
+		aiChatLeaves.forEach((leaf: WorkspaceLeaf) => {
+			const view = leaf.view as AIChatView;
 			if (view && typeof view.updateContent === 'function') {
 				view.updateContent();
 			}
@@ -910,8 +931,8 @@ export class SetKeysModal extends Modal {
 		
 		// Refresh AI chat views when modal closes
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
-		aiChatLeaves.forEach(leaf => {
-			const view = leaf.view as any;
+		aiChatLeaves.forEach((leaf: WorkspaceLeaf) => {
+			const view = leaf.view as AIChatView;
 			if (view && typeof view.updateContent === 'function') {
 				view.updateContent();
 			}
@@ -1183,8 +1204,8 @@ class ModelSelectionModal extends Modal {
 		
 		// Refresh AI chat views when modal closes
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
-		aiChatLeaves.forEach(leaf => {
-			const view = leaf.view as any;
+		aiChatLeaves.forEach((leaf: WorkspaceLeaf) => {
+			const view = leaf.view as AIChatView;
 			if (view && typeof view.updateContent === 'function') {
 				view.updateContent();
 			}

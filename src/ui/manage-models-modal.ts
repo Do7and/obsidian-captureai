@@ -1,8 +1,23 @@
-import { Modal, Setting, Notice, setIcon  } from 'obsidian';
+import { Modal, Setting, Notice, setIcon, WorkspaceLeaf } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { ModelConfig, ModelSettings, LLM_PROVIDERS, DEFAULT_MODEL_SETTINGS } from '../types';
 import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
+
+// Interface for AI Chat View
+interface AIChatView {
+	updateContent?(): void;
+}
+
+// Interface for App with settings
+interface AppWithSettings {
+	setting?: {
+		pluginTabs?: Array<{
+			id: string;
+			display?: () => void;
+		}>;
+	};
+}
 
 export class ManageModelsModal extends Modal {
 	private plugin: ImageCapturePlugin;
@@ -287,9 +302,9 @@ export class ManageModelsModal extends Modal {
 
 	private refreshModelDependentComponents() {
 		// Refresh settings tab by finding the settings tab instance and calling display()
-		const app = this.plugin.app as any;
+		const app = this.plugin.app as AppWithSettings;
 		if (app.setting && app.setting.pluginTabs) {
-			const pluginTab = app.setting.pluginTabs.find((tab: any) => 
+			const pluginTab = app.setting.pluginTabs.find((tab) => 
 				tab.id === this.plugin.manifest.id
 			);
 			if (pluginTab && typeof pluginTab.display === 'function') {
@@ -300,8 +315,8 @@ export class ManageModelsModal extends Modal {
 
 		// Refresh AI chat views - use gentle update without forcing full rebuild
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
-		aiChatLeaves.forEach(leaf => {
-			const view = leaf.view as any;
+		aiChatLeaves.forEach((leaf: WorkspaceLeaf) => {
+			const view = leaf.view as AIChatView;
 			if (view && typeof view.updateContent === 'function') {
 				// Just call updateContent without clearing the container
 				// This will preserve existing structure and only update necessary parts
@@ -316,8 +331,8 @@ export class ManageModelsModal extends Modal {
 		
 		// Refresh AI chat views when modal closes
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
-		aiChatLeaves.forEach(leaf => {
-			const view = leaf.view as any;
+		aiChatLeaves.forEach((leaf: WorkspaceLeaf) => {
+			const view = leaf.view as AIChatView;
 			if (view && typeof view.updateContent === 'function') {
 				view.updateContent();
 			}

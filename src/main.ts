@@ -1,4 +1,4 @@
-import { Plugin, Notice, addIcon  } from 'obsidian';
+import { Plugin, Notice, addIcon, WorkspaceLeaf } from 'obsidian';
 import { ScreenshotManager } from './managers/screenshot-manager';
 import { ImageEditor } from './editors/image-editor';
 import { ImageCaptureSettingTab } from './settings/settings-tab';
@@ -7,6 +7,29 @@ import { AIManager } from './ai/ai-manager';
 import { AIChatView, AI_CHAT_VIEW_TYPE } from './ai/ai-chat-view';
 import { i18n, t } from './i18n';
 import { initializeLogger, getLogger } from './utils/logger';
+
+// Interface definitions for type safety
+interface AIChatViewInterface {
+	addImageToQueue?: (imageDataUrl: string, fileName: string, localPath: string | null, source: string) => void;
+}
+
+interface WorkspaceWithSplit {
+	rightSplit?: {
+		children?: any[];
+	};
+	activeLeaf?: any;
+}
+
+interface VaultWithAdapter {
+	adapter?: {
+		getBasePath?: () => string;
+	};
+}
+
+interface WindowWithElectron extends Window {
+	electron?: any;
+	require?: any;
+}
 
 export default class ImageCapturePlugin extends Plugin {
 	settings: ImageCaptureSettings;
@@ -142,7 +165,7 @@ export default class ImageCapturePlugin extends Plugin {
 
 		// Remove old screenshotPrompt if it exists
 		if ('screenshotPrompt' in this.settings) {
-			delete (this.settings as any).screenshotPrompt;
+			delete (this.settings as Record<string, any>).screenshotPrompt;
 			needsSave = true;
 		}
 
@@ -201,8 +224,8 @@ export default class ImageCapturePlugin extends Plugin {
 		// Find the AI chat view and add image to its queue
 		const aiLeaf = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
 		
-		if (aiLeaf && (aiLeaf.view as any).addImageToQueue) {
-			(aiLeaf.view as any).addImageToQueue(imageDataUrl, fileName, localPath, 'screenshot');
+		if (aiLeaf && (aiLeaf.view as AIChatViewInterface).addImageToQueue) {
+			(aiLeaf.view as AIChatViewInterface).addImageToQueue!(imageDataUrl, fileName, localPath || null, 'screenshot');
 		} else {
 			throw new Error('AI Chat panel not found or does not support image queue');
 		}
@@ -252,8 +275,8 @@ export default class ImageCapturePlugin extends Plugin {
 			
 			if (aiLeaf) {
 				// If panel exists, check if it's active
-				const rightLeaves = (this.app.workspace.rightSplit as any)?.children || [];
-				const isVisible = rightLeaves.some((leaf: any) => leaf === aiLeaf && leaf === this.app.workspace.activeLeaf);
+				const rightLeaves = (this.app.workspace as WorkspaceWithSplit).rightSplit?.children || [];
+				const isVisible = rightLeaves.some((leaf: any) => leaf === aiLeaf && leaf === (this.app.workspace as WorkspaceWithSplit).activeLeaf);
 				
 				if (isVisible) {
 					// If visible and active, close it
@@ -346,7 +369,7 @@ export default class ImageCapturePlugin extends Plugin {
 									
 									const base64Data = dataURL.replace(/^data:image\/png;base64,/, "");
 									const fileName = `screenshot-${Date.now()}.png`;
-									const filePath = path.join((this.app.vault.adapter as any).getBasePath(), fileName);
+									const filePath = path.join((this.app.vault as VaultWithAdapter).adapter?.getBasePath?.() || '', fileName);
 									
 									fs.writeFile(filePath, base64Data, 'base64', (err: any) => {
 										if (err) {
@@ -384,15 +407,15 @@ export default class ImageCapturePlugin extends Plugin {
 			getLogger().log('🔍 Checking for Electron API...');
 			
 			// Check for modern Electron API
-			if ((window as any).electron) {
+			if ((window as WindowWithElectron).electron) {
 				getLogger().log('✅ Found window.electron');
-				const electronAPI = (window as any).electron;
+				const electronAPI = (window as WindowWithElectron).electron;
 				getLogger().log('🔍 Electron API properties:', Object.keys(electronAPI));
 				return electronAPI;
 			}
 			
 			// Check for legacy require method
-			if ((window as any).require) {
+			if ((window as WindowWithElectron).require) {
 				getLogger().log('✅ Found window.require, attempting to load electron...');
 				try {
 					const electron = (window ).require('electron');

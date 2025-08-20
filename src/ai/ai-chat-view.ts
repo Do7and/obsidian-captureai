@@ -1,9 +1,36 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, Component, MarkdownView, Modal, Editor, setIcon, requestUrl } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, Component, MarkdownView, Modal, Editor, setIcon, requestUrl, App, Vault } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIManager, AIMessage, AIConversation } from './ai-manager';
 import { ChatHistoryModal } from '../ui/chat-history-modal';
 import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
+
+// Interface definitions for type safety
+interface AppWithSettings extends App {
+	setting?: {
+		open?: () => void;
+		openTabById?: (id: string) => void;
+		pluginTabs?: Array<{
+			id: string;
+			display?: () => void;
+		}>;
+	};
+}
+
+interface ExtendedMessage extends AIMessage {
+	images?: Array<{
+		localPath?: string;
+		dataUrl?: string;
+		source?: string;
+	}>;
+	imageData?: string;
+	localPath?: string;
+	image?: string;
+}
+
+interface SettingsView {
+	updateContent?(): void;
+}
 
 export const AI_CHAT_VIEW_TYPE = 'ai-chat';
 
@@ -11,6 +38,24 @@ export class AIChatView extends ItemView {
 	private plugin: ImageCapturePlugin;
 	private aiManager: AIManager;
 	private markdownComponent: Component;
+	
+	// WeakMap storage for DOM element properties - replaces (element as any) patterns
+	private inputAreaElements = new WeakMap<HTMLElement, {
+		imagePreviewArea?: HTMLElement;
+		textInput?: HTMLTextAreaElement;
+		sendButton?: HTMLButtonElement;
+		currentImageDataList?: any[];
+	}>();
+	
+	private instanceMethods = new WeakMap<any, {
+		updateSendButtonState?: () => void;
+	}>();
+	
+	private eventHandlers = new WeakMap<HTMLElement, {
+		clickOutsideHandler?: (event: MouseEvent) => void;
+		prevClickOutsideHandler?: ((event: MouseEvent) => void) | null;
+		dragCleanup?: () => void;
+	}>();
 	
 	// Auto-save management
 	private autoSaveTimer: NodeJS.Timeout | null = null;
@@ -21,7 +66,7 @@ export class AIChatView extends ItemView {
 	
 	// AI Chat Mode management  
 	private currentMode: import('../types').AIChatMode = 'analyze';
-	private modeSelector: HTMLSelectElement | null = null;
+	private modeSelector: HTMLButtonElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: ImageCapturePlugin) {
 		super(leaf);
@@ -83,9 +128,12 @@ export class AIChatView extends ItemView {
 		// Save current image queue before clearing container
 		let savedImageQueue: any[] = [];
 		const oldInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
-		if (oldInputArea && (oldInputArea as any)._currentImageDataList) {
-			savedImageQueue = [...(oldInputArea as any)._currentImageDataList];
-			getLogger().log('Saved image queue:', savedImageQueue.length, 'images');
+		if (oldInputArea) {
+			const inputData = this.inputAreaElements.get(oldInputArea);
+			if (inputData && inputData.currentImageDataList) {
+				savedImageQueue = [...inputData.currentImageDataList];
+				getLogger().log('Saved image queue:', savedImageQueue.length, 'images');
+			}
 		}
 		
 		container.empty();
@@ -131,8 +179,11 @@ export class AIChatView extends ItemView {
 		if (savedImageQueue.length > 0) {
 			const newInputArea = container.querySelector('.ai-chat-input-area') as HTMLElement;
 			if (newInputArea) {
-				(newInputArea as any)._currentImageDataList = savedImageQueue;
-				const imagePreviewArea = (newInputArea as any)._imagePreviewArea as HTMLElement;
+				const inputData = this.inputAreaElements.get(newInputArea) || {};
+				inputData.currentImageDataList = savedImageQueue;
+				this.inputAreaElements.set(newInputArea, inputData);
+				
+				const imagePreviewArea = inputData.imagePreviewArea;
 				if (imagePreviewArea) {
 					imagePreviewArea.style.display = 'block';
 					this.renderImagePreviews(imagePreviewArea, savedImageQueue, newInputArea);
@@ -150,9 +201,9 @@ export class AIChatView extends ItemView {
 		}
 
 		// Update send button state after model configuration changes
-		const updateSendButtonState = (this as any)._updateSendButtonState;
-		if (updateSendButtonState) {
-			updateSendButtonState();
+		const instanceMethods = this.instanceMethods.get(this);
+		if (instanceMethods && instanceMethods.updateSendButtonState) {
+			instanceMethods.updateSendButtonState();
 		}
 
 		// Update chat area if needed
@@ -248,20 +299,23 @@ export class AIChatView extends ItemView {
 				// Update image preview if there are images to reflect model capability change
 				const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
 				if (inputArea) {
-					const imageDataList = (inputArea as any)._currentImageDataList || [];
-					if (imageDataList.length > 0) {
-						const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
-						if (imagePreviewArea) {
-							// Re-render image preview with updated model capability
-							this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+					const inputData = this.inputAreaElements.get(inputArea);
+					if (inputData) {
+						const imageDataList = inputData.currentImageDataList || [];
+						if (imageDataList.length > 0) {
+							const imagePreviewArea = inputData.imagePreviewArea;
+							if (imagePreviewArea) {
+								// Re-render image preview with updated model capability
+								this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+							}
 						}
 					}
 				}
 				
 				// Update send button state
-				const updateSendButtonState = (this as any)._updateSendButtonState;
-				if (updateSendButtonState) {
-					updateSendButtonState();
+				const instanceMethods = this.instanceMethods.get(this);
+				if (instanceMethods && instanceMethods.updateSendButtonState) {
+					instanceMethods.updateSendButtonState();
 				}
 				
 				// Refresh other model-dependent components (settings page, other AI chat views)
@@ -286,7 +340,8 @@ export class AIChatView extends ItemView {
 		}
 		
 		// Check if input area has the required properties
-		if (!(inputArea as any)._imagePreviewArea) {
+		const inputData = this.inputAreaElements.get(inputArea);
+		if (!inputData || !inputData.imagePreviewArea) {
 			getLogger().error('Image preview area not initialized');
 			return;
 		}
@@ -315,8 +370,8 @@ export class AIChatView extends ItemView {
 			const descDiv = statusEl.createEl('div', { cls: 'ai-status-desc', text: t('aiChat.noModelsDescription') });
 			statusEl.addEventListener('click', () => {
 				// Open settings
-				(this.plugin.app as any).setting.open();
-				(this.plugin.app as any).setting.openTabById(this.plugin.manifest.id);
+				(this.plugin.app as AppWithSettings).setting?.open?.();
+				(this.plugin.app as AppWithSettings).setting?.openTabById?.(this.plugin.manifest.id);
 			});
 		} else {
 			const defaultModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
@@ -501,9 +556,9 @@ export class AIChatView extends ItemView {
 		try {
 			// Try to get the file from the vault
 			const file = this.plugin.app.vault.getAbstractFileByPath(path);
-			if (file) {
+			if (file && file instanceof TFile) {
 				// Get the resource path that Obsidian can use to display the image
-				return this.plugin.app.vault.getResourcePath(file as any);
+				return this.plugin.app.vault.getResourcePath(file);
 			}
 		} catch (error) {
 			getLogger().warn('Failed to get vault resource URL for path:', path, error);
@@ -743,7 +798,7 @@ export class AIChatView extends ItemView {
 					const alt = element.getAttribute('alt') || 'image';
 					if (src) {
 						// Check if this image has a local path in our message data
-						const allImages = (message as any).images;
+						const allImages = (message as ExtendedMessage).images;
 						if (allImages && allImages.length > 0) {
 							// Find matching image data
 							const imageData = allImages.find((img: any) => 
@@ -761,10 +816,11 @@ export class AIChatView extends ItemView {
 							}
 						} else {
 							// Single image case
-							const singleImageData = (message as any).imageData;
-							if (singleImageData && singleImageData.localPath) {
-								const sourceLabel = this.getImageSourceLabel(singleImageData);
-								markdown += `![${sourceLabel}](${singleImageData.localPath})`;
+							const singleImageData = (message as ExtendedMessage).imageData;
+							const messageLocalPath = (message as ExtendedMessage).localPath;
+							if (singleImageData && messageLocalPath) {
+								const sourceLabel = this.getImageSourceLabel(messageLocalPath);
+								markdown += `![${sourceLabel}](${messageLocalPath})`;
 							} else {
 								const sourceLabel = this.getImageSourceLabel(null);
 								markdown += `![${sourceLabel}](${src})`;
@@ -797,8 +853,8 @@ export class AIChatView extends ItemView {
 		if (message.image && !markdown.includes('![')) {
 			const selectedText = selection.toString().trim();
 			// Try to get local path for fallback
-			const singleImageData = (message as any).imageData;
-			const allImages = (message as any).images;
+			const singleImageData = (message as ExtendedMessage).imageData;
+			const allImages = (message as ExtendedMessage).images;
 			
 			let imagePath = message.image; // fallback to base64
 			let imageData = null;
@@ -807,9 +863,9 @@ export class AIChatView extends ItemView {
 			if (allImages && allImages.length > 0 && allImages[0].localPath) {
 				imagePath = allImages[0].localPath;
 				imageData = allImages[0];
-			} else if (singleImageData && singleImageData.localPath) {
-				imagePath = singleImageData.localPath;
-				imageData = singleImageData;
+			} else if (singleImageData && (message as ExtendedMessage).localPath) {
+				imagePath = (message as ExtendedMessage).localPath!;
+				imageData = (message as ExtendedMessage).localPath!;
 			}
 			
 			const sourceLabel = this.getImageSourceLabel(imageData);
@@ -924,7 +980,7 @@ export class AIChatView extends ItemView {
 		});
 		
 		// Store reference for later use
-		this.modeSelector = selectorButton as any;
+		this.modeSelector = selectorButton;
 	}
 
 	private toggleDropdown(dropdown: HTMLElement, icon: HTMLElement): void {
@@ -1080,10 +1136,12 @@ export class AIChatView extends ItemView {
 		this.setupDragAndDrop(inputArea);
 
 		// Store references for image handling
-		(inputArea as any)._imagePreviewArea = imagePreviewArea;
-		(inputArea as any)._textInput = textInput;
-		(inputArea as any)._sendButton = sendButton;
-		(inputArea as any)._currentImageDataList = [];
+		this.inputAreaElements.set(inputArea, {
+			imagePreviewArea: imagePreviewArea,
+			textInput: textInput,
+			sendButton: sendButton,
+			currentImageDataList: []
+		});
 
 		// Handle sending messages
 		const checkModelConfigured = () => {
@@ -1105,7 +1163,8 @@ export class AIChatView extends ItemView {
 
 		const sendMessage = async () => {
 			const message = textInput.value.trim();
-			const imageDataList = (inputArea as any)._currentImageDataList || [];
+			const inputData = this.inputAreaElements.get(inputArea);
+			const imageDataList = inputData?.currentImageDataList || [];
 			
 			if (!message && imageDataList.length === 0) return;
 
@@ -1265,7 +1324,8 @@ export class AIChatView extends ItemView {
 		// Send-only message function (adds to chat without AI response)
 		const sendOnlyMessage = async () => {
 			const message = textInput.value.trim();
-			const imageDataList = (inputArea as any)._currentImageDataList || [];
+			const inputData = this.inputAreaElements.get(inputArea);
+			const imageDataList = inputData?.currentImageDataList || [];
 			
 			if (!message && imageDataList.length === 0) return;
 
@@ -1363,7 +1423,7 @@ export class AIChatView extends ItemView {
 		});
 
 		// Store update function for later use
-		(this as any)._updateSendButtonState = updateSendButtonState;
+		this.instanceMethods.set(this, { updateSendButtonState });
 		
 		// Initialize button state
 		updateSendButtonState();
@@ -1441,12 +1501,15 @@ export class AIChatView extends ItemView {
 				// Update image preview if there are images to reflect model capability change
 				const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
 				if (inputArea) {
-					const imageDataList = (inputArea as any)._currentImageDataList || [];
-					if (imageDataList.length > 0) {
-						const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
-						if (imagePreviewArea) {
-							// Re-render image preview with updated model capability
-							this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+					const inputData = this.inputAreaElements.get(inputArea);
+					if (inputData) {
+						const imageDataList = inputData.currentImageDataList || [];
+						if (imageDataList.length > 0) {
+							const imagePreviewArea = inputData.imagePreviewArea;
+							if (imagePreviewArea) {
+								// Re-render image preview with updated model capability
+								this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+							}
 						}
 					}
 				}
@@ -1459,9 +1522,9 @@ export class AIChatView extends ItemView {
 				}
 				
 				// Update send button state
-				const updateSendButtonState = (this as any)._updateSendButtonState;
-				if (updateSendButtonState) {
-					updateSendButtonState();
+				const instanceMethods = this.instanceMethods.get(this);
+				if (instanceMethods && instanceMethods.updateSendButtonState) {
+					instanceMethods.updateSendButtonState();
 				}
 				
 				// Refresh other model-dependent components (settings page, other AI chat views)
@@ -1488,17 +1551,20 @@ export class AIChatView extends ItemView {
 		};
 		
 		// Store the handler for cleanup
-		(selectorWrapper as any)._clickOutsideHandler = clickOutsideHandler;
+		this.eventHandlers.set(selectorWrapper, { clickOutsideHandler });
 		
 		// Add document listener
 		document.addEventListener('click', clickOutsideHandler);
 		
 		// Clean up previous handler if it exists
-		const prevHandler = (container as any)._prevClickOutsideHandler;
-		if (prevHandler) {
-			document.removeEventListener('click', prevHandler);
+		const containerEvents = this.eventHandlers.get(container);
+		if (containerEvents && containerEvents.prevClickOutsideHandler) {
+			document.removeEventListener('click', containerEvents.prevClickOutsideHandler);
 		}
-		(container as any)._prevClickOutsideHandler = clickOutsideHandler;
+		
+		const updatedEvents = containerEvents || {};
+		updatedEvents.prevClickOutsideHandler = clickOutsideHandler;
+		this.eventHandlers.set(container, updatedEvents);
 	}
 
 	private showFilePicker(): void {
@@ -1524,14 +1590,15 @@ export class AIChatView extends ItemView {
 	}
 
 	private updateImagePreviewForNonVisionModel(inputArea: HTMLElement, imageDataList: any[]): void {
-		const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
-		if (!imagePreviewArea) return;
+		const inputData = this.inputAreaElements.get(inputArea);
+		if (!inputData || !inputData.imagePreviewArea) return;
 		
 		// Update the current image data list
-		(inputArea as any)._currentImageDataList = imageDataList;
+		inputData.currentImageDataList = imageDataList;
+		this.inputAreaElements.set(inputArea, inputData);
 		
 		// Re-render with automatic model capability detection
-		this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+		this.renderImagePreviews(inputData.imagePreviewArea, imageDataList, inputArea);
 	}
 
 	private renderImagePreviews(container: HTMLElement, imageDataList: any[], inputArea: HTMLElement, isNonVisionModel: boolean = false): void {
@@ -1663,22 +1730,28 @@ export class AIChatView extends ItemView {
 	}
 
 	private removeImageFromPreview(imageId: string, inputArea: HTMLElement): void {
-		const imageDataList = (inputArea as any)._currentImageDataList || [];
-		const filteredList = imageDataList.filter((img: any) => img.id !== imageId);
-		(inputArea as any)._currentImageDataList = filteredList;
+		const inputData = this.inputAreaElements.get(inputArea);
+		if (!inputData) return;
 		
-		const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
-		this.renderImagePreviews(imagePreviewArea, filteredList, inputArea);
+		const imageDataList = inputData.currentImageDataList || [];
+		const filteredList = imageDataList.filter((img: any) => img.id !== imageId);
+		inputData.currentImageDataList = filteredList;
+		this.inputAreaElements.set(inputArea, inputData);
+		
+		const imagePreviewArea = inputData.imagePreviewArea;
+		if (imagePreviewArea) {
+			this.renderImagePreviews(imagePreviewArea, filteredList, inputArea);
+		}
 	}
 
 	private showImagePreview(dataUrl: string, fileName: string, localPath?: string | null, source: string = 'external'): void {
 		const inputArea = this.containerEl.querySelector('.ai-chat-input-area') as HTMLElement;
 		if (!inputArea) return;
 
-		const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
-		if (!imagePreviewArea) return;
+		const inputData = this.inputAreaElements.get(inputArea);
+		if (!inputData || !inputData.imagePreviewArea) return;
 		
-		const imageDataList = (inputArea as any)._currentImageDataList || [];
+		const imageDataList = inputData.currentImageDataList || [];
 		
 		// Add new image to the list with local path and source support
 		const newImageData = { 
@@ -1689,21 +1762,24 @@ export class AIChatView extends ItemView {
 			source: source  // Store image source
 		};
 		imageDataList.push(newImageData);
-		(inputArea as any)._currentImageDataList = imageDataList;
+		inputData.currentImageDataList = imageDataList;
+		this.inputAreaElements.set(inputArea, inputData);
 		
-		imagePreviewArea.style.display = 'block';
+		inputData.imagePreviewArea.style.display = 'block';
 
 		
 		// Render all images in preview
-		this.renderImagePreviews(imagePreviewArea, imageDataList, inputArea);
+		this.renderImagePreviews(inputData.imagePreviewArea, imageDataList, inputArea);
 	}
 
 	private clearImagePreview(inputArea: HTMLElement): void {
-		const imagePreviewArea = (inputArea as any)._imagePreviewArea as HTMLElement;
-		imagePreviewArea.style.display = 'none';
-
-		imagePreviewArea.empty();
-		(inputArea as any)._currentImageDataList = [];
+		const inputData = this.inputAreaElements.get(inputArea);
+		if (!inputData || !inputData.imagePreviewArea) return;
+		
+		inputData.imagePreviewArea.style.display = 'none';
+		inputData.imagePreviewArea.empty();
+		inputData.currentImageDataList = [];
+		this.inputAreaElements.set(inputArea, inputData);
 	}
 
 	private setupDragAndDrop(inputArea: HTMLElement): void {
@@ -1820,12 +1896,14 @@ export class AIChatView extends ItemView {
 		dropZone.addEventListener('drop', handleDrop);
 
 		// Store cleanup function
-		(dropZone as any)._dragCleanup = () => {
-			dropZone.removeEventListener('dragenter', handleDragEnter);
-			dropZone.removeEventListener('dragleave', handleDragLeave);
-			dropZone.removeEventListener('dragover', handleDragOver);
-			dropZone.removeEventListener('drop', handleDrop);
-		};
+		this.eventHandlers.set(dropZone, {
+			dragCleanup: () => {
+				dropZone.removeEventListener('dragenter', handleDragEnter);
+				dropZone.removeEventListener('dragleave', handleDragLeave);
+				dropZone.removeEventListener('dragover', handleDragOver);
+				dropZone.removeEventListener('drop', handleDrop);
+			}
+		});
 	}
 
 	private async saveExternalImageToVault(dataUrl: string, fileName: string): Promise<string | null> {
@@ -2316,18 +2394,22 @@ export class AIChatView extends ItemView {
 		
 		// Cleanup drag and drop listeners
 		const dropZone = this.containerEl.querySelector('.ai-chat-drop-zone') as HTMLElement;
-		if (dropZone && (dropZone as any)._dragCleanup) {
-			(dropZone as any)._dragCleanup();
+		if (dropZone) {
+			const dropZoneEvents = this.eventHandlers.get(dropZone);
+			if (dropZoneEvents && dropZoneEvents.dragCleanup) {
+				dropZoneEvents.dragCleanup();
+			}
 		}
 	}
 
 	private cleanupEventListeners(): void {
 		const container = this.containerEl.children[1] as HTMLElement;
 		if (container) {
-			const prevHandler = (container as any)._prevClickOutsideHandler;
-			if (prevHandler) {
-				document.removeEventListener('click', prevHandler);
-				(container as any)._prevClickOutsideHandler = null;
+			const containerEvents = this.eventHandlers.get(container);
+			if (containerEvents && containerEvents.prevClickOutsideHandler) {
+				document.removeEventListener('click', containerEvents.prevClickOutsideHandler);
+				containerEvents.prevClickOutsideHandler = null;
+				this.eventHandlers.set(container, containerEvents);
 			}
 		}
 	}
@@ -2458,10 +2540,11 @@ export class AIChatView extends ItemView {
 			// Update conversation title based on content before saving
 			this.aiManager.updateConversationTitle(conversation.id);
 
-			// Generate timestamped filename for auto-save (creates new file each time)
+			// Generate filename based on conversation title (like manual save)
 			const conversationIdShort = conversation.id.slice(-8); // Last 8 chars of conversation ID  
-			const fileName = this.generateTimestampedFileName(conversation.id);
-			getLogger().log('Auto-save using timestamped filename:', fileName);
+			const sanitizedTitle = this.sanitizeFileName(conversation.title || 'Untitled Conversation');
+			const fileName = `${sanitizedTitle}.md`;
+			getLogger().log('Auto-save using title-based filename:', fileName);
 
 			// Generate markdown content first to check for changes (auto-save mode, without timestamp update for comparison)
 			const markdownContent = await this.generateConversationMarkdown(conversation, 'auto', false);
@@ -2495,9 +2578,9 @@ export class AIChatView extends ItemView {
 
 			// Use modify instead of delete+create to avoid closing open files
 			const existingFile = vault.getAbstractFileByPath(fullPath);
-			if (existingFile) {
+			if (existingFile && existingFile instanceof TFile) {
 				// File exists, modify it to avoid closing it if it's open
-				await vault.modify(existingFile as any , finalMarkdownContent);
+				await vault.modify(existingFile, finalMarkdownContent);
 			} else {
 				// File doesn't exist, create it
 				await vault.create(fullPath, finalMarkdownContent);
@@ -2645,17 +2728,16 @@ export class AIChatView extends ItemView {
 			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
 			const maxConversations = this.plugin.settings.maxAutoSavedConversations || 5;
 
-			// Get all auto-saved conversation files
+			// Get all auto-saved conversation files (now based on location only)
 			const autoSaveFolder = vault.getAbstractFileByPath(autoSaveLocation);
 			if (!autoSaveFolder) return;
 
 			const files = vault.getMarkdownFiles().filter(file => 
-				file.path.startsWith(autoSaveLocation) && 
-				(file.name.startsWith('auto-saved-') || file.name.includes('_auto-saved-'))
+				file.path.startsWith(autoSaveLocation)
 			);
 
-			// Sort by filename (which includes timestamp) in descending order (newest first)
-			files.sort((a, b) => b.name.localeCompare(a.name));
+			// Sort by modification time in descending order (newest first)
+			files.sort((a, b) => b.stat.mtime - a.stat.mtime);
 
 			// Delete excess files
 			if (files.length > maxConversations) {
@@ -2958,7 +3040,7 @@ tags:
 
 			// Add image content if present - inline with content
 			if (message.image) {
-				const allImages = (message as any).images;
+				const allImages = (message as ExtendedMessage).images;
 				if (allImages && allImages.length > 1) {
 					// Multiple images
 					allImages.forEach((imageData: any, imgIndex: number) => {
@@ -2977,7 +3059,7 @@ tags:
 					});
 				} else {
 					// Single image - check for local path in multiple places
-					const singleImageData = (message as any).imageData;
+					const singleImageData = (message as ExtendedMessage).imageData;
 					const firstImageFromArray = allImages && allImages.length > 0 ? allImages[0] : null;
 					
 					let imagePath = message.image; // fallback to base64
@@ -2990,15 +3072,15 @@ tags:
 						}
 					}
 					// Priority 2: Check imageData property
-					else if (singleImageData && singleImageData.localPath) {
-						const formattedPath = this.formatImagePath(singleImageData.localPath);
+					else if (singleImageData && (message as ExtendedMessage).localPath) {
+						const formattedPath = this.formatImagePath((message as ExtendedMessage).localPath!);
 						if (formattedPath) {
 							imagePath = formattedPath;
 						}
 					}
 					// Priority 3: Check if the message itself has localPath metadata
-					else if ((message as any).localPath) {
-						const formattedPath = this.formatImagePath((message as any).localPath);
+					else if ((message as ExtendedMessage).localPath) {
+						const formattedPath = this.formatImagePath((message as ExtendedMessage).localPath!);
 						if (formattedPath) {
 							imagePath = formattedPath;
 						}
@@ -3033,12 +3115,12 @@ tags:
 			const vault = this.plugin.app.vault;
 			const file = vault.getAbstractFileByPath(localPath);
 			
-			if (!file) {
+			if (!file || !(file instanceof TFile)) {
 				getLogger().warn(`Image file not found: ${localPath}`);
 				return null;
 			}
 			
-			const buffer = await vault.readBinary(file as any);
+			const buffer = await vault.readBinary(file);
 			const extension = localPath.split('.').pop() || 'png';
 			const mimeType = this.getMimeType(extension);
 			
@@ -3140,14 +3222,14 @@ tags:
 				};
 				
 				// Preserve image data if it exists (for backward compatibility)
-				if ((message as any).image) {
-					(newMessage as any).image = (message as any).image;
+				if ((message as ExtendedMessage).image) {
+					(newMessage as ExtendedMessage).image = (message as ExtendedMessage).image;
 				}
-				if ((message as any).imageData) {
-					(newMessage as any).imageData = (message as any).imageData;
+				if ((message as ExtendedMessage).imageData) {
+					(newMessage as ExtendedMessage).imageData = (message as ExtendedMessage).imageData;
 				}
-				if ((message as any).images) {
-					(newMessage as any).images = (message as any).images;
+				if ((message as ExtendedMessage).images) {
+					(newMessage as ExtendedMessage).images = (message as ExtendedMessage).images;
 				}
 				
 				newConversation.messages.push(newMessage);
@@ -3301,9 +3383,9 @@ tags:
 
 	private refreshModelDependentComponents() {
 		// Update send button state based on model configuration
-		const updateSendButtonState = (this as any)._updateSendButtonState;
-		if (updateSendButtonState) {
-			updateSendButtonState();
+		const instanceMethods = this.instanceMethods.get(this);
+		if (instanceMethods && instanceMethods.updateSendButtonState) {
+			instanceMethods.updateSendButtonState();
 		}
 
 		// Update current view's model selector
@@ -3314,7 +3396,7 @@ tags:
 		}
 
 		// Refresh settings tab by finding the settings tab instance and calling display()
-		const app = this.plugin.app as any;
+		const app = this.plugin.app as AppWithSettings;
 		if (app.setting && app.setting.pluginTabs) {
 			const pluginTab = app.setting.pluginTabs.find((tab: any) => 
 				tab.id === this.plugin.manifest.id
@@ -3328,7 +3410,7 @@ tags:
 		// Refresh other AI chat views (not the current one)
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
 		aiChatLeaves.forEach(leaf => {
-			const view = leaf.view as any;
+			const view = leaf.view as SettingsView;
 			if (view && view !== this && typeof view.updateContent === 'function') {
 				view.updateContent();
 			}
@@ -3716,7 +3798,7 @@ tags:
 			
 			// Handle images first
 			if (message.image) {
-				const allImages = (message as any).images;
+				const allImages = (message as ExtendedMessage).images;
 				if (allImages && allImages.length > 1) {
 					// Multiple images
 					allImages.forEach((imageData: any, index: number) => {
@@ -3733,7 +3815,7 @@ tags:
 					});
 				} else {
 					// Single image
-					const singleImageData = (message as any).imageData;
+					const singleImageData = (message as ExtendedMessage).imageData;
 					const firstImageFromArray = allImages && allImages.length > 0 ? allImages[0] : null;
 					
 					let imagePath = message.image; // fallback
@@ -3746,8 +3828,8 @@ tags:
 						}
 					}
 					// Priority 2: Check imageData property
-					else if (singleImageData && singleImageData.localPath) {
-						const formattedPath = this.formatImagePath(singleImageData.localPath);
+					else if (singleImageData && (message as ExtendedMessage).localPath) {
+						const formattedPath = this.formatImagePath((message as ExtendedMessage).localPath!);
 						if (formattedPath) {
 							imagePath = formattedPath;
 						}

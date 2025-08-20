@@ -13,6 +13,14 @@ export class ScreenshotManager {
 	private startY = 0;
 	private selectionCompleteCallback: ((region: Region | null) => void) | null = null;
 
+	// WeakMap storage for overlay element properties - replaces (element as any) patterns
+	private overlayElements = new WeakMap<HTMLElement, {
+		instructionEl?: HTMLElement;
+		mouseIndicator?: HTMLElement;
+		coordDisplay?: HTMLElement;
+		cleanup?: () => void;
+	}>();
+
 	constructor(plugin: ImageCapturePlugin) {
 		this.plugin = plugin;
 	}
@@ -108,9 +116,11 @@ export class ScreenshotManager {
 		document.body.appendChild(coordDisplay);
 		
 		// Store references for cleanup
-		(this.overlay as any)._instructionEl = instructionEl;
-		(this.overlay as any)._mouseIndicator = mouseIndicator;
-		(this.overlay as any)._coordDisplay = coordDisplay;
+		this.overlayElements.set(this.overlay, {
+			instructionEl: instructionEl,
+			mouseIndicator: mouseIndicator,
+			coordDisplay: coordDisplay
+		});
 		
 		this.bindOverlayEvents();
 	}
@@ -118,8 +128,11 @@ export class ScreenshotManager {
 	private bindOverlayEvents() {
 		if (!this.overlay || !this.selectionBox) return;
 		
-		const mouseIndicator = (this.overlay as any)._mouseIndicator;
-		const coordDisplay = (this.overlay as any)._coordDisplay;
+		let overlayData = this.overlayElements.get(this.overlay);
+		if (!overlayData) return;
+		
+		const mouseIndicator = overlayData.mouseIndicator;
+		const coordDisplay = overlayData.coordDisplay;
 		
 		const mouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e, mouseIndicator, coordDisplay);
 		const mouseMoveHandler = (e: MouseEvent) => this.handleMouseMove(e, mouseIndicator, coordDisplay);
@@ -130,7 +143,7 @@ export class ScreenshotManager {
 		const mouseEnterHandler = (e: MouseEvent) => {
 			if (mouseIndicator) {
 				mouseIndicator.style.display = 'block';
-				coordDisplay.style.display = 'block';
+				if (coordDisplay) coordDisplay.style.display = 'block';
 			}
 		};
 		
@@ -138,7 +151,7 @@ export class ScreenshotManager {
 		const mouseLeaveHandler = (e: MouseEvent) => {
 			if (!this.isSelecting && mouseIndicator) {
 				mouseIndicator.style.display = 'none';
-				coordDisplay.style.display = 'none';
+				if (coordDisplay) coordDisplay.style.display = 'none';
 			}
 		};
 		
@@ -158,7 +171,11 @@ export class ScreenshotManager {
 			document.removeEventListener('keydown', keyDownHandler);
 		};
 		
-		(this.overlay as any)._cleanup = cleanup;
+		overlayData = this.overlayElements.get(this.overlay);
+		if (overlayData) {
+			overlayData.cleanup = cleanup;
+			this.overlayElements.set(this.overlay, overlayData);
+		}
 	}
 
 	private handleMouseDown(e: MouseEvent, mouseIndicator?: HTMLElement, coordDisplay?: HTMLElement) {
@@ -254,23 +271,26 @@ export class ScreenshotManager {
 
 	private removeOverlay() {
 		if (this.overlay) {
-			if ((this.overlay as any)._cleanup) {
-				(this.overlay as any)._cleanup();
+			const overlayData = this.overlayElements.get(this.overlay);
+			if (overlayData && overlayData.cleanup) {
+				overlayData.cleanup();
 			}
 			if (this.overlay.parentNode) {
 				this.overlay.parentNode.removeChild(this.overlay);
 			}
 			
 			// Clean up additional elements
-			const instructionEl = (this.overlay as any)._instructionEl;
-			const mouseIndicator = (this.overlay as any)._mouseIndicator;
-			const coordDisplay = (this.overlay as any)._coordDisplay;
-			
-			[instructionEl, mouseIndicator, coordDisplay].forEach(el => {
-				if (el && el.parentNode) {
-					el.parentNode.removeChild(el);
-				}
-			});
+			if (overlayData) {
+				const instructionEl = overlayData.instructionEl;
+				const mouseIndicator = overlayData.mouseIndicator;
+				const coordDisplay = overlayData.coordDisplay;
+				
+				[instructionEl, mouseIndicator, coordDisplay].forEach(el => {
+					if (el && el.parentNode) {
+						el.parentNode.removeChild(el);
+					}
+				});
+			}
 		}
 		this.overlay = null;
 		this.selectionBox = null;

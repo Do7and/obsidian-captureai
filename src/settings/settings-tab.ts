@@ -1,10 +1,16 @@
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, WorkspaceLeaf } from 'obsidian';
 import ImageCapturePlugin from '../main';
-import { LLM_PROVIDERS, LLMProvider, LLMModel } from '../types';
+import { LLM_PROVIDERS, LLMProvider, LLMModel, AIChatMode } from '../types';
 import { SetKeysModal } from '../ui/set-keys-modal';
 import { ManageModelsModal } from '../ui/manage-models-modal';
 import { i18n, t } from '../i18n';
 import { getLogger } from '../utils/logger';
+
+// Interface for AI Chat View
+interface AIChatView {
+	updateContent?(): void;
+	updateSendOnlyButtonVisibility?(): void;
+}
 
 export class ImageCaptureSettingTab extends PluginSettingTab {
 	plugin: ImageCapturePlugin;
@@ -301,7 +307,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					.addOption('custom', t('aiChat.modes.custom'))
 					.setValue(this.plugin.settings.defaultAIChatMode || 'analyze')
 					.onChange(async (value) => {
-						this.plugin.settings.defaultAIChatMode = value as any;
+						this.plugin.settings.defaultAIChatMode = value as AIChatMode;
 						await this.plugin.saveSettings();
 					}));
 
@@ -470,8 +476,8 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 	private refreshModelDependentComponents() {
 		// Refresh AI chat views
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
-		aiChatLeaves.forEach(leaf => {
-			const view = leaf.view as any;
+		aiChatLeaves.forEach((leaf: WorkspaceLeaf) => {
+			const view = leaf.view as AIChatView;
 			if (view && typeof view.updateContent === 'function') {
 				view.updateContent();
 			}
@@ -515,8 +521,8 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 	private refreshAIChatViews() {
 		// 使用轻量级方法只更新按钮显示状态，而不是重新创建整个输入区域
 		const aiChatLeaves = this.plugin.app.workspace.getLeavesOfType('ai-chat');
-		aiChatLeaves.forEach(leaf => {
-			const view = leaf.view as any;
+		aiChatLeaves.forEach((leaf: WorkspaceLeaf) => {
+			const view = leaf.view as AIChatView;
 			if (view && typeof view.updateSendOnlyButtonVisibility === 'function') {
 				view.updateSendOnlyButtonVisibility();
 			}

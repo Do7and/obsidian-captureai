@@ -4,6 +4,12 @@ import { EditTool, Region, StrokeSize, StrokeSetting, LLM_PROVIDERS } from '../t
 import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
 
+// Simple interface for history state
+interface HistoryState {
+	edit: ImageData;
+	highlighter: ImageData;
+}
+
 
 export class ImageEditor extends Modal {
 	private plugin: ImageCapturePlugin;
@@ -22,7 +28,7 @@ export class ImageEditor extends Modal {
 	private isDrawing = false;
 	private lastX = 0;
 	private lastY = 0;
-	private history: ImageData[] = [];
+	private history: (ImageData | HistoryState)[] = []; // Support both old and new format
 	private historyIndex = -1;
 	private originalImageData: string = '';
 	
@@ -31,6 +37,30 @@ export class ImageEditor extends Modal {
 	private fileNameWarning: HTMLElement | null = null;
 	private fileNameInvalidWarning: HTMLElement | null = null;
 	private saveButtons: HTMLButtonElement[] = []; // Store buttons that require valid filename
+
+	// WeakMap storage for DOM element properties - replaces (element as any) patterns
+	private instanceDimensions = {
+		modalWidth: 0,
+		modalHeight: 0,
+		canvasWidth: 0,
+		canvasHeight: 0
+	};
+	
+	private toolbarElements = new WeakMap<HTMLElement, {
+		colorPicker?: HTMLInputElement;
+		strokeSizeContainer?: HTMLElement;
+	}>();
+	
+	private buttonProperties = new WeakMap<HTMLButtonElement, {
+		circle: SVGCircleElement;
+		originalRadius: number;
+		size: StrokeSize;
+	}>();
+	
+	private containerDimensions = new WeakMap<HTMLElement, {
+		displayWidth: number;
+		displayHeight: number;
+	}>();
 
 	// Four-layer system simulation properties
 	// Layer 1: Preview page with center hole (handled by UI)
@@ -182,10 +212,10 @@ export class ImageEditor extends Modal {
 		});
 		
 		// Store dimensions for use in onOpen
-		(this as any).calculatedModalWidth = modalWidth;
-		(this as any).calculatedModalHeight = modalHeight;
-		(this as any).calculatedCanvasWidth = displayWidth;
-		(this as any).calculatedCanvasHeight = displayHeight;
+		this.instanceDimensions.modalWidth = modalWidth;
+		this.instanceDimensions.modalHeight = modalHeight;
+		this.instanceDimensions.canvasWidth = displayWidth;
+		this.instanceDimensions.canvasHeight = displayHeight;
 		
 		this.open();
 	}
@@ -202,8 +232,8 @@ export class ImageEditor extends Modal {
 		this.addTooltipStyles();
 		
 		// Set modal size directly on modalEl to prevent scrollbars
-		const modalWidth = (this as any).calculatedModalWidth || 500;
-		const modalHeight = (this as any).calculatedModalHeight || 400;
+		const modalWidth = this.instanceDimensions.modalWidth || 500;
+		const modalHeight = this.instanceDimensions.modalHeight || 400;
 		
 		this.modalEl.addClass('image-editor-modal-sized');
 		this.modalEl.style.setProperty('--modal-width', modalWidth + 'px');
@@ -239,8 +269,8 @@ export class ImageEditor extends Modal {
 
 	private createEditorInterface(container: HTMLElement) {
 		// Get pre-calculated dimensions
-		const canvasDisplayWidth = (this as any).calculatedCanvasWidth || 300;
-		const canvasDisplayHeight = (this as any).calculatedCanvasHeight || 200;
+		const canvasDisplayWidth = this.instanceDimensions.canvasWidth || 300;
+		const canvasDisplayHeight = this.instanceDimensions.canvasHeight || 200;
 		
 		// Define fixed UI element heights
 		const toolbarHeight = 80; // 增加到80px支持双行
@@ -251,8 +281,10 @@ export class ImageEditor extends Modal {
 		container.addClass('image-editor-container-layout');
 		
 		// Store display dimensions
-		(this as any).canvasDisplayWidth = canvasDisplayWidth;
-		(this as any).canvasDisplayHeight = canvasDisplayHeight;
+		this.containerDimensions.set(container, {
+			displayWidth: canvasDisplayWidth,
+			displayHeight: canvasDisplayHeight
+		});
 		
 		// Fixed height toolbar
 		const toolbar = container.createDiv({ cls: 'image-editor-toolbar' });
@@ -406,7 +438,7 @@ export class ImageEditor extends Modal {
 		});
 		
 		// Store reference for updating when switching modes
-		(toolbar as any)._colorPicker = colorPicker;
+		this.toolbarElements.set(toolbar, { colorPicker });
 		
 		// Stroke size buttons with colored circles
 		const strokeSizeContainer = toolbar.createDiv({ cls: 'stroke-size-container image-editor-stroke-size-container' });
@@ -435,9 +467,11 @@ export class ImageEditor extends Modal {
 			circle.setAttribute('stroke-width', '0.5');
 			
 			// Store circle element and original radius for updates
-			(button as any)._circle = circle;
-			(button as any)._originalRadius = radius;
-			(button as any)._size = size;
+			this.buttonProperties.set(button, {
+				circle: circle,
+				originalRadius: radius,
+				size: size
+			});
 			
 			if (this.getCurrentStrokeSize() === size) {
 				button.addClass('active');
@@ -455,7 +489,9 @@ export class ImageEditor extends Modal {
 		});
 		
 		// Store reference to update colors when color changes
-		(toolbar as any)._strokeSizeContainer = strokeSizeContainer;
+		const toolbarData = this.toolbarElements.get(toolbar) || {};
+		toolbarData.strokeSizeContainer = strokeSizeContainer;
+		this.toolbarElements.set(toolbar, toolbarData);
 	}
 
 
@@ -474,8 +510,11 @@ export class ImageEditor extends Modal {
 	}
 
 	private updateColorAndStrokeDisplay(toolbar: HTMLElement): void {
-		const colorPicker = (toolbar as any)._colorPicker as HTMLInputElement;
-		const strokeSizeContainer = (toolbar as any)._strokeSizeContainer as HTMLElement;
+		const toolbarData = this.toolbarElements.get(toolbar);
+		if (!toolbarData) return;
+		
+		const colorPicker = toolbarData.colorPicker;
+		const strokeSizeContainer = toolbarData.strokeSizeContainer;
 		
 		if (colorPicker) {
 			colorPicker.value = this.getCurrentColor();
@@ -490,9 +529,10 @@ export class ImageEditor extends Modal {
 
 	private updateStrokeSizeButtons(container: HTMLElement): void {
 		container.querySelectorAll('.stroke-size').forEach((button: HTMLButtonElement) => {
-			const size = (button as any)._size as StrokeSize;
-			const circle = (button as any)._circle;
-			const originalRadius = (button as any)._originalRadius;
+			const buttonData = this.buttonProperties.get(button);
+			if (!buttonData) return;
+			
+			const { size, circle, originalRadius } = buttonData;
 			
 			if (circle && originalRadius) {
 				// Update circle size based on mode
@@ -519,16 +559,17 @@ export class ImageEditor extends Modal {
 	}
 	
 	private updateStrokeSizeButtonColors(toolbar: HTMLElement) {
-		const strokeSizeContainer = (toolbar as any)._strokeSizeContainer;
-		if (strokeSizeContainer) {
-			strokeSizeContainer.querySelectorAll('.stroke-size').forEach((button: HTMLButtonElement) => {
-				const circle = (button as any)._circle;
-				if (circle) {
-					// Use getCurrentColor() to get the correct color based on current mode
-					circle.setAttribute('fill', this.getCurrentColor() || '#000000'); // 确保有颜色
-				}
-			});
-		}
+		const toolbarData = this.toolbarElements.get(toolbar);
+		if (!toolbarData || !toolbarData.strokeSizeContainer) return;
+		
+		const strokeSizeContainer = toolbarData.strokeSizeContainer;
+		strokeSizeContainer.querySelectorAll('.stroke-size').forEach((button: HTMLButtonElement) => {
+			const buttonData = this.buttonProperties.get(button);
+			if (buttonData && buttonData.circle) {
+				// Use getCurrentColor() to get the correct color based on current mode
+				buttonData.circle.setAttribute('fill', this.getCurrentColor() || '#000000'); // 确保有颜色
+			}
+		});
 	}
 
 	private createActionButtons(buttonBar: HTMLElement) {
@@ -817,8 +858,8 @@ export class ImageEditor extends Modal {
 				if (!this.canvas || !this.ctx) return;
 				
 				// Get display dimensions
-				const displayWidth = (this as any).calculatedCanvasWidth || displayImg.width;
-				const displayHeight = (this as any).calculatedCanvasHeight || displayImg.height;
+				const displayWidth = this.instanceDimensions.canvasWidth || displayImg.width;
+				const displayHeight = this.instanceDimensions.canvasHeight || displayImg.height;
 				
 				// Set main canvas size to display dimensions (viewport)
 				this.canvas.width = displayWidth;
@@ -1423,7 +1464,7 @@ export class ImageEditor extends Modal {
 		const combinedState = { edit: editImageData, highlighter: highlighterImageData };
 		
 		this.history = this.history.slice(0, this.historyIndex + 1);
-		this.history.push(combinedState as any); // Type assertion for now
+		this.history.push(combinedState); // No more type assertion needed
 		this.historyIndex = this.history.length - 1;
 		
 		if (this.history.length > 20) {
@@ -1435,15 +1476,18 @@ export class ImageEditor extends Modal {
 	private restoreFromHistory() {
 		if (!this.editLayerCtx || !this.highlighterLayerCtx || this.historyIndex < 0 || this.historyIndex >= this.history.length) return;
 		
-		const state = this.history[this.historyIndex] as any;
+		const state = this.history[this.historyIndex];
 		
-		// Restore both layers if the state contains them
-		if (state.edit && state.highlighter) {
-			this.editLayerCtx.putImageData(state.edit, 0, 0);
-			this.highlighterLayerCtx.putImageData(state.highlighter, 0, 0);
+		// Check if this is the new HistoryState format
+		if (state && typeof state === 'object' && 'edit' in state && 'highlighter' in state) {
+			// New format with both layers
+			const historyState = state as HistoryState;
+			this.editLayerCtx.putImageData(historyState.edit, 0, 0);
+			this.highlighterLayerCtx.putImageData(historyState.highlighter, 0, 0);
 		} else {
 			// Backward compatibility with old single-layer history
-			this.editLayerCtx.putImageData(state, 0, 0);
+			const imageData = state as ImageData;
+			this.editLayerCtx.putImageData(imageData, 0, 0);
 		}
 		
 		this.renderAllLayers();

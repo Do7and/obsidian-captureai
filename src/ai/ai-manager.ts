@@ -5,6 +5,21 @@ import { AI_CHAT_VIEW_TYPE } from './ai-chat-view';
 import { getLogger } from '../utils/logger';
 import { t } from '../i18n';
 
+// Interface for message content array with image support
+interface MessageContentItem {
+	type: 'text' | 'image_url';
+	text?: string;
+	image_url?: {
+		url: string;
+	};
+}
+
+// Interface for AI Chat View methods
+interface AIChatViewMethods {
+	updateContent?(): void;
+	getCurrentMode?(): string;
+}
+
 export interface AIMessage {
 	id: string;
 	type: 'user' | 'assistant';
@@ -325,7 +340,7 @@ export class AIManager {
 						}
 						
 						if (imageDataUrl) {
-							(messageContent as any).push({
+							(messageContent as MessageContentItem[]).push({
 								type: 'image_url',
 								image_url: { url: imageDataUrl }
 							});
@@ -337,7 +352,7 @@ export class AIManager {
 					for (const tempImageRef of tempImageRefs) {
 						if (imageCount >= contextSettings.maxContextImages) break;
 						
-						(messageContent as any).push({
+						(messageContent as MessageContentItem[]).push({
 							type: 'image_url',
 							image_url: { url: tempImageRef.dataUrl }
 						});
@@ -416,7 +431,7 @@ export class AIManager {
 			
 			// Add current images
 			for (const imageDataUrl of currentImages) {
-				(messageContent as any).push({
+				(messageContent as MessageContentItem[]).push({
 					type: 'image_url',
 					image_url: { url: imageDataUrl }
 				});
@@ -819,8 +834,8 @@ export class AIManager {
 	private updateAIPanel(): void {
 		// Find AI panel and update it
 		const aiLeaf = this.plugin.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
-		if (aiLeaf && (aiLeaf.view as any).updateContent) {
-			(aiLeaf.view as any).updateContent();
+		if (aiLeaf && (aiLeaf.view as AIChatViewMethods).updateContent) {
+			(aiLeaf.view as AIChatViewMethods).updateContent!();
 		}
 	}
 
@@ -1183,8 +1198,8 @@ export class AIManager {
 	private getCurrentMode(): string {
 		// Get current mode from AI chat view
 		const aiLeaf = this.plugin.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
-		if (aiLeaf && (aiLeaf.view as any).getCurrentMode) {
-			return (aiLeaf.view as any).getCurrentMode();
+		if (aiLeaf && (aiLeaf.view as AIChatViewMethods).getCurrentMode) {
+			return (aiLeaf.view as AIChatViewMethods).getCurrentMode!();
 		}
 		return 'analyze'; // default mode
 	}
