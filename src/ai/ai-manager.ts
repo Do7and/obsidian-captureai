@@ -5,6 +5,113 @@ import { AI_CHAT_VIEW_TYPE } from './ai-chat-view';
 import { getLogger } from '../utils/logger';
 import { t } from '../i18n';
 
+// Interface for temporary image data
+interface TempImageData {
+	dataUrl: string;
+	source: string;      // 'screenshot', 'external', 'clipboard', etc
+	fileName: string;
+	timestamp: number;
+}
+
+// Image Reference Manager for handling temporary images
+class ImageReferenceManager {
+	// 临时图片存储 (内存中，会话结束时清理)
+	private tempImages: Map<string, TempImageData> = new Map();
+	
+	// 引用计数 (用于内存管理)
+	private refCounts: Map<string, number> = new Map();
+	
+	private plugin: ImageCapturePlugin;
+	
+	constructor(plugin: ImageCapturePlugin) {
+		this.plugin = plugin;
+	}
+	
+	// 添加临时图片，返回标识符
+	addTempImage(dataUrl: string, source: string, fileName: string): string {
+		const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+		
+		this.tempImages.set(tempId, {
+			dataUrl,
+			source,
+			fileName,
+			timestamp: Date.now()
+		});
+		
+		// 初始引用计数为1（预发送区或其他地方会立即持有引用）
+		this.refCounts.set(tempId, 1);
+		
+		getLogger().log(`Added temp image: ${tempId}, source: ${source}, fileName: ${fileName}`);
+		return tempId;
+	}
+	
+	// 获取临时图片数据
+	getTempImageData(tempId: string): TempImageData | null {
+		return this.tempImages.get(tempId) || null;
+	}
+	
+	// 增加引用计数
+	addRef(tempId: string): void {
+		const currentCount = this.refCounts.get(tempId) || 0;
+		this.refCounts.set(tempId, currentCount + 1);
+	}
+	
+	// 减少引用计数
+	removeRef(tempId: string): void {
+		const currentCount = this.refCounts.get(tempId) || 0;
+		if (currentCount > 0) {
+			this.refCounts.set(tempId, currentCount - 1);
+		}
+		
+		// 如果引用计数为0，清理图片数据
+		if (this.refCounts.get(tempId) === 0) {
+			this.cleanupTempImage(tempId);
+		}
+	}
+	
+	// 清理无引用的临时图片
+	private cleanupTempImage(tempId: string): void {
+		this.tempImages.delete(tempId);
+		this.refCounts.delete(tempId);
+		getLogger().log(`Cleaned up temp image: ${tempId}`);
+	}
+	
+	// 清理所有临时图片 (会话结束时调用)
+	cleanup(): void {
+		const count = this.tempImages.size;
+		this.tempImages.clear();
+		this.refCounts.clear();
+		getLogger().log(`Cleaned up ${count} temporary images`);
+	}
+	
+	// 获取所有临时图片的统计信息
+	getStats(): { count: number; totalSize: number } {
+		let totalSize = 0;
+		for (const imageData of this.tempImages.values()) {
+			// 估算base64数据大小 (字符数 * 0.75 约等于字节数)
+			totalSize += imageData.dataUrl.length * 0.75;
+		}
+		
+		return {
+			count: this.tempImages.size,
+			totalSize: Math.round(totalSize)
+		};
+	}
+	
+	// 解析消息内容中的图片引用并更新引用计数
+	updateRefsFromContent(content: string, increment: boolean = true): void {
+		const tempRefs = content.match(/temp:(\w+)/g) || [];
+		tempRefs.forEach(ref => {
+			const tempId = ref.replace('temp:', '');
+			if (increment) {
+				this.addRef(tempId);
+			} else {
+				this.removeRef(tempId);
+			}
+		});
+	}
+}
+
 // Interface for message content array with image support
 interface MessageContentItem {
 	type: 'text' | 'image_url';
@@ -44,9 +151,30 @@ export class AIManager {
 	private plugin: ImageCapturePlugin;
 	private conversations: Map<string, AIConversation> = new Map();
 	private currentConversationId: string | null = null;
+	private imageRefManager: ImageReferenceManager;
 
 	constructor(plugin: ImageCapturePlugin) {
 		this.plugin = plugin;
+		this.imageRefManager = new ImageReferenceManager(plugin);
+	}
+
+	// 获取图片引用管理器的公共访问方法
+	getImageReferenceManager(): ImageReferenceManager {
+		return this.imageRefManager;
+	}
+
+	// 删除消息时更新图片引用计数（只处理用户消息）
+	private removeImageRefsFromMessage(message: AIMessage): void {
+		if (message.content && message.type === 'user') {
+			this.imageRefManager.updateRefsFromContent(message.content, false); // 减少引用
+		}
+	}
+
+	// 添加消息时更新图片引用计数（只处理用户消息）
+	private addImageRefsFromMessage(message: AIMessage): void {
+		if (message.content && message.type === 'user') {
+			this.imageRefManager.updateRefsFromContent(message.content, true); // 增加引用
+		}
 	}
 
 
@@ -309,54 +437,43 @@ export class AIManager {
 			for (const msg of historicalMessages) {
 				const role = msg.type === 'user' ? 'user' : 'assistant';
 				
-				// Parse message content to separate images and text
-				const { textContent, imageReferences, tempImageRefs } = this.parseMarkdownContent(msg.content || '', msg.tempImages);
+				// Parse message content to extract image references
+				const imageReferences = this.parseImageReferences(msg.content || '');
 				
-				// Check if message has images (regular or temporary)
-				const hasImages = (imageReferences.length > 0 || tempImageRefs.length > 0) && isVisionCapable && imageCount < contextSettings.maxContextImages;
+				// Remove image markdown from text content
+				let textContent = msg.content || '';
+				imageReferences.forEach(imgRef => {
+					const imgMarkdown = `![${imgRef.alt}](${imgRef.path})`;
+					textContent = textContent.replace(imgMarkdown, '').trim();
+				});
+				// Clean up extra whitespace
+				textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
+				
+				// Check if message has images and model supports vision
+				const hasImages = imageReferences.length > 0 && isVisionCapable && imageCount < contextSettings.maxContextImages;
 				
 				if (hasImages) {
 					// Message with images - only include if model supports vision
-					const messageContent = [
-						{ type: 'text', text: textContent }
-					];
+					const messageContent: MessageContentItem[] = [];
 					
-					// Add regular images from references (load them as needed)
+					// 只有当文本内容不为空时才添加文本部分
+					if (textContent && textContent.trim()) {
+						messageContent.push({ type: 'text', text: textContent });
+					}
+					
+					// Add images using unified resolution method
 					for (const imageRef of imageReferences) {
 						if (imageCount >= contextSettings.maxContextImages) break;
 						
-						// Try to load image from path or use data URL
-						let imageDataUrl: string | null = null;
-						
-						// If path looks like a data URL, use it directly
-						if (imageRef.path.startsWith('data:')) {
-							imageDataUrl = imageRef.path;
-						} else if (imageRef.path.startsWith('[') && imageRef.path.endsWith(']')) {
-							// Skip placeholder paths
-							continue;
-						} else {
-							// Try to load from vault path
-							imageDataUrl = await this.loadImageDataFromPath(imageRef.path);
-						}
+						const imageDataUrl = await this.resolveImageForAPI(imageRef.path);
 						
 						if (imageDataUrl) {
-							(messageContent as MessageContentItem[]).push({
+							messageContent.push({
 								type: 'image_url',
 								image_url: { url: imageDataUrl }
 							});
 							imageCount++;
 						}
-					}
-					
-					// Add temporary images directly
-					for (const tempImageRef of tempImageRefs) {
-						if (imageCount >= contextSettings.maxContextImages) break;
-						
-						(messageContent as MessageContentItem[]).push({
-							type: 'image_url',
-							image_url: { url: tempImageRef.dataUrl }
-						});
-						imageCount++;
 					}
 					
 					messages.push({
@@ -425,13 +542,16 @@ export class AIManager {
 		// 4. Add current user message (纯净的用户消息，不包含 mode prompt)
 		if (currentImages && currentImages.length > 0 && isVisionCapable) {
 			// Current message with images - multimodal format
-			const messageContent = [
-				{ type: 'text', text: currentMessage }
-			];
+			const messageContent: MessageContentItem[] = [];
+			
+			// 只有当文本内容不为空时才添加文本部分
+			if (currentMessage && currentMessage.trim()) {
+				messageContent.push({ type: 'text', text: currentMessage });
+			}
 			
 			// Add current images
 			for (const imageDataUrl of currentImages) {
-				(messageContent as MessageContentItem[]).push({
+				messageContent.push({
 					type: 'image_url',
 					image_url: { url: imageDataUrl }
 				});
@@ -802,6 +922,62 @@ export class AIManager {
 		}
 	}
 
+	/**
+	 * Delete a conversation and clean up associated image references
+	 */
+	deleteConversation(conversationId: string): void {
+		const conversation = this.conversations.get(conversationId);
+		if (conversation) {
+			// Clean up image references from all messages
+			conversation.messages.forEach(message => {
+				this.removeImageRefsFromMessage(message);
+			});
+			
+			// Remove from conversations map
+			this.conversations.delete(conversationId);
+			
+			// If this was the current conversation, clear the reference
+			if (this.currentConversationId === conversationId) {
+				this.currentConversationId = null;
+			}
+			
+			getLogger().log(`Deleted conversation: ${conversationId}`);
+		}
+	}
+
+	/**
+	 * 更新内存中的对话数据（用于保存后同步临时图片到本地文件的引用更新）
+	 */
+	updateConversationInMemory(conversationId: string, updatedConversation: AIConversation): void {
+		const existingConversation = this.conversations.get(conversationId);
+		if (existingConversation) {
+			// 先清理旧的图片引用计数
+			existingConversation.messages.forEach(message => {
+				this.removeImageRefsFromMessage(message);
+			});
+			
+			// 更新对话数据
+			this.conversations.set(conversationId, updatedConversation);
+			
+			// 为新的消息内容添加图片引用计数
+			updatedConversation.messages.forEach(message => {
+				this.addImageRefsFromMessage(message);
+			});
+			
+			getLogger().log(`Updated conversation in memory: ${conversationId}`);
+		}
+	}
+
+	/**
+	 * Clean up all temporary images when plugin is disabled/unloaded
+	 */
+	cleanup(): void {
+		this.imageRefManager.cleanup();
+		this.conversations.clear();
+		this.currentConversationId = null;
+		getLogger().log('AIManager cleanup completed');
+	}
+
 	private getCurrentConversation(): AIConversation | null {
 		if (!this.currentConversationId) return null;
 		return this.conversations.get(this.currentConversationId) || null;
@@ -844,7 +1020,68 @@ export class AIManager {
 	}
 
 	/**
-	 * Parse markdown content to separate images and text, including temporary images
+	 * 统一的图片解析函数 - 将图片引用转换为API可用的base64数据
+	 */
+	private async resolveImageForAPI(imageRef: string): Promise<string | null> {
+		if (imageRef.startsWith('temp:')) {
+			// 临时图片 - 从内存获取base64
+			const tempId = imageRef.replace('temp:', '');
+			const tempData = this.imageRefManager.getTempImageData(tempId);
+			if (tempData) {
+				return tempData.dataUrl;
+			}
+			getLogger().warn(`Temp image not found: ${tempId}`);
+			return null;
+		} else {
+			// Vault图片 - 从文件加载base64
+			if (imageRef.startsWith('data:')) {
+				// 已经是base64格式，直接返回
+				return imageRef;
+			} else if (imageRef.startsWith('[') && imageRef.endsWith(']')) {
+				// 跳过占位符路径
+				return null;
+			} else {
+				// 从vault路径加载
+				return await this.loadImageDataFromPath(imageRef);
+			}
+		}
+	}
+
+	/**
+	 * Parse markdown content to extract image references (both vault and temp images) - Public method
+	 */
+	parseImageReferences(markdown: string): Array<{ alt: string; path: string; fileName: string }> {
+		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
+		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
+		
+		let match;
+		while ((match = imageRegex.exec(markdown)) !== null) {
+			const alt = match[1] || 'Image';
+			const path = match[2];
+			
+			// 获取文件名
+			let fileName: string;
+			if (path.startsWith('temp:')) {
+				const tempId = path.replace('temp:', '');
+				const tempData = this.imageRefManager.getTempImageData(tempId);
+				fileName = tempData?.fileName || alt;
+			} else {
+				fileName = path.split('/').pop() || alt;
+			}
+			
+			imageReferences.push({
+				alt: alt,
+				path: path,
+				fileName: fileName
+			});
+		}
+		
+		return imageReferences;
+	}
+
+	/**
+	 * Parse markdown content to separate images and text - 保留向后兼容性
+	 * @deprecated 建议使用新的parseImageReferences方法
 	 */
 	private parseMarkdownContent(markdown: string, tempImages?: { [key: string]: string }): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }>; tempImageRefs: Array<{ id: string; dataUrl: string }> } {
 		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
@@ -858,9 +1095,9 @@ export class AIManager {
 			const alt = match[1] || 'Image';
 			const path = match[2];
 			
-			// Check if this is a temp:// protocol image
-			if (path.startsWith('temp://')) {
-				const tempId = path.replace('temp://', '');
+			// Check if this is a temp: protocol image
+			if (path.startsWith('temp:')) {
+				const tempId = path.replace('temp:', '');
 				if (tempImages && tempImages[tempId]) {
 					// Parse the JSON string to get image data with source info
 					let tempImageData;
@@ -1207,11 +1444,6 @@ export class AIManager {
 			return this.plugin.settings.globalSystemPrompt || '';
 		}
 		return modePrompts[mode as keyof typeof modePrompts];
-	}
-
-	cleanup(): void {
-		this.conversations.clear();
-		this.currentConversationId = null;
 	}
 
 	// Context-aware API calls for different providers

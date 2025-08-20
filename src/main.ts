@@ -125,6 +125,11 @@ export default class ImageCapturePlugin extends Plugin {
 			getLogger().error('Failed to perform final auto-save during plugin unload:', error);
 		}
 		
+		// Cleanup AI Manager and temporary images
+		if (this.aiManager) {
+			this.aiManager.cleanup();
+		}
+		
 		if (this.screenshotManager) {
 			this.screenshotManager.cleanup();
 		}

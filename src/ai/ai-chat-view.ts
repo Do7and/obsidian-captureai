@@ -486,12 +486,7 @@ export class AIChatView extends ItemView {
 			}
 
 			// Add AI response
-			const assistantMessage = {
-				id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-				type: 'assistant' as const,
-				content: response,
-				timestamp: new Date()
-			};
+			const assistantMessage = this.createAssistantMessage(response);
 			conversation.messages.push(assistantMessage);
 			
 			await this.updateContent();
@@ -506,12 +501,7 @@ export class AIChatView extends ItemView {
 					conversation.messages.splice(typingIndex, 1);
 				}
 				
-				const errorMessage = {
-					id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-					type: 'assistant' as const,
-					content: `Error: ${error.message}`,
-					timestamp: new Date()
-				};
+				const errorMessage = this.createAssistantMessage(`Error: ${error.message}`);
 				conversation.messages.push(errorMessage);
 				await this.updateContent();
 			}
@@ -1161,28 +1151,34 @@ export class AIChatView extends ItemView {
 			}
 		};
 
-		const sendMessage = async () => {
+		const sendMessage = async (sendOnly: boolean = false) => {
 			const message = textInput.value.trim();
 			const inputData = this.inputAreaElements.get(inputArea);
 			const imageDataList = inputData?.currentImageDataList || [];
 			
 			if (!message && imageDataList.length === 0) return;
 
-			// Check if any models are configured
-			if (!checkModelConfigured()) {
+			// For AI responses, check if models are configured
+			if (!sendOnly && !checkModelConfigured()) {
 				new Notice(t('notice.pleaseConfigureModel'));
 				return;
 			}
 
-			// Get current model to check vision capability
-			const allModels = this.plugin.settings.modelConfigs;
-			const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
-			const isVisionCapable = currentModel?.isVisionCapable || false;
+			// Get current model to check vision capability (only needed for AI responses)
+			let currentModel: any = undefined;
+			let isVisionCapable = false;
+			if (!sendOnly) {
+				const allModels = this.plugin.settings.modelConfigs;
+				currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+				isVisionCapable = currentModel?.isVisionCapable || false;
+			}
 
 			// Clear text input
 			textInput.value = '';
-			sendButton.disabled = true;
-			setIcon(sendButton, 'hourglass');
+			if (!sendOnly) {
+				sendButton.disabled = true;
+				setIcon(sendButton, 'hourglass');
+			}
 
 			try {
 				// Get or create conversation
@@ -1191,15 +1187,8 @@ export class AIChatView extends ItemView {
 					conversation = this.aiManager.createNewConversation('新对话');
 				}
 
-				// Step 1: 构建消息体（包含历史上下文、mode prompt等）
-				let messagesToSend: any[] = [];
-				let currentImages: string[] = [];
-				
-				if (imageDataList.length > 0 && isVisionCapable) {
-					// Process images for vision-capable models
-					currentImages = imageDataList.map((img: any) => img.dataUrl);
-					this.clearImagePreview(inputArea);
-				} else if (imageDataList.length > 0 && !isVisionCapable) {
+				// Handle vision capability check for AI responses
+				if (!sendOnly && imageDataList.length > 0 && !isVisionCapable) {
 					// For non-vision models, keep images in preview and only send text
 					if (!message) {
 						new Notice(t('aiChat.nonVisionModelCannotSendImages'));
@@ -1209,65 +1198,41 @@ export class AIChatView extends ItemView {
 					this.updateImagePreviewForNonVisionModel(inputArea, imageDataList);
 				}
 
-				// Build messages for AI (this includes system prompt, context, mode prompt, current message)
-				messagesToSend = await this.aiManager.buildContextMessages(
-					conversation, 
-					message, 
-					currentImages, 
-					currentModel, 
-					true
-				);
-
-				// Step 2: 添加用户消息到对话界面显示
-				let finalContent = message;
-				let tempImages: { [key: string]: string } = {};
-
-				// Handle images for display in chat
-				if (currentImages.length > 0) {
-					const imageReferences: string[] = [];
-					
-					for (let i = 0; i < imageDataList.length; i++) {
-						const img = imageDataList[i];
-						
-						// Generate appropriate image ID based on source
-						let imageId: string;
-						let imageRef: string;
-						
-						if (img.source === 'vault' && img.localPath) {
-							// For vault images, use direct path reference
-							imageRef = `![${img.source}](${img.localPath})`;
-						} else {
-							// For temporary images (screenshot, external, etc.), use temp ID
-							imageId = `temp_${Date.now()}_${i}`;
-							// Store both dataUrl and source information
-							tempImages[imageId] = JSON.stringify({
-								dataUrl: img.dataUrl,
-								source: img.source || 'image',
-								fileName: img.fileName
-							});
-							imageRef = `![${img.source || 'image'}](temp:${imageId})`;
-						}
-						
-						imageReferences.push(imageRef);
-					}
-					
-					// Combine text and image references
-					finalContent = imageReferences.join('\n') + (message ? '\n\n' + message : '');
+				// Build messages for AI (only for AI responses)
+				let messagesToSend: any[] = [];
+				let currentImages: string[] = [];
+				
+				if (!sendOnly && imageDataList.length > 0 && isVisionCapable) {
+					// Process images for vision-capable models
+					currentImages = imageDataList.map((img: any) => img.dataUrl);
+					// Build messages for AI (this includes system prompt, context, mode prompt, current message)
+					messagesToSend = await this.aiManager.buildContextMessages(
+						conversation, 
+						message, 
+						currentImages, 
+						currentModel, 
+						true
+					);
 				}
 
-				// Add user message to conversation for display
-				const userMessage = {
-					id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-					type: 'user' as const,
-					content: finalContent,
-					timestamp: new Date(),
-					tempImages: Object.keys(tempImages).length > 0 ? tempImages : undefined
-				};
-
+				// Create and add user message to conversation
+				const userMessage = await this.createUserMessage(message, imageDataList);
 				conversation.messages.push(userMessage);
 				await this.updateContent();
 
-				// Add typing indicator
+				// Clear image preview after message is created (releases preview references)
+				if (imageDataList.length > 0) {
+					this.clearImagePreview(inputArea);
+				}
+
+				// If send-only, we're done
+				if (sendOnly) {
+					// Reset auto-save content tracking
+					this.lastAutoSaveContent = null;
+					return;
+				}
+
+				// Add typing indicator for AI response
 				const typingMessage = {
 					id: 'typing_' + Date.now(),
 					type: 'assistant' as const,
@@ -1278,7 +1243,7 @@ export class AIChatView extends ItemView {
 				conversation.messages.push(typingMessage);
 				await this.updateContent();
 
-				// Step 3: 发送预构建的消息体给AI
+				// Send to AI and get response
 				const response = await this.aiManager.sendPreBuiltMessagesToAI(messagesToSend, currentModel);
 
 				// Remove typing indicator
@@ -1288,12 +1253,7 @@ export class AIChatView extends ItemView {
 				}
 
 				// Add AI response
-				const assistantMessage = {
-					id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-					type: 'assistant' as const,
-					content: response,
-					timestamp: new Date()
-				};
+				const assistantMessage = this.createAssistantMessage(response);
 				conversation.messages.push(assistantMessage);
 				
 				await this.updateContent();
@@ -1303,113 +1263,51 @@ export class AIChatView extends ItemView {
 
 			} catch (error) {
 				getLogger().error('Failed to send message:', error);
-				// Remove typing indicator on error
+				
+				// Handle error cleanup
 				const conversation = this.aiManager.getCurrentConversationData();
 				if (conversation) {
+					// Remove typing indicator if it exists
 					const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
 					if (typingIndex > -1) {
 						conversation.messages.splice(typingIndex, 1);
 						await this.updateContent();
 					}
+					
+					// Also remove the user message that was added before the AI call failed (only for AI calls)
+					if (!sendOnly) {
+						const lastMessageIndex = conversation.messages.length - 1;
+						if (lastMessageIndex >= 0 && conversation.messages[lastMessageIndex].type === 'user') {
+							const removedMessage = conversation.messages[lastMessageIndex];
+							// 移除消息时，减少消息块中图片的引用计数（消息块释放引用）
+							this.aiManager.getImageReferenceManager().updateRefsFromContent(removedMessage.content, false);
+							conversation.messages.splice(lastMessageIndex, 1);
+							await this.updateContent();
+						}
+					}
 				}
-				// Restore text input on error
+				// Restore text input on error - images are already cleared
 				textInput.value = message;
 				new Notice(`❌ Error: ${error.message}`);
 			} finally {
-				sendButton.disabled = false;
-				setIcon(sendButton, 'send');
+				if (!sendOnly) {
+					sendButton.disabled = false;
+					setIcon(sendButton, 'send');
+				}
 			}
 		};
 
-		// Send-only message function (adds to chat without AI response)
-		const sendOnlyMessage = async () => {
-			const message = textInput.value.trim();
-			const inputData = this.inputAreaElements.get(inputArea);
-			const imageDataList = inputData?.currentImageDataList || [];
-			
-			if (!message && imageDataList.length === 0) return;
+		sendButton.addEventListener('click', () => sendMessage(false));
 
-			try {
-				// Create or get current conversation
-				let conversation = this.aiManager.getCurrentConversationData();
-				if (!conversation) {
-					// Create a new conversation with temporary title
-					conversation = this.aiManager.createNewConversation('新对话');
-				}
-
-				// Clear inputs
-				textInput.value = '';
-				this.clearImagePreview(inputArea);
-
-				// Add user message to conversation
-				let finalContent = message;
-				let tempImages: { [key: string]: string } = {};
-
-				// Handle images if present
-				if (imageDataList.length > 0) {
-					const imageReferences: string[] = [];
-					
-					for (let i = 0; i < imageDataList.length; i++) {
-						const img = imageDataList[i];
-						
-						// Generate appropriate image ID based on source
-						let imageId: string;
-						let imageRef: string;
-						
-						if (img.source === 'vault' && img.localPath) {
-							// For vault images, use direct path reference
-							imageRef = `![${img.source}](${img.localPath})`;
-						} else {
-							// For temporary images (screenshot, external, etc.), use temp ID
-							imageId = `temp_${Date.now()}_${i}`;
-							// Store both dataUrl and source information
-							tempImages[imageId] = JSON.stringify({
-								dataUrl: img.dataUrl,
-								source: img.source || 'image',
-								fileName: img.fileName
-							});
-							imageRef = `![${img.source || 'image'}](temp:${imageId})`;
-						}
-						
-						imageReferences.push(imageRef);
-					}
-					
-					// Combine text and image references
-					finalContent = imageReferences.join('\n') + (message ? '\n\n' + message : '');
-				}
-
-				const userMessage = {
-					id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-					type: 'user' as const,
-					content: finalContent,
-					timestamp: new Date(),
-					tempImages: Object.keys(tempImages).length > 0 ? tempImages : undefined
-				};
-
-				conversation.messages.push(userMessage);
-				await this.updateContent();
-
-				// Reset auto-save content tracking
-				this.lastAutoSaveContent = null;
-
-			} catch (error) {
-				getLogger().error('Failed to send message only:', error);
-				// Restore inputs on error
-				textInput.value = message;
-			}
-		};
-
-		sendButton.addEventListener('click', sendMessage);
-
-		// Add event listener for send-only button (always add since button always exists)
-		sendOnlyButton.addEventListener('click', sendOnlyMessage);
+		// Add event listener for send-only button
+		sendOnlyButton.addEventListener('click', () => sendMessage(true));
 
 		// Send on Enter (not Shift+Enter) - only if models are configured
 		textInput.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault();
 				if (checkModelConfigured()) {
-					sendMessage();
+					sendMessage(false);
 				} else {
 					new Notice(t('notice.pleaseConfigureModel'));
 				}
@@ -1753,29 +1651,127 @@ export class AIChatView extends ItemView {
 		
 		const imageDataList = inputData.currentImageDataList || [];
 		
-		// Add new image to the list with local path and source support
-		const newImageData = { 
-			dataUrl, 
-			fileName, 
-			id: Date.now().toString(),
-			localPath: localPath || null,  // Store local path if available
-			source: source  // Store image source
-		};
+		getLogger().log('📸 Adding image to preview:', { fileName, source, localPath });
+		
+		// 创建图片数据对象
+		let newImageData;
+		
+		if (source === 'vault' && localPath) {
+			// Vault图片 - 直接使用路径，不需要通过ImageReferenceManager
+			newImageData = { 
+				dataUrl, 
+				fileName, 
+				id: Date.now().toString(),
+				localPath: localPath,
+				source: source,
+				imageRef: localPath  // vault图片使用文件路径作为引用
+			};
+			getLogger().log('✅ Created vault image data:', newImageData);
+		} else {
+			// 临时图片 - 通过ImageReferenceManager管理
+			const tempId = this.aiManager.getImageReferenceManager().addTempImage(dataUrl, source, fileName);
+			newImageData = { 
+				dataUrl, 
+				fileName, 
+				id: Date.now().toString(),
+				localPath: localPath || null,
+				source: source,
+				tempId: tempId,  // 存储临时图片ID
+				imageRef: `temp:${tempId}`  // 临时图片使用temp:协议引用
+			};
+			getLogger().log('✅ Created temp image data:', { tempId, source, fileName });
+		}
+		
 		imageDataList.push(newImageData);
 		inputData.currentImageDataList = imageDataList;
 		this.inputAreaElements.set(inputArea, inputData);
 		
 		inputData.imagePreviewArea.style.display = 'block';
 
-		
 		// Render all images in preview
 		this.renderImagePreviews(inputData.imagePreviewArea, imageDataList, inputArea);
+	}
+
+	/**
+	 * 创建用户消息块
+	 * 这个过程中会：
+	 * 1. 构建消息内容（包括图片引用）
+	 * 2. 为消息中的图片增加引用计数（消息块持有引用）
+	 */
+	private async createUserMessage(textContent: string, imageDataList: any[]): Promise<any> {
+		let finalContent = textContent;
+		
+		// Handle images for display in chat
+		if (imageDataList.length > 0) {
+			const imageReferences: string[] = [];
+			
+			for (const img of imageDataList) {
+				if (img.source === 'vault' && img.localPath) {
+					// Vault图片 - 使用文件路径
+					imageReferences.push(`![${img.source}](${img.localPath})`);
+				} else if (img.tempId) {
+					// 临时图片 - 在编辑视图下统一显示为 [tempimage]
+					imageReferences.push(`![tempimage](temp:${img.tempId})`);
+				}
+			}
+			
+			// Combine text and image references
+			finalContent = imageReferences.join('\n') + (textContent ? '\n\n' + textContent : '');
+		}
+
+		const message = this.createMessage('user', finalContent);
+		
+		// 只有用户消息增加图片引用计数（用户消息拥有图片）
+		this.aiManager.getImageReferenceManager().updateRefsFromContent(message.content, true);
+		
+		return message;
+	}
+
+	/**
+	 * 创建AI助手消息块
+	 * AI消息不拥有图片引用，只是引用它们，所以不需要增加引用计数
+	 */
+	private createAssistantMessage(content: string): any {
+		const message = {
+			id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+			type: 'assistant' as const,
+			content: content,
+			timestamp: new Date()
+		};
+
+		// AI消息不增加图片引用计数，因为AI只是引用图片，不拥有它们
+		return message;
+	}
+
+	/**
+	 * 统一的消息创建函数
+	 * 处理消息ID生成、时间戳等
+	 */
+	private createMessage(type: 'user' | 'assistant', content: string): any {
+		const message = {
+			id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+			type: type,
+			content: content,
+			timestamp: new Date()
+		};
+
+		return message;
 	}
 
 	private clearImagePreview(inputArea: HTMLElement): void {
 		const inputData = this.inputAreaElements.get(inputArea);
 		if (!inputData || !inputData.imagePreviewArea) return;
 		
+		// 减少预发送区所有临时图片的引用计数（预发送区释放引用）
+		const imageDataList = inputData.currentImageDataList || [];
+		
+		imageDataList.forEach(imageData => {
+			if (imageData.tempId) {
+				this.aiManager.getImageReferenceManager().removeRef(imageData.tempId);
+			}
+		});
+		
+		// 清理UI显示
 		inputData.imagePreviewArea.style.display = 'none';
 		inputData.imagePreviewArea.empty();
 		inputData.currentImageDataList = [];
@@ -2163,12 +2159,7 @@ export class AIChatView extends ItemView {
 			}
 
 			// Add AI response
-			const assistantMessage: AIMessage = {
-				id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-				type: 'assistant',
-				content: response,
-				timestamp: new Date()
-			};
+			const assistantMessage = this.createAssistantMessage(response);
 			conversation.messages.push(assistantMessage);
 			
 			this.updateContent();
@@ -2183,12 +2174,7 @@ export class AIChatView extends ItemView {
 			}
 			
 			// Add error message
-			const errorMessage: AIMessage = {
-				id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-				type: 'assistant',
-				content: `Error: ${error.message}`,
-				timestamp: new Date()
-			};
+			const errorMessage = this.createAssistantMessage(`Error: ${error.message}`);
 			conversation.messages.push(errorMessage);
 			this.updateContent();
 		}
@@ -2200,31 +2186,23 @@ export class AIChatView extends ItemView {
 		return await this.aiManager.callAIWithContext(conversation, message, [imageDataUrl], undefined, true);
 	}
 
-	private async renderMarkdown(container: HTMLElement, content: string, tempImages?: { [key: string]: string }): Promise<void> {
+	private async renderMarkdown(container: HTMLElement, content: string): Promise<void> {
 		// First, extract and render thinking blocks
 		let processedContent = this.extractAndRenderThinkingBlocks(container, content);
 		
 		// Convert temp: protocol images to actual data URLs for Obsidian rendering
-		if (tempImages) {
-			const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
-			processedContent = processedContent.replace(tempImageRegex, (match, alt, tempId) => {
-				if (tempImages[tempId]) {
-					try {
-						// Parse the JSON string to get image data
-						const tempImageData = JSON.parse(tempImages[tempId]);
-						// Replace temp: with actual data URL
-						return `![${tempImageData.source || alt}](${tempImageData.dataUrl})`;
-					} catch (parseError) {
-						// Fallback for old format (plain dataUrl string)
-						return `![${alt}](${tempImages[tempId]})`;
-					}
-				} else {
-					// Temp image not found, keep original or show placeholder
-					getLogger().warn('Temp image not found for ID:', tempId);
-					return match; // Keep original for now
-				}
-			});
-		}
+		const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
+		processedContent = processedContent.replace(tempImageRegex, (match, alt, tempId) => {
+			const tempData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+			if (tempData) {
+				// Use dataUrl from ImageReferenceManager
+				return `![${alt}](${tempData.dataUrl})`;
+			} else {
+				// Temp image not found, show placeholder
+				getLogger().warn('Temp image not found for ID:', tempId);
+				return `![Image not found](data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`;
+			}
+		});
 		
 		// LaTeX delimiter conversion - 修复转换逻辑和注释
 		// \( ... \) -> $...$ (行内公式)
@@ -2264,11 +2242,9 @@ export class AIChatView extends ItemView {
 		
 		// Process each thinking tag type
 		for (const tag of thinkingTags) {
-			// Match both ◁/tagname▷ and <tagname> patterns
+			// Match both triangle-style and <tagname> patterns
 			const patterns = [
-				new RegExp(`◁/${tag}▷([\\s\\S]*?)◁/${tag}▷`, 'gi'),
-				new RegExp(`<${tag}([^>]*)>([\\s\\S]*?)</${tag}>`, 'gi'),
-				new RegExp(`◁${tag}▷([\\s\\S]*?)◁/${tag}▷`, 'gi')
+				new RegExp(`<${tag}([^>]*)>([\\s\\S]*?)</${tag}>`, 'gi')
 			];
 			
 			for (const pattern of patterns) {
@@ -2636,8 +2612,11 @@ export class AIChatView extends ItemView {
 			const conversationId = conversation.id.startsWith('loaded_') ? 
 				this.generateConversationId(conversation) : conversation.id;
 
-			// Generate markdown content for manual save (convert temp images)
-			const markdownContent = await this.generateConversationMarkdown(conversation, 'manual');
+			// Convert temp images to vault files and get processed conversation
+			const processedConversation = await this.convertTempImagesToVaultFiles(conversation);
+			
+			// Generate markdown content for manual save
+			const markdownContent = await this.generateConversationMarkdown(processedConversation, 'manual');
 
 			// Get save location from settings
 			const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
@@ -2669,6 +2648,12 @@ export class AIChatView extends ItemView {
 				new Notice(`✅ 会话已保存为 ${fileName}`);
 				getLogger().log('Conversation saved to:', fullPath);
 			}
+			
+			// 重要：更新内存中的对话数据，将临时图片引用替换为本地文件引用
+			this.aiManager.updateConversationInMemory(conversationId, processedConversation);
+			
+			// 刷新显示以反映更新后的引用
+			await this.updateContent();
 
 		} catch (error: any) {
 			getLogger().error('Failed to save conversation:', error);
@@ -2805,7 +2790,7 @@ export class AIChatView extends ItemView {
 	 */
 	private hasTempImages(conversation: AIConversation): boolean {
 		return conversation.messages.some(message => 
-			message.tempImages && Object.keys(message.tempImages).length > 0
+			message.content && message.content.includes('temp:')
 		);
 	}
 	
@@ -2818,41 +2803,33 @@ export class AIChatView extends ItemView {
 		for (const message of conversation.messages) {
 			const processedMessage: AIMessage = { ...message };
 			
-			if (message.tempImages && Object.keys(message.tempImages).length > 0) {
-				let updatedContent = message.content;
+			// Parse message content to find temp: references
+			const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
+			let updatedContent = message.content;
+			let match;
+			
+			while ((match = tempImageRegex.exec(message.content)) !== null) {
+				const [fullMatch, alt, tempId] = match;
 				
-				// Process each temporary image - convert to data URL format
-				for (const [tempId, tempImageDataString] of Object.entries(message.tempImages)) {
-					try {
-						// Parse the JSON string to get image data with source info
-						let tempImageData;
-						try {
-							tempImageData = JSON.parse(tempImageDataString);
-						} catch (parseError) {
-							// Fallback for old format (plain dataUrl string)
-							tempImageData = {
-								dataUrl: tempImageDataString,
-								source: 'image',
-								fileName: `temp-${tempId}`
-							};
-						}
-						
-						// Replace placeholder with data URL markdown image reference
-						// Use regex to match any alt text with this temp ID
-						const placeholderRegex = new RegExp(`!\\[[^\\]]*\\]\\(temp:${tempId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`, 'g');
-						const markdownImage = `![${tempImageData.source}](${tempImageData.dataUrl})`;
-						updatedContent = updatedContent.replace(placeholderRegex, markdownImage);
-						
-					} catch (error) {
-						getLogger().error(`Failed to convert temporary image ${tempId}:`, error);
-						// Keep the placeholder if conversion fails
+				try {
+					// Get temporary image data from ImageReferenceManager
+					const tempImageData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+					if (!tempImageData) {
+						getLogger().warn(`Temp image not found for ID: ${tempId}`);
+						continue;
 					}
+					
+					// Replace temp: reference with data URL, using real source for alt text
+					const markdownImage = `![${tempImageData.source}](${tempImageData.dataUrl})`;
+					updatedContent = updatedContent.replace(fullMatch, markdownImage);
+					
+				} catch (error) {
+					getLogger().error(`Failed to convert temporary image ${tempId}:`, error);
+					// Keep the original reference if conversion fails
 				}
-				
-				processedMessage.content = updatedContent;
-				delete processedMessage.tempImages; // Remove temporary images
 			}
 			
+			processedMessage.content = updatedContent;
 			processedMessages.push(processedMessage);
 		}
 		
@@ -2893,55 +2870,47 @@ export class AIChatView extends ItemView {
 		for (const message of conversation.messages) {
 			const processedMessage: AIMessage = { ...message };
 			
-			if (message.tempImages && Object.keys(message.tempImages).length > 0) {
-				let updatedContent = message.content;
+			// Parse message content to find temp: references
+			const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
+			let updatedContent = message.content;
+			let match;
+			
+			while ((match = tempImageRegex.exec(message.content)) !== null) {
+				const [fullMatch, alt, tempId] = match;
 				
-				// Process each temporary image - save to vault and use local path
-				for (const [tempId, tempImageDataString] of Object.entries(message.tempImages)) {
-					try {
-						// Parse the JSON string to get image data with source info
-						let tempImageData;
-						try {
-							tempImageData = JSON.parse(tempImageDataString);
-						} catch (parseError) {
-							// Fallback for old format (plain dataUrl string)
-							tempImageData = {
-								dataUrl: tempImageDataString,
-								source: 'image',
-								fileName: `temp-${tempId}`
-							};
-						}
-						
-						// Choose target folder based on source
-						let targetFolder: string;
-						if (tempImageData.source === 'external') {
-							targetFolder = otherSourceLocation;
-						} else if (tempImageData.source === 'screenshot') {
-							targetFolder = screenshotSaveLocation;
-						} else {
-							// For other sources, use conversation images folder
-							targetFolder = conversationImageFolder;
-						}
-						
-						// Save image to vault
-						const savedImagePath = await this.saveTempImageToVault(tempId, tempImageData.dataUrl, targetFolder);
-						
-						// Replace placeholder with markdown image reference using local path
-						// Use regex to match any alt text with this temp ID
-						const placeholderRegex = new RegExp(`!\\[[^\\]]*\\]\\(temp:${tempId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`, 'g');
-						const markdownImage = `![${tempImageData.source}](${savedImagePath})`;
-						updatedContent = updatedContent.replace(placeholderRegex, markdownImage);
-						
-					} catch (error) {
-						getLogger().error(`Failed to save temporary image ${tempId}:`, error);
-						// Keep the placeholder if saving fails
+				try {
+					// Get temporary image data from ImageReferenceManager
+					const tempImageData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+					if (!tempImageData) {
+						getLogger().warn(`Temp image not found for ID: ${tempId}`);
+						continue;
 					}
+					
+					// Choose target folder based on source
+					let targetFolder: string;
+					if (tempImageData.source === 'external') {
+						targetFolder = otherSourceLocation;
+					} else if (tempImageData.source === 'screenshot') {
+						targetFolder = screenshotSaveLocation;
+					} else {
+						// For other sources, use conversation images folder
+						targetFolder = conversationImageFolder;
+					}
+					
+					// Save image to vault
+					const savedImagePath = await this.saveTempImageToVault(tempId, tempImageData.dataUrl, targetFolder);
+					
+					// Replace temp: reference with vault file path, using real source for alt text
+					const markdownImage = `![${tempImageData.source}](${savedImagePath})`;
+					updatedContent = updatedContent.replace(fullMatch, markdownImage);
+					
+				} catch (error) {
+					getLogger().error(`Failed to save temporary image ${tempId}:`, error);
+					// Keep the original reference if saving fails
 				}
-				
-				processedMessage.content = updatedContent;
-				delete processedMessage.tempImages; // Remove temporary images
 			}
 			
+			processedMessage.content = updatedContent;
 			processedMessages.push(processedMessage);
 		}
 		
@@ -3235,14 +3204,14 @@ tags:
 			for (const message of conversation.messages) {
 				// Check if this message has data URLs that should be converted to local files
 				// This happens when loading manually saved conversations
-				const { content, tempImages } = await this.processMessageImagesOnLoad(message.content || '');
+				const { content } = await this.processMessageImagesOnLoad(message.content || '');
 				
 				const newMessage: AIMessage = {
 					id: 'loaded_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
 					type: message.type,
 					content: content,
-					timestamp: message.timestamp, // Preserve original timestamp
-					tempImages: tempImages // Temporary image mappings (if any)
+					timestamp: message.timestamp // Preserve original timestamp
+					// 移除 tempImages 字段，现在由 ImageReferenceManager 统一管理
 				};
 				
 				// Preserve image data if it exists (for backward compatibility)
@@ -3275,10 +3244,8 @@ tags:
 	/**
 	 * Process images when loading conversation - smart handling for different image types
 	 */
-	private async processMessageImagesOnLoad(content: string): Promise<{ content: string; tempImages: { [key: string]: string } }> {
+	private async processMessageImagesOnLoad(content: string): Promise<{ content: string }> {
 		const dataUrlRegex = /!\[([^\]]*)\]\((data:image\/[^;]+;base64,[^)]+)\)/g;
-		const vaultImageRegex = /!\[([^\]]*)\]\(([^)]+\.(?:png|jpg|jpeg|gif|webp))\)/gi;
-		const tempImages: { [key: string]: string } = {};
 		let updatedContent = content;
 		let match;
 		
@@ -3299,23 +3266,21 @@ tags:
 				
 			} catch (error) {
 				getLogger().error('Failed to save data URL to vault:', error);
-				// If saving fails, convert to temporary image for editing
-				const tempId = this.generateTempImageId();
+				// If saving fails, convert to temporary image using ImageReferenceManager
+				const tempId = this.aiManager.getImageReferenceManager().addTempImage(
+					dataUrl, 
+					altText || 'image', 
+					`temp-${Date.now()}.png`
+				);
 				const placeholder = `![tempimage](temp:${tempId})`;
 				updatedContent = updatedContent.replace(fullMatch, placeholder);
-				// Store as JSON with source info for consistency
-				tempImages[tempId] = JSON.stringify({
-					dataUrl: dataUrl,
-					source: altText || 'image',
-					fileName: `temp-${tempId}.png`
-				});
 			}
 		}
 		
 		// Vault images (from manual save conversations) - keep as is
 		// They are already saved locally and don't need processing
 		
-		return { content: updatedContent, tempImages };
+		return { content: updatedContent };
 	}
 	
 	/**
@@ -3353,41 +3318,7 @@ tags:
 		
 		return imagePath;
 	}
-	private convertDataUrlsToTempImages(content: string): { content: string; tempImages: { [key: string]: string } } {
-		const dataUrlRegex = /!\[([^\]]*)\]\((data:image\/[^;]+;base64,[^)]+)\)/g;
-		const tempImages: { [key: string]: string } = {};
-		let updatedContent = content;
-		let match;
-		
-		while ((match = dataUrlRegex.exec(content)) !== null) {
-			const fullMatch = match[0];  // Complete ![xxx](data:...)
-			const altText = match[1];    // Alt text
-			const dataUrl = match[2];    // data:image/...;base64,xxx
-			
-			// Generate new temporary image ID
-			const tempId = this.generateTempImageId();
-			
-			// Replace data URL with temporary image placeholder using temp: protocol
-			const placeholder = `![tempimage](temp:${tempId})`;
-			updatedContent = updatedContent.replace(fullMatch, placeholder);
-			
-			// Store the data URL with source info in temporary images mapping
-			tempImages[tempId] = JSON.stringify({
-				dataUrl: dataUrl,
-				source: altText || 'image', // Use alt text as source
-				fileName: `${altText || 'image'}_${tempId}.png`
-			});
-		}
-		
-		return { content: updatedContent, tempImages };
-	}
 	
-	/**
-	 * Generate unique temporary image ID
-	 */
-	private generateTempImageId(): string {
-		return 'temp_img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-	}
 
 	private updateSelectorButtonContent(button: HTMLButtonElement, modelConfig: any) {
 		// Clear existing content (except dropdown arrow)
@@ -3544,100 +3475,47 @@ tags:
 		
 		if (!message.content) return;
 		
-		// Parse markdown content to extract images and text
-		const { textContent, imageReferences } = this.parseMarkdownContent(message.content, message.tempImages);
+		getLogger().log('🖼️ Rendering message content:', message.content);
 		
-		// Render images first
+		// Parse markdown content to extract images and text  
+		const imageReferences = this.aiManager.parseImageReferences(message.content);
+		getLogger().log('🔍 Found image references:', imageReferences);
+		
+		// Remove image markdown from text content
+		let textContent = message.content;
+		imageReferences.forEach(imgRef => {
+			const imgMarkdown = `![${imgRef.alt}](${imgRef.path})`;
+			textContent = textContent.replace(imgMarkdown, '').trim();
+		});
+		// Clean up extra whitespace
+		textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
+		
+		// Render images first (统一处理，不区分单张多张)
 		if (imageReferences.length > 0) {
-			if (imageReferences.length === 1) {
-				// Single image
-				const imageRef = imageReferences[0];
-				await this.renderSingleImage(container, imageRef);
-			} else {
-				// Multiple images in a grid
-				const imagesContainer = container.createEl('div', { cls: 'ai-chat-message-images-grid' });
-				for (const imageRef of imageReferences) {
-					const imageWrapper = imagesContainer.createEl('div', { cls: 'ai-chat-message-image-wrapper' });
-					await this.renderSingleImage(imageWrapper, imageRef);
-				}
+			const imagesContainer = container.createEl('div', { cls: 'ai-chat-message-images' });
+			for (const imageRef of imageReferences) {
+				await this.renderImage(imagesContainer, imageRef);
 			}
 		}
 		
 		// Render text content if present
 		if (textContent.trim()) {
 			const textEl = container.createEl('div', { cls: 'ai-chat-message-text' });
-			await this.renderMarkdown(textEl, textContent, message.tempImages);
+			await this.renderMarkdown(textEl, textContent);
 		}
 	}
 
-	/**
-	 * Parse markdown content to separate images and text
-	 */
-	private parseMarkdownContent(markdown: string, tempImages?: { [key: string]: string }): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }> } {
-		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
-		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
-		let textContent = markdown;
-		
-		// Extract all image references (both regular and temp://)
-		let match;
-		while ((match = imageRegex.exec(markdown)) !== null) {
-			const alt = match[1] || 'Image';
-			const path = match[2];
-			
-			// Check if this is a temp: protocol image
-			if (path.startsWith('temp:')) {
-				const tempId = path.replace('temp:', '');
-				if (tempImages && tempImages[tempId]) {
-					// Parse the JSON string to get image data with source info
-					let tempImageData;
-					try {
-						tempImageData = JSON.parse(tempImages[tempId]);
-						imageReferences.push({
-							alt: tempImageData.source ? `${tempImageData.source}` : 'tempimage',
-							path: tempImageData.dataUrl, // Use data URL as path
-							fileName: tempImageData.fileName || `temp-${tempId}.png`
-						});
-					} catch (parseError) {
-						// Fallback for old format (plain dataUrl string)
-						imageReferences.push({
-							alt: 'tempimage',
-							path: tempImages[tempId], // Use data URL as path
-							fileName: `temp-${tempId}.png`
-						});
-					}
-				} else {
-					// Fallback: temp image not found - show placeholder
-					imageReferences.push({
-						alt: 'tempimage (missing)',
-						path: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBzdHJva2U9IiNjY2MiLz4KPHR4dCB4PSIxMiIgeT0iMTIiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjEwIiBmaWxsPSIjY2NjIj5NaXNzaW5nPC90eHQ+Cjwvc3ZnPgo=', // Missing image placeholder
-						fileName: `temp-${tempId}.png`
-					});
-				}
-			} else {
-				// Regular image reference
-				const fileName = path.split('/').pop() || alt;
-				imageReferences.push({
-					alt: alt,
-					path: path,
-					fileName: fileName
-				});
-			}
-			
-			// Remove the image markdown from text content
-			textContent = textContent.replace(match[0], '').trim();
-		}
-		
-		// Clean up extra whitespace
-		textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
-		
-		return { textContent, imageReferences };
-	}
 
 	/**
-	 * Render a single image from path reference
+	 * 渲染图片（统一处理）
 	 */
-	private async renderSingleImage(container: HTMLElement, imageRef: { alt: string; path: string; fileName: string }): Promise<void> {
+	private async renderImage(container: HTMLElement, imageRef: { alt: string; path: string; fileName: string }): Promise<void> {
 		const { alt, path, fileName } = imageRef;
+		
+		getLogger().log('🖼️ Rendering image:', { alt, path, fileName });
+		
+		// 创建图片容器
+		const imageContainer = container.createEl('div', { cls: 'ai-chat-message-image-container' });
 		
 		let imageSrc: string;
 		
@@ -3645,20 +3523,34 @@ tags:
 		if (path.startsWith('data:')) {
 			// Data URL - use directly
 			imageSrc = path;
+			getLogger().log('✅ Using data URL directly');
 		} else if (path.startsWith('temp:')) {
-			// This is a temp: protocol image - it should have been resolved in parseMarkdownContent
-			// If we reach here, it means the temp image wasn't found, show placeholder
-			getLogger().warn('Temp protocol image not resolved properly:', path);
-			imageSrc = 'data:image/svg+xml;base64,' + btoa(`
-				<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
-					<rect width="100%" height="100%" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
-					<text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="#666">
-						Missing Temp Image
-					</text>
-				</svg>
-			`);
+			// Temp protocol image - resolve it using ImageReferenceManager
+			const tempId = path.replace('temp:', '');
+			getLogger().log('🔍 Looking for temp image with ID:', tempId);
+			
+			const tempData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+			if (tempData) {
+				imageSrc = tempData.dataUrl;
+				getLogger().log('✅ Found temp image data:', { source: tempData.source, fileName: tempData.fileName });
+			} else {
+				getLogger().warn('❌ Temp image not found for ID:', tempId);
+				
+				// Let's check what's actually in the ImageReferenceManager
+				const allTempImages = this.aiManager.getImageReferenceManager().getAllTempImages();
+				getLogger().log('📋 All temp images in manager:', Object.keys(allTempImages));
+				
+				imageSrc = 'data:image/svg+xml;base64,' + btoa(`
+					<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+						<rect width="100%" height="100%" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
+						<text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="#666">
+							Missing Temp Image
+						</text>
+					</svg>
+				`);
+			}
 		} else if (path.startsWith('[TempPic ') && path.endsWith(']')) {
-			// Placeholder path - show a placeholder image or text
+			// Legacy placeholder path - show a placeholder image
 			imageSrc = 'data:image/svg+xml;base64,' + btoa(`
 				<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
 					<rect width="100%" height="100%" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
@@ -3680,7 +3572,7 @@ tags:
 			}
 		}
 		
-		const imageEl = container.createEl('img', { 
+		const imageEl = imageContainer.createEl('img', { 
 			cls: 'ai-chat-message-image',
 			attr: { src: imageSrc, alt: alt }
 		});
@@ -3719,13 +3611,7 @@ tags:
 			this.showImageModal(imageSrc);
 		});
 		
-		// Add filename label if in grid
-		if (container.hasClass('ai-chat-message-image-wrapper')) {
-			const fileNameEl = container.createEl('div', { 
-				cls: 'ai-chat-message-image-filename',
-				text: fileName
-			});
-		}
+		// 消息块中的图片不显示文件名标签，保持界面简洁
 	}
 
 	/**
@@ -3756,17 +3642,6 @@ tags:
 		}, 10);
 	}
 
-	/**
-	 * Render message content as markdown (read mode)
-	 */
-	private async renderMessageContentAsMarkdown(container: HTMLElement, content: string, tempImages?: { [key: string]: string }): Promise<void> {
-		container.empty();
-		
-		if (content) {
-			const textEl = container.createEl('div', { cls: 'ai-chat-message-text' });
-			await this.renderMarkdown(textEl, content, tempImages);
-		}
-	}
 
 	/**
 	 * Save edited message content to the conversation
