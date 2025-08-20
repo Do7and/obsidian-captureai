@@ -2200,9 +2200,31 @@ export class AIChatView extends ItemView {
 		return await this.aiManager.callAIWithContext(conversation, message, [imageDataUrl], undefined, true);
 	}
 
-	private async renderMarkdown(container: HTMLElement, content: string): Promise<void> {
+	private async renderMarkdown(container: HTMLElement, content: string, tempImages?: { [key: string]: string }): Promise<void> {
 		// First, extract and render thinking blocks
 		let processedContent = this.extractAndRenderThinkingBlocks(container, content);
+		
+		// Convert temp: protocol images to actual data URLs for Obsidian rendering
+		if (tempImages) {
+			const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
+			processedContent = processedContent.replace(tempImageRegex, (match, alt, tempId) => {
+				if (tempImages[tempId]) {
+					try {
+						// Parse the JSON string to get image data
+						const tempImageData = JSON.parse(tempImages[tempId]);
+						// Replace temp: with actual data URL
+						return `![${tempImageData.source || alt}](${tempImageData.dataUrl})`;
+					} catch (parseError) {
+						// Fallback for old format (plain dataUrl string)
+						return `![${alt}](${tempImages[tempId]})`;
+					}
+				} else {
+					// Temp image not found, keep original or show placeholder
+					getLogger().warn('Temp image not found for ID:', tempId);
+					return match; // Keep original for now
+				}
+			});
+		}
 		
 		// LaTeX delimiter conversion - 修复转换逻辑和注释
 		// \( ... \) -> $...$ (行内公式)
@@ -2816,9 +2838,10 @@ export class AIChatView extends ItemView {
 						}
 						
 						// Replace placeholder with data URL markdown image reference
-						const placeholder = `[!Tempimg ${tempId}]`;
+						// Use regex to match any alt text with this temp ID
+						const placeholderRegex = new RegExp(`!\\[[^\\]]*\\]\\(temp:${tempId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`, 'g');
 						const markdownImage = `![${tempImageData.source}](${tempImageData.dataUrl})`;
-						updatedContent = updatedContent.replace(placeholder, markdownImage);
+						updatedContent = updatedContent.replace(placeholderRegex, markdownImage);
 						
 					} catch (error) {
 						getLogger().error(`Failed to convert temporary image ${tempId}:`, error);
@@ -2904,9 +2927,10 @@ export class AIChatView extends ItemView {
 						const savedImagePath = await this.saveTempImageToVault(tempId, tempImageData.dataUrl, targetFolder);
 						
 						// Replace placeholder with markdown image reference using local path
-						const placeholder = `[!Tempimg ${tempId}]`;
+						// Use regex to match any alt text with this temp ID
+						const placeholderRegex = new RegExp(`!\\[[^\\]]*\\]\\(temp:${tempId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`, 'g');
 						const markdownImage = `![${tempImageData.source}](${savedImagePath})`;
-						updatedContent = updatedContent.replace(placeholder, markdownImage);
+						updatedContent = updatedContent.replace(placeholderRegex, markdownImage);
 						
 					} catch (error) {
 						getLogger().error(`Failed to save temporary image ${tempId}:`, error);
@@ -3277,9 +3301,14 @@ tags:
 				getLogger().error('Failed to save data URL to vault:', error);
 				// If saving fails, convert to temporary image for editing
 				const tempId = this.generateTempImageId();
-				const placeholder = `[!Tempimg ${tempId}]`;
+				const placeholder = `![tempimage](temp:${tempId})`;
 				updatedContent = updatedContent.replace(fullMatch, placeholder);
-				tempImages[tempId] = dataUrl;
+				// Store as JSON with source info for consistency
+				tempImages[tempId] = JSON.stringify({
+					dataUrl: dataUrl,
+					source: altText || 'image',
+					fileName: `temp-${tempId}.png`
+				});
 			}
 		}
 		
@@ -3338,8 +3367,8 @@ tags:
 			// Generate new temporary image ID
 			const tempId = this.generateTempImageId();
 			
-			// Replace data URL with temporary image placeholder
-			const placeholder = `[!Tempimg ${tempId}]`;
+			// Replace data URL with temporary image placeholder using temp: protocol
+			const placeholder = `![tempimage](temp:${tempId})`;
 			updatedContent = updatedContent.replace(fullMatch, placeholder);
 			
 			// Store the data URL with source info in temporary images mapping
@@ -3537,7 +3566,7 @@ tags:
 		// Render text content if present
 		if (textContent.trim()) {
 			const textEl = container.createEl('div', { cls: 'ai-chat-message-text' });
-			await this.renderMarkdown(textEl, textContent);
+			await this.renderMarkdown(textEl, textContent, message.tempImages);
 		}
 	}
 
@@ -3546,62 +3575,56 @@ tags:
 	 */
 	private parseMarkdownContent(markdown: string, tempImages?: { [key: string]: string }): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }> } {
 		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
-		const tempImageRegex = /\[!Tempimg\s+([^\]]+)\]/g;
 		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
 		let textContent = markdown;
 		
-		// Extract all standard image references
+		// Extract all image references (both regular and temp://)
 		let match;
 		while ((match = imageRegex.exec(markdown)) !== null) {
 			const alt = match[1] || 'Image';
 			const path = match[2];
-			const fileName = path.split('/').pop() || alt;
 			
-			imageReferences.push({
-				alt: alt,
-				path: path,
-				fileName: fileName
-			});
-			
-			// Remove the image markdown from text content
-			textContent = textContent.replace(match[0], '').trim();
-		}
-		
-		// Extract temporary image references
-		let tempMatch;
-		while ((tempMatch = tempImageRegex.exec(markdown)) !== null) {
-			const tempId = tempMatch[1];
-			
-			// If we have temporary images data, get the data URL
-			if (tempImages && tempImages[tempId]) {
-				// Parse the JSON string to get image data with source info
-				let tempImageData;
-				try {
-					tempImageData = JSON.parse(tempImages[tempId]);
+			// Check if this is a temp: protocol image
+			if (path.startsWith('temp:')) {
+				const tempId = path.replace('temp:', '');
+				if (tempImages && tempImages[tempId]) {
+					// Parse the JSON string to get image data with source info
+					let tempImageData;
+					try {
+						tempImageData = JSON.parse(tempImages[tempId]);
+						imageReferences.push({
+							alt: tempImageData.source ? `${tempImageData.source}` : 'tempimage',
+							path: tempImageData.dataUrl, // Use data URL as path
+							fileName: tempImageData.fileName || `temp-${tempId}.png`
+						});
+					} catch (parseError) {
+						// Fallback for old format (plain dataUrl string)
+						imageReferences.push({
+							alt: 'tempimage',
+							path: tempImages[tempId], // Use data URL as path
+							fileName: `temp-${tempId}.png`
+						});
+					}
+				} else {
+					// Fallback: temp image not found - show placeholder
 					imageReferences.push({
-						alt: `${tempImageData.source} ${tempId}`,
-						path: tempImageData.dataUrl, // Use data URL as path
-						fileName: tempImageData.fileName || `temp-${tempId}.png`
-					});
-				} catch (parseError) {
-					// Fallback for old format (plain dataUrl string)
-					imageReferences.push({
-						alt: `Temp Image ${tempId}`,
-						path: tempImages[tempId], // Use data URL as path
+						alt: 'tempimage (missing)',
+						path: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBzdHJva2U9IiNjY2MiLz4KPHR4dCB4PSIxMiIgeT0iMTIiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjEwIiBmaWxsPSIjY2NjIj5NaXNzaW5nPC90eHQ+Cjwvc3ZnPgo=', // Missing image placeholder
 						fileName: `temp-${tempId}.png`
 					});
 				}
 			} else {
-				// Fallback: create a placeholder entry
+				// Regular image reference
+				const fileName = path.split('/').pop() || alt;
 				imageReferences.push({
-					alt: `Temporary Image`,
-					path: `[Tempimg ${tempId}]`, // Placeholder path
-					fileName: `temp-${tempId}.png`
+					alt: alt,
+					path: path,
+					fileName: fileName
 				});
 			}
 			
-			// Remove the temporary image placeholder from text content
-			textContent = textContent.replace(tempMatch[0], '').trim();
+			// Remove the image markdown from text content
+			textContent = textContent.replace(match[0], '').trim();
 		}
 		
 		// Clean up extra whitespace
@@ -3622,6 +3645,18 @@ tags:
 		if (path.startsWith('data:')) {
 			// Data URL - use directly
 			imageSrc = path;
+		} else if (path.startsWith('temp:')) {
+			// This is a temp: protocol image - it should have been resolved in parseMarkdownContent
+			// If we reach here, it means the temp image wasn't found, show placeholder
+			getLogger().warn('Temp protocol image not resolved properly:', path);
+			imageSrc = 'data:image/svg+xml;base64,' + btoa(`
+				<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+					<rect width="100%" height="100%" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
+					<text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="#666">
+						Missing Temp Image
+					</text>
+				</svg>
+			`);
 		} else if (path.startsWith('[TempPic ') && path.endsWith(']')) {
 			// Placeholder path - show a placeholder image or text
 			imageSrc = 'data:image/svg+xml;base64,' + btoa(`
@@ -3724,12 +3759,12 @@ tags:
 	/**
 	 * Render message content as markdown (read mode)
 	 */
-	private async renderMessageContentAsMarkdown(container: HTMLElement, content: string): Promise<void> {
+	private async renderMessageContentAsMarkdown(container: HTMLElement, content: string, tempImages?: { [key: string]: string }): Promise<void> {
 		container.empty();
 		
 		if (content) {
 			const textEl = container.createEl('div', { cls: 'ai-chat-message-text' });
-			await this.renderMarkdown(textEl, content);
+			await this.renderMarkdown(textEl, content, tempImages);
 		}
 	}
 

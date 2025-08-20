@@ -848,50 +848,47 @@ export class AIManager {
 	 */
 	private parseMarkdownContent(markdown: string, tempImages?: { [key: string]: string }): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }>; tempImageRefs: Array<{ id: string; dataUrl: string }> } {
 		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
-		const tempImageRegex = /\[!Tempimg\s+([^\]]+)\]/g;
 		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
 		const tempImageRefs: Array<{ id: string; dataUrl: string }> = [];
 		let textContent = markdown;
 		
-		// Extract regular image references
+		// Extract all image references (both regular and temp://)
 		let match;
 		while ((match = imageRegex.exec(markdown)) !== null) {
 			const alt = match[1] || 'Image';
 			const path = match[2];
-			const fileName = path.split('/').pop() || alt;
 			
-			imageReferences.push({
-				alt: alt,
-				path: path,
-				fileName: fileName
-			});
-			
-			// Remove the image markdown from text content
-			textContent = textContent.replace(match[0], '').trim();
-		}
-		
-		// Extract temporary image references
-		while ((match = tempImageRegex.exec(markdown)) !== null) {
-			const tempId = match[1];
-			if (tempImages && tempImages[tempId]) {
-				// Parse the JSON string to get image data with source info
-				let tempImageData;
-				try {
-					tempImageData = JSON.parse(tempImages[tempId]);
-					tempImageRefs.push({
-						id: tempId,
-						dataUrl: tempImageData.dataUrl
-					});
-				} catch (parseError) {
-					// Fallback for old format (plain dataUrl string)
-					tempImageRefs.push({
-						id: tempId,
-						dataUrl: tempImages[tempId]
-					});
+			// Check if this is a temp:// protocol image
+			if (path.startsWith('temp://')) {
+				const tempId = path.replace('temp://', '');
+				if (tempImages && tempImages[tempId]) {
+					// Parse the JSON string to get image data with source info
+					let tempImageData;
+					try {
+						tempImageData = JSON.parse(tempImages[tempId]);
+						tempImageRefs.push({
+							id: tempId,
+							dataUrl: tempImageData.dataUrl
+						});
+					} catch (parseError) {
+						// Fallback for old format (plain dataUrl string)
+						tempImageRefs.push({
+							id: tempId,
+							dataUrl: tempImages[tempId]
+						});
+					}
 				}
+			} else {
+				// Regular image reference
+				const fileName = path.split('/').pop() || alt;
+				imageReferences.push({
+					alt: alt,
+					path: path,
+					fileName: fileName
+				});
 			}
 			
-			// Remove the temp image placeholder from text content
+			// Remove the image markdown from text content
 			textContent = textContent.replace(match[0], '').trim();
 		}
 		
@@ -1007,7 +1004,7 @@ export class AIManager {
 		for (const dataUrl of imageDataUrls) {
 			const tempId = this.generateTempImageId();
 			tempImages[tempId] = dataUrl;
-			placeholders.push(`[!Tempimg ${tempId}]`);
+			placeholders.push(`![tempimage](temp://${tempId})`);
 		}
 
 		return {
