@@ -2924,14 +2924,24 @@ export class AIChatView extends ItemView {
 	 * Save a temporary image to vault and return the path
 	 */
 	private async saveTempImageToVault(tempId: string, dataUrl: string, targetFolder: string): Promise<string> {
+		// Get original fileName from ImageReferenceManager
+		const tempImageData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+		const originalFileName = tempImageData?.fileName || 'image';
+		
 		// Extract image data
 		const base64Data = dataUrl.split(',')[1];
 		const mimeType = dataUrl.match(/data:(.*?);base64,/)?.[1] || 'image/png';
 		const extension = mimeType.split('/')[1] || 'png';
 		
-		// Generate filename
+		// Generate filename using original fileName
 		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-		const fileName = `${tempId}_${timestamp}.${extension}`;
+		
+		// Remove extension from original fileName if it exists, then add the correct extension
+		const baseFileName = originalFileName.replace(/\.[^/.]+$/, '');
+		// Sanitize filename for filesystem compatibility
+		const sanitizedBaseName = baseFileName.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_');
+		
+		const fileName = `${sanitizedBaseName}_${timestamp}.${extension}`;
 		const fullPath = `${targetFolder}/${fileName}`;
 		
 		// Convert base64 to binary
@@ -3249,31 +3259,27 @@ tags:
 		let updatedContent = content;
 		let match;
 		
-		// Process data URLs (from manual save conversations)
-		// Convert them to local vault files for better performance and management
+		// Process data URLs (from auto-saved conversations)
+		// Convert them to temporary image references so they can be displayed without saving to vault
 		while ((match = dataUrlRegex.exec(content)) !== null) {
 			const fullMatch = match[0];  // Complete ![xxx](data:...)
 			const altText = match[1];    // Alt text
 			const dataUrl = match[2];    // data:image/...;base64,xxx
 			
 			try {
-				// Save data URL to vault and get local path
-				const localPath = await this.saveDataUrlToVault(dataUrl, altText || 'image');
-				
-				// Replace data URL with local path
-				const localImageMarkdown = `![${altText}](${localPath})`;
-				updatedContent = updatedContent.replace(fullMatch, localImageMarkdown);
-				
-			} catch (error) {
-				getLogger().error('Failed to save data URL to vault:', error);
-				// If saving fails, convert to temporary image using ImageReferenceManager
+				// Convert data URL to temporary image using ImageReferenceManager
+				// This allows display without creating vault files
 				const tempId = this.aiManager.getImageReferenceManager().addTempImage(
 					dataUrl, 
 					altText || 'image', 
-					`temp-${Date.now()}.png`
+					`restored-${Date.now()}.png`
 				);
-				const placeholder = `![tempimage](temp:${tempId})`;
+				const placeholder = `![${altText}](temp:${tempId})`;
 				updatedContent = updatedContent.replace(fullMatch, placeholder);
+				
+			} catch (error) {
+				getLogger().error('Failed to convert data URL to temporary image:', error);
+				// Keep original data URL if conversion fails
 			}
 		}
 		
@@ -3536,10 +3542,6 @@ tags:
 			} else {
 				getLogger().warn('❌ Temp image not found for ID:', tempId);
 				
-				// Let's check what's actually in the ImageReferenceManager
-				const allTempImages = this.aiManager.getImageReferenceManager().getAllTempImages();
-				getLogger().log('📋 All temp images in manager:', Object.keys(allTempImages));
-				
 				imageSrc = 'data:image/svg+xml;base64,' + btoa(`
 					<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
 						<rect width="100%" height="100%" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
@@ -3703,16 +3705,20 @@ tags:
 				return;
 			}
 
-			// Get the content to insert
-			let contentToInsert = '';
+			// Process message content and convert temp images to attachments
+			let contentToInsert = message.content || '';
 			
-			// Handle images first
+			// Parse and convert temp: references to local files
+			if (contentToInsert.includes('temp:')) {
+				contentToInsert = await this.convertTempImagesForCursor(contentToInsert, activeView.file);
+			}
+
+			// Handle legacy image format (message.image) - convert to data URL
 			if (message.image) {
 				const allImages = (message as ExtendedMessage).images;
 				if (allImages && allImages.length > 1) {
 					// Multiple images
-					allImages.forEach((imageData: any, index: number) => {
-						const fileName = imageData.fileName || `image-${index + 1}`;
+					for (const imageData of allImages) {
 						let imagePath = imageData.dataUrl; // fallback
 						if (imageData.localPath) {
 							const formattedPath = this.formatImagePath(imageData.localPath);
@@ -3721,8 +3727,8 @@ tags:
 							}
 						}
 						const sourceLabel = this.getImageSourceLabel(imageData);
-						contentToInsert += `![${sourceLabel}](${imagePath})\n\n`;
-					});
+						contentToInsert = `![${sourceLabel}](${imagePath})\n\n` + contentToInsert;
+					}
 				} else {
 					// Single image
 					const singleImageData = (message as ExtendedMessage).imageData;
@@ -3746,13 +3752,8 @@ tags:
 					}
 					
 					const sourceLabel = this.getImageSourceLabel(singleImageData || firstImageFromArray);
-					contentToInsert += `![${sourceLabel}](${imagePath})\n\n`;
+					contentToInsert = `![${sourceLabel}](${imagePath})\n\n` + contentToInsert;
 				}
-			}
-
-			// Add text content
-			if (message.content) {
-				contentToInsert += message.content;
 			}
 
 			// Insert at cursor position
@@ -3777,6 +3778,102 @@ tags:
 			getLogger().error('Failed to insert content at cursor:', error);
 			new Notice(t('notice.failedToInsertContent'));
 		}
+	}
+
+	/**
+	 * Convert temp: image references to local attachments for cursor insertion
+	 */
+	private async convertTempImagesForCursor(content: string, currentFile: TFile | null): Promise<string> {
+		if (!currentFile) {
+			return content;
+		}
+
+		// Get attachments folder path relative to current file
+		const attachmentsFolder = this.getAttachmentsFolderForFile(currentFile);
+		
+		// Ensure attachments folder exists
+		const vault = this.plugin.app.vault;
+		if (!await vault.adapter.exists(attachmentsFolder)) {
+			await vault.createFolder(attachmentsFolder);
+		}
+
+		// Parse temp: references and replace them
+		const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
+		let updatedContent = content;
+		let match;
+
+		while ((match = tempImageRegex.exec(content)) !== null) {
+			const [fullMatch, alt, tempId] = match;
+
+			try {
+				// Get temporary image data from ImageReferenceManager
+				const tempImageData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+				if (!tempImageData) {
+					continue;
+				}
+
+				// Save image to attachments folder
+				const savedImagePath = await this.saveTempImageToAttachments(tempId, tempImageData.dataUrl, attachmentsFolder);
+				
+				// Replace temp: reference with local file path
+				const markdownImage = `![${tempImageData.source}](${savedImagePath})`;
+				updatedContent = updatedContent.replace(fullMatch, markdownImage);
+
+			} catch (error) {
+				getLogger().error(`Failed to save temporary image ${tempId}:`, error);
+				// Keep the original reference if saving fails
+			}
+		}
+
+		return updatedContent;
+	}
+
+	/**
+	 * Get attachments folder path for a given file (following Obsidian's default behavior)
+	 */
+	private getAttachmentsFolderForFile(file: TFile): string {
+		// Get the directory of the current file
+		const fileDir = file.parent?.path || '';
+		
+		// Return attachments folder in the same directory as the file
+		return fileDir ? `${fileDir}/attachments` : 'attachments';
+	}
+
+	/**
+	 * Save a temporary image to the attachments folder
+	 */
+	private async saveTempImageToAttachments(tempId: string, dataUrl: string, attachmentsFolder: string): Promise<string> {
+		// Get original fileName from ImageReferenceManager
+		const tempImageData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+		const originalFileName = tempImageData?.fileName || 'image';
+		
+		// Extract image data
+		const base64Data = dataUrl.split(',')[1];
+		const mimeType = dataUrl.match(/data:(.*?);base64,/)?.[1] || 'image/png';
+		const extension = mimeType.split('/')[1] || 'png';
+		
+		// Generate filename using original fileName
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		
+		// Remove extension from original fileName if it exists, then add the correct extension
+		const baseFileName = originalFileName.replace(/\.[^/.]+$/, '');
+		// Sanitize filename for filesystem compatibility
+		const sanitizedBaseName = baseFileName.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_');
+		
+		const fileName = `${sanitizedBaseName}_${timestamp}.${extension}`;
+		const fullPath = `${attachmentsFolder}/${fileName}`;
+		
+		// Convert base64 to binary
+		const binaryString = atob(base64Data);
+		const bytes = new Uint8Array(binaryString.length);
+		for (let i = 0; i < binaryString.length; i++) {
+			bytes[i] = binaryString.charCodeAt(i);
+		}
+		
+		// Save to vault
+		await this.plugin.app.vault.createBinary(fullPath, bytes.buffer);
+		
+		return fullPath;
 	}
 
 	/**

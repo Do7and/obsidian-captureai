@@ -9,6 +9,7 @@ export class ScreenshotManager {
 	private overlay: HTMLElement | null = null;
 	private selectionBox: HTMLElement | null = null;
 	private isSelecting = false;
+	private isScreenshotModeActive = false; // 全局截图状态监控
 	private startX = 0;
 	private startY = 0;
 	private selectionCompleteCallback: ((region: Region | null) => void) | null = null;
@@ -26,6 +27,14 @@ export class ScreenshotManager {
 	}
 
 	async startRegionCapture() {
+		// 原子性检查和设置状态，防止竞态条件
+		if (this.isScreenshotModeActive) {
+			getLogger().log('🚫 Screenshot mode already active, ignoring new request');
+			return;
+		}
+		// 立即设置状态，防止后续调用通过检查
+		this.isScreenshotModeActive = true;
+		
 		try {
 			getLogger().log('🚀 Starting region capture process...');
 			
@@ -68,6 +77,9 @@ export class ScreenshotManager {
 			new Notice(t('notice.regionCaptureFailed', { message: error.message }));
 			// Clean up overlay on failure
 			this.removeOverlay();
+		} finally {
+			// 确保状态被重置
+			this.isScreenshotModeActive = false;
 		}
 	}
 
@@ -91,7 +103,7 @@ export class ScreenshotManager {
 
 	private createOverlay() {
 		this.overlay = document.createElement('div');
-		this.overlay.className = 'screenshot-overlay screenshot-overlay-base';
+		this.overlay.className = 'screenshot-overlay-base';
 		
 		// Add instructions for user
 		const instructionEl = document.createElement('div');
@@ -103,7 +115,7 @@ export class ScreenshotManager {
 		mouseIndicator.className = 'mouse-indicator screenshot-mouse-indicator-base';
 		
 		this.selectionBox = document.createElement('div');
-		this.selectionBox.className = 'screenshot-selection screenshot-selection-base';
+		this.selectionBox.className = 'screenshot-selection-base';
 		
 		// Add coordinate display
 		const coordDisplay = document.createElement('div');
@@ -182,6 +194,11 @@ export class ScreenshotManager {
 		this.isSelecting = true;
 		this.startX = e.clientX;
 		this.startY = e.clientY;
+		
+		// 隐藏全局滤镜，显示选择框滤镜
+		if (this.overlay) {
+			this.overlay.addClass('selecting');
+		}
 		
 		if (this.selectionBox) {
 			this.selectionBox.style.display = 'block';
@@ -295,6 +312,10 @@ export class ScreenshotManager {
 		this.overlay = null;
 		this.selectionBox = null;
 		this.selectionCompleteCallback = null;
+		
+		// 重置截图模式状态
+		this.isScreenshotModeActive = false;
+		getLogger().log('🔄 Screenshot mode deactivated');
 	}
 
 	private async captureScreen(): Promise<string | null> {

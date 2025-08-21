@@ -132,7 +132,6 @@ export interface AIMessage {
 	type: 'user' | 'assistant';
 	content: string;
 	image?: string;
-	tempImages?: { [key: string]: string }; // 临时图片: {id: base64}
 	timestamp: Date;
 	isTyping?: boolean;
 }
@@ -226,7 +225,6 @@ export class AIManager {
 			id: this.generateMessageId(),
 			type: 'user',
 			content: messageData.content.trim(),
-			tempImages: messageData.tempImages,
 			timestamp: new Date()
 		};
 		conversation.messages.push(userMsg);
@@ -251,7 +249,7 @@ export class AIManager {
 
 		try {
 			// Extract text content from user message (without images)
-			const { textContent } = this.parseMarkdownContent(userMsg.content, userMsg.tempImages);
+			const { textContent } = this.parseMarkdownContent(userMsg.content);
 			
 			// Call AI API with context support using images array
 			// 智能判断逻辑会自动决定是否需要 mode prompt
@@ -412,11 +410,11 @@ export class AIManager {
 			} else if (contextSettings.contextStrategy === 'smart') {
 				// Smart selection: prioritize messages with images and recent messages
 				const messagesWithImages = historicalMessages.filter(m => {
-					const { imageReferences, tempImageRefs } = this.parseMarkdownContent(m.content || '', m.tempImages);
+					const { imageReferences, tempImageRefs } = this.parseMarkdownContent(m.content || '');
 					return imageReferences.length > 0 || tempImageRefs.length > 0;
 				});
 				const messagesWithoutImages = historicalMessages.filter(m => {
-					const { imageReferences, tempImageRefs } = this.parseMarkdownContent(m.content || '', m.tempImages);
+					const { imageReferences, tempImageRefs } = this.parseMarkdownContent(m.content || '');
 					return imageReferences.length === 0 && tempImageRefs.length === 0;
 				});
 				
@@ -861,7 +859,7 @@ export class AIManager {
 			// Collect text content and parse for images
 			if (message.content && message.content.trim()) {
 				// Parse markdown content to separate images and text
-				const { textContent, imageReferences, tempImageRefs } = this.parseMarkdownContent(message.content, message.tempImages);
+				const { textContent, imageReferences, tempImageRefs } = this.parseMarkdownContent(message.content);
 				
 				// Count images from markdown content and temporary images
 				imageCount += imageReferences.length + tempImageRefs.length;
@@ -1080,10 +1078,9 @@ export class AIManager {
 	}
 
 	/**
-	 * Parse markdown content to separate images and text - 保留向后兼容性
-	 * @deprecated 建议使用新的parseImageReferences方法
+	 * Parse markdown content to separate images and text
 	 */
-	private parseMarkdownContent(markdown: string, tempImages?: { [key: string]: string }): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }>; tempImageRefs: Array<{ id: string; dataUrl: string }> } {
+	private parseMarkdownContent(markdown: string): { textContent: string; imageReferences: Array<{ alt: string; path: string; fileName: string }>; tempImageRefs: Array<{ id: string; dataUrl: string }> } {
 		const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
 		const imageReferences: Array<{ alt: string; path: string; fileName: string }> = [];
 		const tempImageRefs: Array<{ id: string; dataUrl: string }> = [];
@@ -1098,22 +1095,13 @@ export class AIManager {
 			// Check if this is a temp: protocol image
 			if (path.startsWith('temp:')) {
 				const tempId = path.replace('temp:', '');
-				if (tempImages && tempImages[tempId]) {
-					// Parse the JSON string to get image data with source info
-					let tempImageData;
-					try {
-						tempImageData = JSON.parse(tempImages[tempId]);
-						tempImageRefs.push({
-							id: tempId,
-							dataUrl: tempImageData.dataUrl
-						});
-					} catch (parseError) {
-						// Fallback for old format (plain dataUrl string)
-						tempImageRefs.push({
-							id: tempId,
-							dataUrl: tempImages[tempId]
-						});
-					}
+				// Get from ImageReferenceManager
+				const tempImageData = this.getImageReferenceManager().getTempImageData(tempId);
+				if (tempImageData) {
+					tempImageRefs.push({
+						id: tempId,
+						dataUrl: tempImageData.dataUrl
+					});
 				}
 			} else {
 				// Regular image reference
@@ -1224,8 +1212,10 @@ export class AIManager {
 	private countTempImagesInConversation(conversation: AIConversation): number {
 		let count = 0;
 		for (const message of conversation.messages) {
-			if (message.tempImages) {
-				count += Object.keys(message.tempImages).length;
+			// 统计消息内容中的temp:引用数量
+			const tempRefs = (message.content || '').match(/!\[.*?\]\(temp:[^)]+\)/g);
+			if (tempRefs) {
+				count += tempRefs.length;
 			}
 		}
 		return count;

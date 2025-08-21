@@ -113,15 +113,6 @@ export class ChatHistoryModal extends Modal {
 		}
 	}
 
-	/**
-	 * Format auto-saved filename for display
-	 */
-	private formatAutoSavedFileName(fileName: string): string {
-		// Since auto-saved files now use title-based naming like manual saves,
-		// we just return the basename without extension
-		return fileName.replace(/\.md$/, '');
-	}
-
 	private async createConversationItem(container: HTMLElement, file: TFile, isAutoSaved: boolean) {
 		try {
 			// Read the file content to extract conversation info
@@ -131,11 +122,7 @@ export class ChatHistoryModal extends Modal {
 			const titleMatch = content.match(/^# (.+)$/m);
 			let title = titleMatch ? titleMatch[1] : file.basename;
 			
-			// For auto-saved files, enhance the title with timestamp information
-			if (isAutoSaved) {
-				const formattedName = this.formatAutoSavedFileName(file.name);
-				title = `${title} - ${formattedName}`;
-			}
+			// No need for special formatting for auto-saved files since they now use title-based naming
 			
 			// Extract creation date from content if available
 			const createdMatch = content.match(/\*\*Created:\*\* (.+)/);
@@ -199,8 +186,7 @@ export class ChatHistoryModal extends Modal {
 				lastUpdated: new Date()
 			};
 
-			// Extract conversationID, tempImages, and timestamps from YAML frontmatter
-			let tempImagesMap: { [key: string]: string } = {};
+			// Extract conversationID and timestamps from YAML frontmatter
 			const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
 			if (yamlMatch) {
 				const yamlContent = yamlMatch[1];
@@ -230,18 +216,6 @@ export class ChatHistoryModal extends Modal {
 						getLogger().warn('Failed to parse lastModified timestamp:', lastModifiedMatch[1]);
 					}
 				}
-				
-				// Parse tempImages from YAML
-				const tempImagesMatch = yamlContent.match(/tempImages:\s*\n((?:\s+\w+:\s*"[^"]*"\s*\n?)*)/);
-				if (tempImagesMatch) {
-					const tempImagesSection = tempImagesMatch[1];
-					const imageMatches = tempImagesSection.matchAll(/\s+(\w+):\s*"([^"]*)"/g);
-					for (const match of imageMatches) {
-						const [, tempId, dataUrl] = match;
-						// Unescape quotes
-						tempImagesMap[tempId] = dataUrl.replace(/\\"/g, '"');
-					}
-				}
 			}
 
 			// Extract title from the first line (BestNote style) or legacy format
@@ -255,10 +229,10 @@ export class ChatHistoryModal extends Modal {
 			
 			if (isBestNoteFormat) {
 				// Parse BestNote format
-				await this.parseBestNoteFormat(content, conversation, tempImagesMap);
+				await this.parseBestNoteFormat(content, conversation);
 			} else {
 				// Parse old Message Block format for backward compatibility
-				await this.parseLegacyFormat(content, conversation, tempImagesMap);
+				await this.parseLegacyFormat(content, conversation);
 			}
 
 			return conversation.messages.length > 0 ? conversation : null;
@@ -303,7 +277,7 @@ export class ChatHistoryModal extends Modal {
 		return new Date(timestampStr);
 	}
 
-	private async parseBestNoteFormat(content: string, conversation: AIConversation, tempImagesMap: { [key: string]: string }): Promise<void> {
+	private async parseBestNoteFormat(content: string, conversation: AIConversation): Promise<void> {
 		// Split content by lines to parse line by line
 		const lines = content.split('\n');
 		let currentMessage: any = null;
@@ -317,7 +291,7 @@ export class ChatHistoryModal extends Modal {
 			if (messageWithTimestampMatch) {
 				// Save previous message if exists
 				if (currentMessage) {
-					await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation, tempImagesMap);
+					await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation);
 				}
 				
 				// Start new message with timestamp
@@ -347,7 +321,7 @@ export class ChatHistoryModal extends Modal {
 			if (messageMatch) {
 				// Save previous message if exists
 				if (currentMessage) {
-					await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation, tempImagesMap);
+					await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation);
 				}
 				
 				// Start new message
@@ -375,7 +349,7 @@ export class ChatHistoryModal extends Modal {
 					getLogger().warn('Could not parse timestamp:', timestampStr);
 				}
 				
-				await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation, tempImagesMap);
+				await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation);
 				currentMessage = null;
 				currentContent = [];
 				continue;
@@ -394,37 +368,22 @@ export class ChatHistoryModal extends Modal {
 		
 		// Finalize the last message if exists
 		if (currentMessage) {
-			await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation, tempImagesMap);
+			await this.finalizeBestNoteMessage(currentMessage, currentContent, conversation);
 		}
 	}
 
-	private async finalizeBestNoteMessage(message: any, contentLines: string[], conversation: AIConversation, tempImagesMap: { [key: string]: string }): Promise<void> {
+	private async finalizeBestNoteMessage(message: any, contentLines: string[], conversation: AIConversation): Promise<void> {
 		const fullContent = contentLines.join('\n').trim();
 		
 		// Only add message if it has content
 		if (fullContent) {
-			// Extract temporary image references and add them to the message
-			const tempImageRegex = /\[!TempPic\s+([^\]]+)\]/g;
-			const tempImages: { [key: string]: string } = {};
-			let match;
-			
-			while ((match = tempImageRegex.exec(fullContent)) !== null) {
-				const tempId = match[1];
-				if (tempImagesMap[tempId]) {
-					tempImages[tempId] = tempImagesMap[tempId];
-				}
-			}
-			
 			// Keep the full content including temporary image placeholders
 			message.content = fullContent;
-			if (Object.keys(tempImages).length > 0) {
-				message.tempImages = tempImages;
-			}
 			conversation.messages.push(message);
 		}
 	}
 
-	private async parseLegacyFormat(content: string, conversation: AIConversation, tempImagesMap: { [key: string]: string }): Promise<void> {
+	private async parseLegacyFormat(content: string, conversation: AIConversation): Promise<void> {
 		// Parse old Message Block format for backward compatibility
 		const messageBlocks = content.split(/## Message Block \d+/);
 		
@@ -449,24 +408,11 @@ export class ChatHistoryModal extends Modal {
 			// Skip empty messages
 			if (!fullContent) continue;
 			
-			// Extract temporary image references and add them to the message
-			const tempImageRegex = /\[!TempPic\s+([^\]]+)\]/g;
-			const tempImages: { [key: string]: string } = {};
-			let match;
-			
-			while ((match = tempImageRegex.exec(fullContent)) !== null) {
-				const tempId = match[1];
-				if (tempImagesMap[tempId]) {
-					tempImages[tempId] = tempImagesMap[tempId];
-				}
-			}
-			
 			const message = {
 				id: messageId,
 				type: isUser ? 'user' as const : 'assistant' as const,
 				content: fullContent, // Keep full content including temporary image placeholders
-				timestamp: timestamp,
-				...(Object.keys(tempImages).length > 0 ? { tempImages } : {})
+				timestamp: timestamp
 			};
 			
 			conversation.messages.push(message);

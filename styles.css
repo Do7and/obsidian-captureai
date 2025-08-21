@@ -3062,7 +3062,7 @@ button.ai-chat-action-btn:hover::after,
 
 /* Screenshot Manager Styles */
 
-/* Overlay base styling */
+/* Overlay base styling - 初始全局滤镜 */
 .screenshot-overlay-base {
 	position: fixed;
 	top: 0;
@@ -3072,6 +3072,11 @@ button.ai-chat-action-btn:hover::after,
 	background: rgba(0, 0, 0, 0.3);
 	z-index: 2147483647;
 	cursor: crosshair;
+}
+
+/* 当开始选择时隐藏全局滤镜 */
+.screenshot-overlay-base.selecting {
+	background: transparent;
 }
 
 /* Instruction element styling */
@@ -3109,6 +3114,7 @@ button.ai-chat-action-btn:hover::after,
 	background: rgba(0, 255, 0, 0.1);
 	display: none;
 	pointer-events: none;
+	box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3);
 }
 
 /* Coordinate display base styling */

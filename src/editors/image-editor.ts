@@ -655,6 +655,7 @@ export class ImageEditor extends Modal {
 				text: t('imageEditor.tempSendToAI'),
 				cls: 'btn-base'
 			});
+			this.saveButtons.push(tempAIButton); // Add to save buttons array for filename validation
 			if (!aiButtonEnabled) {
 				tempAIButton.disabled = true;
 				
