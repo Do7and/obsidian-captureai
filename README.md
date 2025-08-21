@@ -26,6 +26,20 @@ English | [简体中文](README.zh.md)
 
 </div>
 
+## ✨ Why CaptureAI?
+
+· **Many screenshots are only needed temporarily, but still require saving, uploading, and later cleaning up?**  
+  With CaptureAI, you can take screenshots directly inside Obsidian and send them to AI instantly—no extra saving required. Temporary screenshots are used on the fly, fitting the natural habit of how screenshots are consumed.  
+
+· **Struggling to share uncopyable PDFs, charts, or a specific video frame with AI?**  
+  Screenshots are the perfect medium. With today’s Vision models handling most everyday needs, CaptureAI turns screenshots into a direct bridge to AI, making complex content flow seamlessly into conversations.  
+
+· **Tired of constant copy & paste?**  
+  CaptureAI’s “Magic Drag Zone” lets you simply drag text or images to send them to AI, reducing repetitive actions and fitting smoothly into your note-taking flow.  
+
+· **Worried about losing valuable information from conversations, or want to continue later where you left off?**  
+  CaptureAI is built on the idea of “Conversation-as-Notes.” AI responses can be inserted directly into the current note, saved as a standalone note, or reloaded anytime to restore full context—keeping conversations naturally continuous.  
+
 
 ## Features
 

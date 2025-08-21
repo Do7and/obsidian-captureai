@@ -216,7 +216,7 @@ export default {
   "notice.regionCaptureFailed": "区域截图失败: {{message}}",
   "notice.fullScreenCapturing": "正在截取全屏...",
   "notice.fullScreenCaptureFailed": "全屏截图失败: {{message}}",
-  "notice.screenCapturingOverlayInstruction": "🖱️ 拖拽选择截图区域<br><small><br>按 ESC 取消</small>",
+  "notice.screenCapturingOverlayInstruction": "🖱️ 拖拽选择截图区域  按 ESC 取消",
   "notice.electronAPINotAvailable": "Electron API 不可用 - 请确保在桌面端运行",
   "notice.electronRemoteNotAvailable": "Electron remote 不可用 - 请尝试重启 Obsidian",
   "notice.desktopCapturerNotAvailable": "desktopCapturer 不可用",

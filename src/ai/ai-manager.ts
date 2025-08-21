@@ -29,9 +29,22 @@ class ImageReferenceManager {
 	
 	// 添加临时图片，返回标识符
 	addTempImage(dataUrl: string, source: string, fileName: string): string {
-		const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+		// 使用高精度时间戳和更强的随机性避免ID冲突
+		const timestamp = Date.now();
+		const microseconds = performance.now().toString().replace('.', '');
+		const random = Math.random().toString(36).substr(2, 12);
+		const tempId = `temp_${timestamp}_${microseconds}_${random}`;
 		
-		this.tempImages.set(tempId, {
+		// 确保ID唯一性，如果存在冲突则重新生成
+		let uniqueTempId = tempId;
+		let counter = 0;
+		while (this.tempImages.has(uniqueTempId)) {
+			counter++;
+			uniqueTempId = `${tempId}_${counter}`;
+			getLogger().warn(`Temp image ID conflict detected, using: ${uniqueTempId}`);
+		}
+		
+		this.tempImages.set(uniqueTempId, {
 			dataUrl,
 			source,
 			fileName,
@@ -39,10 +52,10 @@ class ImageReferenceManager {
 		});
 		
 		// 初始引用计数为1（预发送区或其他地方会立即持有引用）
-		this.refCounts.set(tempId, 1);
+		this.refCounts.set(uniqueTempId, 1);
 		
-		getLogger().log(`Added temp image: ${tempId}, source: ${source}, fileName: ${fileName}`);
-		return tempId;
+		getLogger().log(`Added temp image: ${uniqueTempId}, source: ${source}, fileName: ${fileName}`);
+		return uniqueTempId;
 	}
 	
 	// 获取临时图片数据
@@ -54,17 +67,21 @@ class ImageReferenceManager {
 	addRef(tempId: string): void {
 		const currentCount = this.refCounts.get(tempId) || 0;
 		this.refCounts.set(tempId, currentCount + 1);
+		getLogger().log(`🔼 Adding ref for ${tempId}: ${currentCount} -> ${currentCount + 1}`);
 	}
 	
 	// 减少引用计数
 	removeRef(tempId: string): void {
 		const currentCount = this.refCounts.get(tempId) || 0;
+		getLogger().log(`🔽 Removing ref for ${tempId}: ${currentCount} -> ${currentCount - 1}`);
+		
 		if (currentCount > 0) {
 			this.refCounts.set(tempId, currentCount - 1);
 		}
 		
 		// 如果引用计数为0，清理图片数据
 		if (this.refCounts.get(tempId) === 0) {
+			getLogger().warn(`🗑️ Cleaning up temp image ${tempId} (ref count reached 0)`);
 			this.cleanupTempImage(tempId);
 		}
 	}
@@ -325,27 +342,6 @@ export class AIManager {
 		return await this.sendImagesToAI(imageArray, userMessage);
 	}
 
-	async callAIForFollowUp(message: string, imageDataUrl: string): Promise<string> {
-		// Convert single image to array format and delegate to sendImagesToAI
-		const imageArray = [{
-			dataUrl: imageDataUrl,
-			fileName: 'follow-up-image.png',
-			localPath: null
-		}];
-		
-		await this.sendImagesToAI(imageArray, message);
-		
-		// Get the latest response from conversation
-		const conversation = this.getCurrentConversation();
-		if (conversation && conversation.messages.length > 0) {
-			const lastMessage = conversation.messages[conversation.messages.length - 1];
-			if (lastMessage.type === 'assistant') {
-				return lastMessage.content;
-			}
-		}
-		
-		throw new Error('No response received from AI');
-	}
 
 
 	async callAIForTextOnly(message: string): Promise<string> {
@@ -371,12 +367,25 @@ export class AIManager {
 			contextStrategy: 'recent'
 		};
 
+		// Debug logging
+		getLogger().log('🔧 buildContextMessages called with:', {
+			currentMessage: currentMessage,
+			currentImagesCount: currentImages?.length || 0,
+			includeModeprompt,
+			conversationMessagesCount: conversation?.messages?.length || 0
+		});
+
 		// Determine target model config to check vision capability
 		const targetModelConfig = modelConfig || this.plugin.settings.modelConfigs.find(
 			mc => mc.id === this.plugin.settings.defaultModelConfigId
 		);
 		
 		const isVisionCapable = targetModelConfig?.isVisionCapable || false;
+		
+		getLogger().log('🔧 Model info:', {
+			modelName: targetModelConfig?.name || 'unknown',
+			isVisionCapable
+		});
 
 		// 1. Add system prompt (global system prompt)
 		if (contextSettings.includeSystemPrompt) {
@@ -566,6 +575,15 @@ export class AIManager {
 				content: currentMessage
 			});
 		}
+
+		getLogger().log('🔧 buildContextMessages result:', {
+			messagesCount: messages.length,
+			messages: messages.map(m => ({
+				role: m.role,
+				contentType: typeof m.content,
+				contentLength: Array.isArray(m.content) ? m.content.length : (m.content?.length || 0)
+			}))
+		});
 
 		return messages;
 	}
@@ -967,6 +985,16 @@ export class AIManager {
 	}
 
 	/**
+	 * Clean up conversation data only (for starting new conversation)
+	 * Does not clean up temporary images that might be in preview
+	 */
+	clearConversations(): void {
+		this.conversations.clear();
+		this.currentConversationId = null;
+		getLogger().log('AIManager conversations cleared (temp images preserved)');
+	}
+
+	/**
 	 * Clean up all temporary images when plugin is disabled/unloaded
 	 */
 	cleanup(): void {
@@ -1186,10 +1214,18 @@ export class AIManager {
 	}
 
 	/**
-	 * 生成临时图片ID
+	 * 生成临时图片ID - 增强版本，确保高度唯一性
 	 */
 	private generateTempImageId(): string {
-		return 'temp_img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+		// 使用高精度时间戳 + 性能计时器 + 更强随机性
+		const timestamp = Date.now();
+		const microseconds = Math.floor(performance.now() * 1000); // 微秒级精度
+		const random1 = Math.random().toString(36).substr(2, 9);
+		const random2 = Math.random().toString(36).substr(2, 6);
+		const tempId = `temp_img_${timestamp}_${microseconds}_${random1}_${random2}`;
+		
+		getLogger().log(`Generated temp image ID: ${tempId}`);
+		return tempId;
 	}
 
 	/**
@@ -1222,16 +1258,19 @@ export class AIManager {
 	}
 
 	/**
-	 * 为图片数组创建临时图片占位符
+	 * 为图片数组创建临时图片占位符 - 改进版本，使用统一的临时图片管理
 	 */
 	createTempImagePlaceholders(imageDataUrls: string[]): { content: string; tempImages: { [key: string]: string } } {
 		const tempImages: { [key: string]: string } = {};
 		const placeholders: string[] = [];
 
 		for (const dataUrl of imageDataUrls) {
-			const tempId = this.generateTempImageId();
+			// 使用ImageReferenceManager来创建临时图片，确保唯一性和引用计数
+			const tempId = this.imageRefManager.addTempImage(dataUrl, 'screenshot', 'tempimage');
 			tempImages[tempId] = dataUrl;
-			placeholders.push(`![tempimage](temp://${tempId})`);
+			placeholders.push(`![tempimage](temp:${tempId})`);
+			
+			getLogger().log(`Created temp image placeholder: temp:${tempId}`);
 		}
 
 		return {

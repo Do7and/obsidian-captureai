@@ -216,7 +216,7 @@ export default {
   "notice.regionCaptureFailed": "Region capture failed: {{message}}",
   "notice.fullScreenCapturing": "Capturing full screen...",
   "notice.fullScreenCaptureFailed": "Full screen capture failed: {{message}}",
-  "notice.screenCapturingOverlayInstruction": "🖱️ Drag to select screenshot area<br><small><br>Press ESC to cancel</small>",
+  "notice.screenCapturingOverlayInstruction": "🖱️ Drag to select screenshot area  Press ESC to cancel",
   "notice.electronAPINotAvailable": "Electron API not available - make sure you are running on desktop",
   "notice.electronRemoteNotAvailable": "Electron remote not available - try restarting Obsidian",
   "notice.desktopCapturerNotAvailable": "desktopCapturer not available",

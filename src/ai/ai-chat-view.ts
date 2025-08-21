@@ -1,7 +1,8 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, Component, MarkdownView, Modal, Editor, setIcon, requestUrl, App, Vault } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, Notice, MarkdownRenderer, MarkdownView, Modal, Editor, setIcon, requestUrl, App, Vault } from 'obsidian';
 import ImageCapturePlugin from '../main';
 import { AIManager, AIMessage, AIConversation } from './ai-manager';
 import { ChatHistoryModal } from '../ui/chat-history-modal';
+import { MessageRenderManager } from '../managers/message-render-manager';
 import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
 
@@ -37,7 +38,7 @@ export const AI_CHAT_VIEW_TYPE = 'ai-chat';
 export class AIChatView extends ItemView {
 	private plugin: ImageCapturePlugin;
 	private aiManager: AIManager;
-	private markdownComponent: Component;
+	private messageRenderer: MessageRenderManager;
 	
 	// WeakMap storage for DOM element properties - replaces (element as any) patterns
 	private inputAreaElements = new WeakMap<HTMLElement, {
@@ -72,7 +73,7 @@ export class AIChatView extends ItemView {
 		super(leaf);
 		this.plugin = plugin;
 		this.aiManager = plugin.aiManager;
-		this.markdownComponent = new Component();
+		this.messageRenderer = new MessageRenderManager(this);
 		
 		// Initialize current mode from settings
 		getLogger().log('Initializing AI chat mode:', plugin.settings.defaultAIChatMode);
@@ -440,9 +441,13 @@ export class AIChatView extends ItemView {
 		// Reset last saved content for new conversation
 		this.lastAutoSaveContent = null;
 		
-		// Clear current conversation and start fresh
-		this.aiManager.cleanup();
+		// Clear current conversation data but preserve temporary images in preview
+		this.aiManager.clearConversations();
 		this.currentConversationId = null;
+		
+		// Reset MessageRenderManager for new conversation
+		this.messageRenderer.resetForNewConversation();
+		
 		await this.updateContent();
 	}
 
@@ -493,17 +498,25 @@ export class AIChatView extends ItemView {
 
 		} catch (error) {
 			getLogger().error('Failed to send text message:', error);
-			// Remove typing indicator
+			// Handle error by replacing typing indicator with error message
 			const conversation = this.aiManager.getCurrentConversationData();
 			if (conversation) {
 				const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
 				if (typingIndex > -1) {
-					conversation.messages.splice(typingIndex, 1);
+					const typingMsg = conversation.messages[typingIndex];
+					
+					// Create error message to replace typing indicator
+					const errorMessage = this.createAssistantMessage(`❌ Error: ${error.message}`);
+					conversation.messages[typingIndex] = errorMessage; // Replace in conversation
+					
+					// Use MessageRenderManager to replace typing with error message
+					await this.messageRenderer.replaceMessage(typingMsg.id, errorMessage);
+				} else {
+					// If no typing indicator found, add error message normally
+					const errorMessage = this.createAssistantMessage(`❌ Error: ${error.message}`);
+					conversation.messages.push(errorMessage);
+					await this.messageRenderer.appendMessage(errorMessage);
 				}
-				
-				const errorMessage = this.createAssistantMessage(`Error: ${error.message}`);
-				conversation.messages.push(errorMessage);
-				await this.updateContent();
 			}
 		}
 	}
@@ -515,15 +528,7 @@ export class AIChatView extends ItemView {
 	}
 
 	private async renderConversation(container: HTMLElement, conversation: AIConversation): Promise<void> {
-		const messagesContainer = container.createEl('div', { cls: 'ai-chat-messages' });
-
-		// Render messages sequentially to maintain order
-		for (const message of conversation.messages) {
-			await this.renderMessage(messagesContainer, message);
-		}
-
-		// Scroll to bottom
-		messagesContainer.scrollTop = messagesContainer.scrollHeight;
+		await this.messageRenderer.renderMessages(container, conversation.messages);
 	}
 
 	private formatImagePath(localPath: string | null): string | null {
@@ -557,155 +562,7 @@ export class AIChatView extends ItemView {
 		return null;
 	}
 
-	private async renderMessage(container: HTMLElement, message: AIMessage): Promise<void> {
-		const messageEl = container.createEl('div', { 
-			cls: `ai-chat-message ai-chat-message-block` 
-		});
-
-		// Message block with avatar on left and content on right
-		const messageRow = messageEl.createEl('div', { cls: 'ai-chat-message-row' });
-		
-		// Avatar section (always on left)
-		const avatarSection = messageRow.createEl('div', { cls: 'ai-chat-message-avatar' });
-		const avatarIcon = avatarSection.createEl('div', { cls: 'ai-chat-avatar-icon' });
-		
-		if (message.type === 'user') {
-			// User icon
-			setIcon(avatarIcon, 'user-round');
-			avatarIcon.addClass('user-avatar');
-		} else {
-			// AI Assistant icon
-			setIcon(avatarIcon, 'bot');
-			avatarIcon.addClass('ai-avatar');
-		}
-
-		// Content section (full width minus avatar)
-		const contentSection = messageRow.createEl('div', { cls: 'ai-chat-message-content-section' });
-		
-		// Header with timestamp on left and action buttons on right
-		const messageHeader = contentSection.createEl('div', { cls: 'ai-chat-message-header' });
-		messageHeader.createEl('span', { 
-			text: this.formatTime(message.timestamp),
-			cls: 'ai-chat-message-time'
-		});
-		
-		// Action buttons (4 buttons as requested) - moved to header right
-		const actionButtons = messageHeader.createEl('div', { cls: 'ai-chat-message-actions' });
-
-		// Message content with text selection support
-		const messageContent = contentSection.createEl('div', { 
-			cls: 'ai-chat-message-content',
-			attr: { 'data-message-id': message.id }
-		});
-		
-		// Check if message is currently being typed (AI response in progress)
-		const isTyping = (message ).isTyping || false;
-		
-		// 1. Insert at cursor button
-		const insertBtn = actionButtons.createEl('button', { 
-			cls: 'btn-transparent btn-transparent-sm message-action-btn',
-			attr: { 
-				title: t('aiChat.insertToCursorButton'),
-				'data-tooltip': t('aiChat.insertToCursorButton')
-			}
-
-		});
-		
-		setIcon(insertBtn, 'between-horizontal-end');
-		if (isTyping) {
-			insertBtn.disabled = true;
-			insertBtn.classList.add('ai-chat-button-disabled');
-		}
-		
-		// 2. Copy button  
-		const copyBtn = actionButtons.createEl('button', { 
-			cls: 'btn-transparent btn-transparent-sm message-action-btn',
-			attr: { 
-				title: t('aiChat.copyMessageButton'),
-				'data-tooltip': t('aiChat.copyMessageButton')
-			}
-		});
-
-		setIcon(copyBtn, 'copy');
-		if (isTyping) {
-			copyBtn.disabled = true;
-			copyBtn.classList.add('ai-chat-button-disabled');
-		}
-		
-		// 3. Toggle edit/read view button
-		const editBtn = actionButtons.createEl('button', { 
-			cls: 'btn-transparent btn-transparent-sm message-action-btn',
-			attr: { 
-				title: t('aiChat.switchEditViewButton'),
-				'data-tooltip': t('aiChat.switchEditViewButton')
-			}
-
-		});
-
-		setIcon(editBtn, 'square-pen');
-		if (isTyping) {
-			editBtn.disabled = true;
-			editBtn.classList.add('ai-chat-button-disabled');
-		}
-		
-		// 4. Delete button
-		const deleteBtn = actionButtons.createEl('button', { 
-			cls: 'btn-transparent btn-transparent-sm message-action-btn delete-btn',
-			attr: { 
-				title: t('aiChat.deleteMessageButton'),
-				'data-tooltip': t('aiChat.deleteMessageButton')
-			}
-		});
-		setIcon(deleteBtn, 'trash-2');
-		if (isTyping) {
-			deleteBtn.disabled = true;
-			deleteBtn.classList.add('ai-chat-button-disabled');
-		}
-
-		// Add click handlers for buttons
-		copyBtn.addEventListener('click', async () => {
-			if (copyBtn.disabled) return; // Prevent action if button is disabled
-			await this.copyMessage(message);
-		});
-
-		// Insert to cursor handler
-		insertBtn.addEventListener('click', async () => {
-			if (insertBtn.disabled) return; // Prevent action if button is disabled
-			await this.insertMessageAtCursor(message);
-		});
-
-		// Toggle edit/read view handler
-		editBtn.addEventListener('click', async () => {
-			if (editBtn.disabled) return; // Prevent action if button is disabled
-			await this.toggleMessageEditMode(messageContent, message, editBtn);
-		});
-
-		// Delete message handler
-		deleteBtn.addEventListener('click', async () => {
-			if (deleteBtn.disabled) return; // Prevent action if button is disabled
-			await this.deleteMessage(message.id);
-		});
-
-		// Enable text selection for the entire message area
-		messageEl.addEventListener('keydown', (e) => {
-			if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-				this.handleKeyboardCopy(e, message);
-			}
-		});
-		messageEl.setAttribute('tabindex', '0'); // Make it focusable for keyboard events
-
-		// Show text content or typing indicator
-		if ((message ).isTyping) {
-			const typingEl = messageContent.createEl('div', { cls: 'ai-chat-typing-indicator' });
-			typingEl.empty();
-			for (let i = 0; i < 3; i++) {
-				typingEl.createEl('span', { cls: 'typing-dot' });
-			}
-		} else if (message.content) {
-			// Use new markdown rendering that handles both images and text
-			await this.renderMessageContentFromMarkdown(messageContent, message);
-		}
-	}
+	// renderMessage方法已移动到MessageRenderManager中
 
 	private async copyMessage(message: AIMessage): Promise<void> {
 		try {
@@ -1202,10 +1059,14 @@ export class AIChatView extends ItemView {
 				let messagesToSend: any[] = [];
 				let currentImages: string[] = [];
 				
-				if (!sendOnly && imageDataList.length > 0 && isVisionCapable) {
+				if (!sendOnly) {
 					// Process images for vision-capable models
-					currentImages = imageDataList.map((img: any) => img.dataUrl);
+					if (imageDataList.length > 0 && isVisionCapable) {
+						currentImages = imageDataList.map((img: any) => img.dataUrl);
+					}
+					
 					// Build messages for AI (this includes system prompt, context, mode prompt, current message)
+					// Always build messages for AI responses, whether with images or text-only
 					messagesToSend = await this.aiManager.buildContextMessages(
 						conversation, 
 						message, 
@@ -1218,7 +1079,9 @@ export class AIChatView extends ItemView {
 				// Create and add user message to conversation
 				const userMessage = await this.createUserMessage(message, imageDataList);
 				conversation.messages.push(userMessage);
-				await this.updateContent();
+				
+				// 使用MessageRenderManager增量添加用户消息
+				await this.messageRenderer.appendMessage(userMessage);
 
 				// Clear image preview after message is created (releases preview references)
 				if (imageDataList.length > 0) {
@@ -1241,12 +1104,14 @@ export class AIChatView extends ItemView {
 					isTyping: true
 				};
 				conversation.messages.push(typingMessage);
-				await this.updateContent();
+				
+				// 使用MessageRenderManager增量添加typing指示器
+				await this.messageRenderer.appendMessage(typingMessage);
 
 				// Send to AI and get response
 				const response = await this.aiManager.sendPreBuiltMessagesToAI(messagesToSend, currentModel);
 
-				// Remove typing indicator
+				// Remove typing indicator from conversation data
 				const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
 				if (typingIndex > -1) {
 					conversation.messages.splice(typingIndex, 1);
@@ -1256,7 +1121,8 @@ export class AIChatView extends ItemView {
 				const assistantMessage = this.createAssistantMessage(response);
 				conversation.messages.push(assistantMessage);
 				
-				await this.updateContent();
+				// 使用MessageRenderManager替换typing为实际回复
+				await this.messageRenderer.replaceMessage(typingMessage.id, assistantMessage);
 
 				// Reset auto-save content tracking since conversation content changed
 				this.lastAutoSaveContent = null;
@@ -1264,31 +1130,33 @@ export class AIChatView extends ItemView {
 			} catch (error) {
 				getLogger().error('Failed to send message:', error);
 				
-				// Handle error cleanup
+				// Handle error by showing error message instead of removing everything
 				const conversation = this.aiManager.getCurrentConversationData();
-				if (conversation) {
-					// Remove typing indicator if it exists
+				if (conversation && !sendOnly) {
+					// Find typing indicator and replace it with error message
 					const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
 					if (typingIndex > -1) {
-						conversation.messages.splice(typingIndex, 1);
-						await this.updateContent();
-					}
-					
-					// Also remove the user message that was added before the AI call failed (only for AI calls)
-					if (!sendOnly) {
-						const lastMessageIndex = conversation.messages.length - 1;
-						if (lastMessageIndex >= 0 && conversation.messages[lastMessageIndex].type === 'user') {
-							const removedMessage = conversation.messages[lastMessageIndex];
-							// 移除消息时，减少消息块中图片的引用计数（消息块释放引用）
-							this.aiManager.getImageReferenceManager().updateRefsFromContent(removedMessage.content, false);
-							conversation.messages.splice(lastMessageIndex, 1);
-							await this.updateContent();
-						}
+						const typingMsg = conversation.messages[typingIndex];
+						
+						// Create error message to replace typing indicator
+						const errorMessage = this.createAssistantMessage(`❌ Error: ${error.message}`);
+						conversation.messages[typingIndex] = errorMessage; // Replace in conversation
+						
+						// Use MessageRenderManager to replace typing with error message
+						await this.messageRenderer.replaceMessage(typingMsg.id, errorMessage);
+					} else {
+						// If no typing indicator found, add error message normally
+						const errorMessage = this.createAssistantMessage(`❌ Error: ${error.message}`);
+						conversation.messages.push(errorMessage);
+						await this.messageRenderer.appendMessage(errorMessage);
 					}
 				}
-				// Restore text input on error - images are already cleared
-				textInput.value = message;
-				new Notice(`❌ Error: ${error.message}`);
+				
+				// Don't restore text input on error - let user see what they sent
+				// textInput.value = message; // Removed this line
+				
+				// Error notice is now shown in the chat, so we can make this less intrusive
+				new Notice(`Request failed: ${error.message}`);
 			} finally {
 				if (!sendOnly) {
 					sendButton.disabled = false;
@@ -1550,11 +1418,31 @@ export class AIChatView extends ItemView {
 		const imagesGrid = previewContainer.createEl('div', { cls: 'images-grid' });
 		
 		imageDataList.forEach((imageData, index) => {
-			const imageItem = imagesGrid.createEl('div', { cls: 'preview-image-item' });
+			const imageItem = imagesGrid.createEl('div', { 
+				cls: 'preview-image-item',
+				attr: { 
+					'data-image-id': imageData.id,  // 添加唯一标识
+					'data-image-source': imageData.source || 'unknown'
+				}
+			});
+			
+			// 添加调试日志
+			getLogger().log('🖼️ Rendering image preview:', {
+				id: imageData.id,
+				fileName: imageData.fileName,
+				source: imageData.source,
+				hasLocalPath: !!imageData.localPath,
+				hasTempId: !!imageData.tempId,
+				index: index
+			});
 			
 			const img = imageItem.createEl('img', { 
 				cls: 'preview-image-thumb',
-				attr: { src: imageData.dataUrl, alt: imageData.fileName }
+				attr: { 
+					src: imageData.dataUrl, 
+					alt: imageData.fileName,
+					'data-image-id': imageData.id  // 图片元素也添加ID
+				}
 			});
 			
 			// Make the image draggable and set drag data for proper Obsidian integration
@@ -1651,40 +1539,48 @@ export class AIChatView extends ItemView {
 		
 		const imageDataList = inputData.currentImageDataList || [];
 		
-		getLogger().log('📸 Adding image to preview:', { fileName, source, localPath });
+		getLogger().log('📸 Adding image to preview:', { fileName, source, localPath, currentCount: imageDataList.length });
+		
+		// 生成随机唯一ID - 简单有效
+		const uniqueId = `img_${Math.random().toString(36).substr(2, 12)}`;
 		
 		// 创建图片数据对象
 		let newImageData;
 		
-		if (source === 'vault' && localPath) {
-			// Vault图片 - 直接使用路径，不需要通过ImageReferenceManager
+		if (localPath) {
+			// 有本地路径的图片 - 直接使用路径，不需要通过ImageReferenceManager
 			newImageData = { 
 				dataUrl, 
 				fileName, 
-				id: Date.now().toString(),
+				id: uniqueId,
 				localPath: localPath,
 				source: source,
-				imageRef: localPath  // vault图片使用文件路径作为引用
+				imageRef: localPath  // 保存的图片使用文件路径作为引用
 			};
-			getLogger().log('✅ Created vault image data:', newImageData);
+			getLogger().log('✅ Created saved image data:', { id: uniqueId, fileName, localPath });
 		} else {
 			// 临时图片 - 通过ImageReferenceManager管理
 			const tempId = this.aiManager.getImageReferenceManager().addTempImage(dataUrl, source, fileName);
 			newImageData = { 
 				dataUrl, 
 				fileName, 
-				id: Date.now().toString(),
+				id: uniqueId,
 				localPath: localPath || null,
 				source: source,
 				tempId: tempId,  // 存储临时图片ID
 				imageRef: `temp:${tempId}`  // 临时图片使用temp:协议引用
 			};
-			getLogger().log('✅ Created temp image data:', { tempId, source, fileName });
+			getLogger().log('✅ Created temp image data:', { id: uniqueId, tempId, source, fileName });
 		}
 		
 		imageDataList.push(newImageData);
 		inputData.currentImageDataList = imageDataList;
 		this.inputAreaElements.set(inputArea, inputData);
+		
+		getLogger().log('🔄 Updated image data list:', { 
+			totalImages: imageDataList.length, 
+			imageIds: imageDataList.map(img => ({ id: img.id, fileName: img.fileName, source: img.source }))
+		});
 		
 		inputData.imagePreviewArea.style.display = 'block';
 
@@ -1706,17 +1602,27 @@ export class AIChatView extends ItemView {
 			const imageReferences: string[] = [];
 			
 			for (const img of imageDataList) {
-				if (img.source === 'vault' && img.localPath) {
-					// Vault图片 - 使用文件路径
+				if (img.localPath && img.localPath.trim()) {
+					// 保存的图片 - 使用文件路径，alt显示来源类型
 					imageReferences.push(`![${img.source}](${img.localPath})`);
+					getLogger().log(`📝 Added saved image reference: ![${img.source}](${img.localPath})`);
 				} else if (img.tempId) {
 					// 临时图片 - 在编辑视图下统一显示为 [tempimage]
 					imageReferences.push(`![tempimage](temp:${img.tempId})`);
+					getLogger().log(`📝 Added temp image reference: ![tempimage](temp:${img.tempId})`);
+				} else {
+					getLogger().warn(`⚠️ Image ignored - no localPath or tempId:`, {
+						fileName: img.fileName,
+						source: img.source,
+						hasLocalPath: !!img.localPath,
+						hasTempId: !!img.tempId
+					});
 				}
 			}
 			
 			// Combine text and image references
 			finalContent = imageReferences.join('\n') + (textContent ? '\n\n' + textContent : '');
+			getLogger().log(`📝 Final message content: ${finalContent}`);
 		}
 
 		const message = this.createMessage('user', finalContent);
@@ -1765,9 +1671,27 @@ export class AIChatView extends ItemView {
 		// 减少预发送区所有临时图片的引用计数（预发送区释放引用）
 		const imageDataList = inputData.currentImageDataList || [];
 		
+		getLogger().log('🧹 Clearing image preview:', {
+			totalImages: imageDataList.length,
+			images: imageDataList.map(img => ({
+				id: img.id,
+				fileName: img.fileName,
+				hasTempId: !!img.tempId,
+				hasLocalPath: !!img.localPath,
+				source: img.source
+			}))
+		});
+		
 		imageDataList.forEach(imageData => {
 			if (imageData.tempId) {
+				getLogger().log(`🔄 Removing ref for temp image: ${imageData.tempId}`);
 				this.aiManager.getImageReferenceManager().removeRef(imageData.tempId);
+			} else {
+				getLogger().log(`ℹ️ Skipping ref removal for non-temp image:`, {
+					fileName: imageData.fileName,
+					source: imageData.source,
+					hasLocalPath: !!imageData.localPath
+				});
 			}
 		});
 		
@@ -1776,6 +1700,8 @@ export class AIChatView extends ItemView {
 		inputData.imagePreviewArea.empty();
 		inputData.currentImageDataList = [];
 		this.inputAreaElements.set(inputArea, inputData);
+		
+		getLogger().log('✅ Image preview cleared');
 	}
 
 	private setupDragAndDrop(inputArea: HTMLElement): void {
@@ -2116,230 +2042,10 @@ export class AIChatView extends ItemView {
 		});
 	}
 
-	private async sendFollowUpMessage(conversation: AIConversation, message: string): Promise<void> {
-		// Add user message
-		const userMessage: AIMessage = {
-			id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-			type: 'user',
-			content: message,
-			timestamp: new Date()
-		};
-		conversation.messages.push(userMessage);
-		this.updateContent();
 
-		// Add typing indicator
-		const typingMessage = {
-			id: 'typing_' + Date.now(),
-			type: 'assistant' as const,
-			content: '',
-			timestamp: new Date(),
-			isTyping: true
-		};
-		conversation.messages.push(typingMessage);
-		this.updateContent();
 
-		try {
-			// For follow-up, we'll use the last image from the conversation
-			const lastImageMessage = conversation.messages
-				.slice()
-				.reverse()
-				.find(m => m.image);
+	// renderMarkdown方法已移动到MessageRenderManager中
 
-			if (!lastImageMessage?.image) {
-				throw new Error('No image found in conversation');
-			}
-
-			// Call AI API with the follow-up question
-			const response = await this.callAIForFollowUp(message, lastImageMessage.image, conversation);
-
-			// Remove typing indicator
-			const typingIndex = conversation.messages.findIndex(m => m.id === typingMessage.id);
-			if (typingIndex > -1) {
-				conversation.messages.splice(typingIndex, 1);
-			}
-
-			// Add AI response
-			const assistantMessage = this.createAssistantMessage(response);
-			conversation.messages.push(assistantMessage);
-			
-			this.updateContent();
-
-		} catch (error) {
-			getLogger().error('Follow-up message failed:', error);
-			
-			// Remove typing indicator
-			const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
-			if (typingIndex > -1) {
-				conversation.messages.splice(typingIndex, 1);
-			}
-			
-			// Add error message
-			const errorMessage = this.createAssistantMessage(`Error: ${error.message}`);
-			conversation.messages.push(errorMessage);
-			this.updateContent();
-		}
-	}
-
-	private async callAIForFollowUp(message: string, imageDataUrl: string, conversation: AIConversation): Promise<string> {
-		// Use the new context-aware API for follow-up questions
-		// 智能判断逻辑会自动决定是否需要 mode prompt（比如图片相关的 mode 每次都会应用）
-		return await this.aiManager.callAIWithContext(conversation, message, [imageDataUrl], undefined, true);
-	}
-
-	private async renderMarkdown(container: HTMLElement, content: string): Promise<void> {
-		// First, extract and render thinking blocks
-		let processedContent = this.extractAndRenderThinkingBlocks(container, content);
-		
-		// Convert temp: protocol images to actual data URLs for Obsidian rendering
-		const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
-		processedContent = processedContent.replace(tempImageRegex, (match, alt, tempId) => {
-			const tempData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
-			if (tempData) {
-				// Use dataUrl from ImageReferenceManager
-				return `![${alt}](${tempData.dataUrl})`;
-			} else {
-				// Temp image not found, show placeholder
-				getLogger().warn('Temp image not found for ID:', tempId);
-				return `![Image not found](data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`;
-			}
-		});
-		
-		// LaTeX delimiter conversion - 修复转换逻辑和注释
-		// \( ... \) -> $...$ (行内公式)
-		processedContent = processedContent.replace(/\\\(\s*([^]*?)\s*\\\)/g, function(match, formula) {
-			return '$' + formula.trim() + '$'; // 移除额外空格，避免影响渲染
-		});
-		
-		// \[ ... \] -> $$...$$ (行间公式)  
-		processedContent = processedContent.replace(/\\\[\s*([^]*?)\s*\\\]/g, function(match, formula) {
-			return '$$' + formula.trim() + '$$'; // 移除额外空格，让渲染与原生$$公式一致
-		});
-		
-		
-		// Create a simple container with minimal interference
-		const markdownContainer = container.createEl('div', { cls: 'markdown-rendered' });
-		
-		try {
-			// Let Obsidian handle everything naturally
-			await MarkdownRenderer.renderMarkdown(
-				processedContent,
-				markdownContainer,
-				'', 
-				this.markdownComponent
-			);
-			
-		} catch (error) {
-			getLogger().error('Failed to render markdown:', error);
-			markdownContainer.createEl('div', { text: processedContent });
-		}
-	}
-
-	private extractAndRenderThinkingBlocks(container: HTMLElement, content: string): string {
-		// Define thinking-related tags to look for
-		const thinkingTags = ['think', 'thinking', 'reasoning', 'plan', 'analysis', 'internal', 'reflection', 'decision'];
-		
-		let processedContent = content;
-		
-		// Process each thinking tag type
-		for (const tag of thinkingTags) {
-			// Match both triangle-style and <tagname> patterns
-			const patterns = [
-				new RegExp(`<${tag}([^>]*)>([\\s\\S]*?)</${tag}>`, 'gi')
-			];
-			
-			for (const pattern of patterns) {
-				let match;
-				while ((match = pattern.exec(processedContent)) !== null) {
-					const thinkingContent = match[1] || match[2]; // Get content from either capture group
-					
-					// Create thinking block container
-					const thinkingBlock = container.createEl('div', { cls: 'ai-thinking-block' });
-					
-					// Create header with toggle
-					const header = thinkingBlock.createEl('div', { cls: 'ai-thinking-header' });
-					const toggleIcon = header.createEl('span', { cls: 'ai-thinking-toggle' });
-					// Using Lucide Brain icon
-
-					setIcon(toggleIcon, 'lightbulb');
-
-					const label = header.createEl('span', { 
-						cls: 'ai-thinking-label',
-						text: this.getThinkingLabel(tag)
-					});
-					
-					// Create collapsible content
-					const contentEl = thinkingBlock.createEl('div', { cls: 'ai-thinking-content' });
-					
-					// Render thinking content with basic markdown
-					this.renderThinkingContent(contentEl, thinkingContent.trim());
-					
-					// Add toggle functionality
-					let isCollapsed = false;
-					header.addEventListener('click', () => {
-						isCollapsed = !isCollapsed;
-						contentEl.style.display = isCollapsed ? 'none' : 'block';
-						// Toggle between Brain and ChevronDown icons
-						if (isCollapsed) {
-							setIcon(toggleIcon, 'chevron-up');
-						} else {
-							setIcon(toggleIcon, 'lightbulb');
-						}
-						thinkingBlock.classList.toggle('collapsed', isCollapsed);
-					});
-					
-					// Remove the thinking block from the main content
-					processedContent = processedContent.replace(match[0], '');
-					
-					// Reset regex lastIndex to avoid infinite loops
-					pattern.lastIndex = 0;
-				}
-			}
-		}
-		
-		return processedContent;
-	}
-
-	private getThinkingLabel(tag: string): string {
-		const labels: { [key: string]: string } = {
-			'think': 'Thinking',
-			'thinking': 'Thinking Process',
-			'reasoning': 'Reasoning',
-			'plan': 'Planning',
-			'analysis': 'Analysis',
-			'internal': 'Internal Process',
-			'reflection': 'Reflection',
-			'decision': 'Decision Making'
-		};
-		return labels[tag.toLowerCase()] || 'Thought Process';
-	}
-
-	private renderThinkingContent(container: HTMLElement, content: string): void {
-		// Simple text rendering for thinking content
-		const lines = content.split('\n');
-		
-		for (const line of lines) {
-			if (line.trim() === '') {
-				container.createEl('br');
-			} else {
-				const p = container.createEl('p', { cls: 'ai-thinking-text' });
-				// Handle basic formatting using DOM methods for security
-				const strongRegex = /\*\*(.*?)\*\*/g;
-				const emRegex = /\*(.*?)\*/g;
-				const codeRegex = /`(.*?)`/g;
-				
-				let processedText = line;
-				
-				if (strongRegex.test(processedText) || emRegex.test(processedText) || codeRegex.test(processedText)) {
-					processedText = processedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-					processedText = processedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
-					processedText = processedText.replace(/`(.*?)`/g, '<code>$1</code>');
-					p.textContent = processedText;
-				} else {
-					p.textContent = processedText;
-				}
-			}
-		}
-	}
 
 	private formatTime(date: Date): string {
 		const today = new Date();
@@ -3238,6 +2944,9 @@ tags:
 				newConversation.messages.push(newMessage);
 			}
 
+			// Reset MessageRenderManager for loaded conversation
+			this.messageRenderer.resetForNewConversation();
+
 			// Update the chat view to show the loaded conversation
 			await this.updateContent();
 			
@@ -3452,8 +3161,9 @@ tags:
 				// Update the conversation in AI manager to persist changes
 				this.saveEditedMessageToConversation(message.id, editedContent);
 				
-				// Re-render the complete message content from markdown
-				await this.renderMessageContentFromMarkdown(messageContent, message);
+				// Re-render the message content area directly using MessageRenderManager
+				messageContent.empty();
+				await this.messageRenderer.renderMessageContentFromMarkdown(messageContent, message);
 				
 				// Update button icon to edit icon
 				setIcon(editBtn, 'square-pen');
@@ -3476,145 +3186,13 @@ tags:
 	/**
 	 * Render message content from markdown (parse images and text)
 	 */
-	private async renderMessageContentFromMarkdown(container: HTMLElement, message: AIMessage): Promise<void> {
-		container.empty();
-		
-		if (!message.content) return;
-		
-		getLogger().log('🖼️ Rendering message content:', message.content);
-		
-		// Parse markdown content to extract images and text  
-		const imageReferences = this.aiManager.parseImageReferences(message.content);
-		getLogger().log('🔍 Found image references:', imageReferences);
-		
-		// Remove image markdown from text content
-		let textContent = message.content;
-		imageReferences.forEach(imgRef => {
-			const imgMarkdown = `![${imgRef.alt}](${imgRef.path})`;
-			textContent = textContent.replace(imgMarkdown, '').trim();
-		});
-		// Clean up extra whitespace
-		textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
-		
-		// Render images first (统一处理，不区分单张多张)
-		if (imageReferences.length > 0) {
-			const imagesContainer = container.createEl('div', { cls: 'ai-chat-message-images' });
-			for (const imageRef of imageReferences) {
-				await this.renderImage(imagesContainer, imageRef);
-			}
-		}
-		
-		// Render text content if present
-		if (textContent.trim()) {
-			const textEl = container.createEl('div', { cls: 'ai-chat-message-text' });
-			await this.renderMarkdown(textEl, textContent);
-		}
-	}
+	// renderMessageContentFromMarkdown方法已移动到MessageRenderManager中
 
 
 	/**
 	 * 渲染图片（统一处理）
 	 */
-	private async renderImage(container: HTMLElement, imageRef: { alt: string; path: string; fileName: string }): Promise<void> {
-		const { alt, path, fileName } = imageRef;
-		
-		getLogger().log('🖼️ Rendering image:', { alt, path, fileName });
-		
-		// 创建图片容器
-		const imageContainer = container.createEl('div', { cls: 'ai-chat-message-image-container' });
-		
-		let imageSrc: string;
-		
-		// Handle different path types
-		if (path.startsWith('data:')) {
-			// Data URL - use directly
-			imageSrc = path;
-			getLogger().log('✅ Using data URL directly');
-		} else if (path.startsWith('temp:')) {
-			// Temp protocol image - resolve it using ImageReferenceManager
-			const tempId = path.replace('temp:', '');
-			getLogger().log('🔍 Looking for temp image with ID:', tempId);
-			
-			const tempData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
-			if (tempData) {
-				imageSrc = tempData.dataUrl;
-				getLogger().log('✅ Found temp image data:', { source: tempData.source, fileName: tempData.fileName });
-			} else {
-				getLogger().warn('❌ Temp image not found for ID:', tempId);
-				
-				imageSrc = 'data:image/svg+xml;base64,' + btoa(`
-					<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
-						<rect width="100%" height="100%" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
-						<text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="#666">
-							Missing Temp Image
-						</text>
-					</svg>
-				`);
-			}
-		} else if (path.startsWith('[TempPic ') && path.endsWith(']')) {
-			// Legacy placeholder path - show a placeholder image
-			imageSrc = 'data:image/svg+xml;base64,' + btoa(`
-				<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
-					<rect width="100%" height="100%" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
-					<text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="#666">
-						Temporary Image
-					</text>
-				</svg>
-			`);
-		} else {
-			// Regular path - try to get vault resource URL first, fallback to direct path
-			imageSrc = this.getVaultResourceUrl(path) || path;
-			
-			// If that fails, try to load as data URL
-			if (!imageSrc.startsWith('app://')) {
-				const dataUrl = await this.loadImageDataFromPath(path);
-				if (dataUrl) {
-					imageSrc = dataUrl;
-				}
-			}
-		}
-		
-		const imageEl = imageContainer.createEl('img', { 
-			cls: 'ai-chat-message-image',
-			attr: { src: imageSrc, alt: alt }
-		});
-		
-		// Make the image draggable with proper Obsidian integration
-		imageEl.draggable = true;
-		imageEl.addEventListener('dragstart', (e) => {
-			getLogger().log('Image drag started:', fileName, 'path:', path);
-			
-			// Verify the file exists before drag
-			const vault = this.plugin.app.vault;
-			const file = vault.getAbstractFileByPath(path);
-			
-			if (file) {
-				getLogger().log('✅ Image file exists in vault:', path);
-				
-				// Use multiple dataTransfer formats for maximum compatibility
-				e.dataTransfer?.setData('text/plain', `![[${file.name}]]`);
-				e.dataTransfer?.setData('text/uri-list', path);
-				e.dataTransfer?.setData('text/html', `![[${path}]]`);
-				e.dataTransfer?.setData('application/x-obsidian-file', JSON.stringify({
-					type: 'file',
-					path: path,
-					name: fileName
-				}));
-				
-				getLogger().log('Set drag data for vault image:', file.name);
-			} else {
-				getLogger().log('⚠️ Image file not found in vault, using path:', path);
-				e.dataTransfer?.setData('text/plain', path);
-			}
-		});
-		
-		// Click to show modal
-		imageEl.addEventListener('click', () => {
-			this.showImageModal(imageSrc);
-		});
-		
-		// 消息块中的图片不显示文件名标签，保持界面简洁
-	}
+	// renderImage方法已移动到MessageRenderManager中
 
 	/**
 	 * Render message content as editable textarea
@@ -3903,8 +3481,8 @@ tags:
 				conversation.messages.splice(messageIndex, 1);
 				conversation.lastUpdated = new Date();
 				
-				// Refresh the view
-				await this.updateContent();
+				// 使用MessageRenderManager移除消息
+				await this.messageRenderer.removeMessage(messageId);
 				
 				new Notice(t('notice.messageDeleted'));
 			}

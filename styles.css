@@ -650,8 +650,32 @@ button.btn-transparent-md,
 
 .ai-chat-area {
 	flex: 1;
-	overflow-y: auto;
+	overflow-y: scroll; /* 强制显示滚动条，预留空间 */
 	padding: var(--spacing-lg) 0;
+}
+
+/* ai-chat-area 滚动条样式优化 */
+.ai-chat-area::-webkit-scrollbar {
+	width: 8px;
+}
+
+.ai-chat-area::-webkit-scrollbar-track {
+	background: transparent; /* 轨道透明，但依然占位 */
+	border-radius: 4px;
+}
+
+.ai-chat-area::-webkit-scrollbar-thumb {
+	background: var(--background-modifier-border);
+	border-radius: 4px;
+	transition: background-color 0.2s ease;
+}
+
+.ai-chat-area::-webkit-scrollbar-thumb:hover {
+	background: var(--background-modifier-border-hover);
+}
+
+.ai-chat-area:hover::-webkit-scrollbar-track {
+	background: var(--background-secondary);
 }
 
 .ai-chat-empty {
@@ -849,7 +873,7 @@ button.btn-transparent-md,
 	flex-direction: column;
 	gap: var(--spacing-sm);
 	padding: 0 12px;
-	overflow-y: auto;
+	overflow-y: scroll; /* 强制显示滚动条，预留空间 */
 	overflow-x: hidden;
 	box-sizing: border-box;
 	/* Prevent unnecessary scrollbars on single line content */
@@ -862,17 +886,24 @@ button.btn-transparent-md,
 }
 
 .ai-chat-messages::-webkit-scrollbar-track {
-	background: var(--background-secondary);
+	background: transparent; /* 轨道透明，但依然占位 */
 	border-radius: 4px;
 }
 
 .ai-chat-messages::-webkit-scrollbar-thumb {
 	background: var(--background-modifier-border);
 	border-radius: 4px;
+	/* 当没有足够内容滚动时，滑块也变透明 */
+	transition: background-color 0.2s ease;
 }
 
 .ai-chat-messages::-webkit-scrollbar-thumb:hover {
 	background: var(--background-modifier-border-hover);
+}
+
+/* 当容器被hover时，显示滚动条轨道 */
+.ai-chat-messages:hover::-webkit-scrollbar-track {
+	background: var(--background-secondary);
 }
 
 /* New message block layout */

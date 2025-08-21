@@ -649,15 +649,15 @@ export class ImageEditor extends Modal {
 		
 		const aiButtonEnabled = aiEnabled && hasValidModel && hasValidCredentials;
 
-		// New buttons for temporary operations (no save)
+		// 第一组：发送到AI预发送区（临时图片）
 		if (aiEnabled) {
-			const tempAIButton = buttonRow.createEl('button', { 
+			const addToAIQueueButton = buttonRow.createEl('button', { 
 				text: t('imageEditor.tempSendToAI'),
 				cls: 'btn-base'
 			});
-			this.saveButtons.push(tempAIButton); // Add to save buttons array for filename validation
+			this.saveButtons.push(addToAIQueueButton); // Add to save buttons array for filename validation
 			if (!aiButtonEnabled) {
-				tempAIButton.disabled = true;
+				addToAIQueueButton.disabled = true;
 				
 				// Add tooltip for disabled state
 				let tooltip = '';
@@ -668,35 +668,37 @@ export class ImageEditor extends Modal {
 				} else if (!hasValidCredentials) {
 					tooltip = t('imageEditor.credentialsNotVerifiedTooltip');
 				}
-				tempAIButton.title = tooltip;
+				addToAIQueueButton.title = tooltip;
 			}
-			tempAIButton.title = t('imageEditor.tempSendToAITooltip');
-			tempAIButton.addEventListener('click', () => {
+			addToAIQueueButton.addEventListener('click', () => {
 				if (aiButtonEnabled) {
-					this.sendToAIWithoutSave();
+					this.addToAIQueueOnly();
 				}
 			});
 		}
 
-		// Temporary copy button (no save)
-		const tempCopyButton = buttonRow.createEl('button', { 
+		// 第二组：保存到本地
+		const saveButton = buttonRow.createEl('button', { 
 			text: t('imageEditor.tempCopy'),
 			cls: 'btn-base'
 		});
-		tempCopyButton.title = t('imageEditor.tempCopyTooltip');
-		tempCopyButton.addEventListener('click', () => {
-			this.copyToClipboardWithoutSave();
+		this.saveButtons.push(saveButton); // Add to save buttons array
+
+		saveButton.addEventListener('click', () => {
+			if (!saveButton.disabled) {
+				this.saveOnly();
+			}
 		});
 
-		// Original Save and Send to AI button (with save)
+		// 第三组：保存并发送到AI预发送区（组合操作）
 		if (aiEnabled) {
-			const aiButton = buttonRow.createEl('button', { 
+			const saveAndSendButton = buttonRow.createEl('button', { 
 				text: t('imageEditor.aiButton'),
 				cls: 'btn-base'
 			});
-			this.saveButtons.push(aiButton); // Add to save buttons array
+			this.saveButtons.push(saveAndSendButton); // Add to save buttons array
 			if (!aiButtonEnabled) {
-				aiButton.disabled = true;
+				saveAndSendButton.disabled = true;
 				
 				// Add tooltip for disabled state
 				let tooltip = '';
@@ -707,71 +709,175 @@ export class ImageEditor extends Modal {
 				} else if (!hasValidCredentials) {
 					tooltip = t('imageEditor.credentialsNotVerifiedTooltip');
 				}
-				aiButton.title = tooltip;
+				saveAndSendButton.title = tooltip;
 			}
-			aiButton.addEventListener('click', () => {
-				if (aiButtonEnabled && !aiButton.disabled) {
+			saveAndSendButton.addEventListener('click', () => {
+				if (aiButtonEnabled && !saveAndSendButton.disabled) {
 					this.saveAndAddToAIQueue();
 				}
 			});
 		}
-		
-		// Original save button
-		const saveButton = buttonRow.createEl('button', { 
+
+		// 第四组：复制到剪贴板（独立操作）
+		const copyButton = buttonRow.createEl('button', { 
 			text: t('imageEditor.saveButton'),
 			cls: 'btn-base'
 		});
-		this.saveButtons.push(saveButton); // Add to save buttons array
-		saveButton.addEventListener('click', () => {
-			if (!saveButton.disabled) {
-				this.saveAndCopyMarkdown();
-			}
+
+		copyButton.addEventListener('click', () => {
+			this.copyToClipboard();
 		});
 	}
 
 
-	private async sendToAIWithoutSave() {
+	/**
+	 * 第一组：仅发送到AI预发送区（临时图片）
+	 */
+	private async addToAIQueueOnly() {
 		if (!this.canvas) return;
 		
 		try {
 			// Get the final image data without saving
 			const dataUrl = this.createFinalImage();
 			
-			// Generate a temporary filename based on user input
-			const baseFileName = this.getFileName();
-			const tempFileName = baseFileName.replace('.png', '').replace(/^temp-/, '') + '-temp.png';
+			getLogger().log('🔄 Adding image to AI queue only (temp):', {
+				dataUrlLength: dataUrl.length
+			});
 			
 			// Show AI panel first (only if not already visible)
 			await this.plugin.ensureAIChatPanelVisible();
 			
-			// Add image to queue instead of sending directly
-			await this.plugin.addImageToAIQueue(dataUrl, tempFileName, null);
+			// Add image to queue as temporary image - 临时图片用固定标识 'tempimage'
+			await this.plugin.addImageToAIQueue(dataUrl, 'tempimage', null);
+			
+			getLogger().log('✅ Image successfully added to AI queue (temp)');
 			
 			// Close the editor
 			this.close();
 			
-			new Notice(t('imageEditor.imageAddedToQueue'));
+			new Notice('临时图片已添加到AI预发送区');
 			
 		} catch (error: any) {
-			getLogger().error('Add to AI queue without save failed:', error);
-			new Notice(t('imageEditor.addToQueueFailed', { message: error.message }));
+			getLogger().error('Add to AI queue failed:', error);
+			new Notice(`添加到AI队列失败: ${error.message}`);
 		}
 	}
-	
-	private async copyToClipboardWithoutSave() {
+
+	/**
+	 * 第二组：仅保存到本地
+	 */
+	private async saveOnly() {
+		if (!this.canvas) return;
+		
+		try {
+			// Get the final cropped image
+			const dataUrl = this.getFinalCroppedImage();
+			
+			// Get filename from user input or generate default
+			const fileName = this.getFileName();
+			
+			getLogger().log('💾 Saving image only:', {
+				fileName: fileName,
+				dataUrlLength: dataUrl.length
+			});
+			
+			// Save image to vault
+			const savedPath = await this.saveImageToVault(dataUrl, fileName);
+			
+			if (savedPath) {
+				// Create markdown content with image path
+				const markdownContent = `![Screenshot](${savedPath})`;
+				
+				// Copy markdown text to clipboard
+				await navigator.clipboard.writeText(markdownContent);
+				
+				getLogger().log('✅ Image saved successfully');
+				new Notice(`✅ 图片已保存并复制Markdown链接！\n文件: ${fileName}`);
+			} else {
+				new Notice(`❌ 图片保存失败`);
+			}
+			
+			this.close();
+			
+		} catch (error: any) {
+			getLogger().error('Save only failed:', error);
+			new Notice(t('imageEditor.saveFailed', { message: error.message }));
+		}
+	}
+
+	/**
+	 * 第三组：保存并发送到AI预发送区（组合操作）
+	 */
+	private async saveAndAddToAIQueue() {
+		if (!this.canvas) return;
+		
+		try {
+			// Get the final cropped image
+			const dataUrl = this.getFinalCroppedImage();
+			
+			// Get filename from user input or generate default
+			const fileName = this.getFileName();
+			
+			getLogger().log('🔄 Saving image and adding to AI queue:', {
+				fileName: fileName,
+				dataUrlLength: dataUrl.length
+			});
+			
+			// Show progress notice
+			const notice = new Notice(t('imageEditor.savingAndAddingToQueue'), 2000);
+			
+			try {
+				// Step 1: Save the image to vault first
+				const savedPath = await this.saveImageToVault(dataUrl, fileName);
+				getLogger().log('💾 Image saved to vault:', savedPath);
+				
+				// Step 2: Show AI panel
+				await this.plugin.ensureAIChatPanelVisible();
+				
+				// Step 3: Add saved image to AI queue (use saved path, not temp)
+				await this.plugin.addImageToAIQueue(dataUrl, fileName, savedPath);
+				
+				getLogger().log('✅ Image successfully saved and added to AI queue');
+				
+				// Close the editor
+				this.close();
+				
+				notice.hide();
+				new Notice(t('imageEditor.imageSavedAndAddedToQueue'));
+				
+			} catch (error: any) {
+				notice.hide();
+				getLogger().error('Save and add to AI queue failed:', error);
+				new Notice(t('imageEditor.saveAndAddToQueueFailed', { message: error.message }));
+			}
+			
+		} catch (error: any) {
+			getLogger().error('Save and add to AI queue operation failed:', error);
+			new Notice(t('imageEditor.operationFailed', { message: error.message }));
+		}
+	}
+
+	/**
+	 * 第四组：复制到剪贴板（独立操作）
+	 */
+	private async copyToClipboard() {
 		if (!this.canvas) return;
 		
 		try {
 			// Get the final image data
 			const dataUrl = this.createFinalImage();
 			
+			getLogger().log('📋 Copying image to clipboard:', {
+				dataUrlLength: dataUrl.length
+			});
+			
 			// Convert data URL to blob
 			const response = await requestUrl(dataUrl);
 			const blob = new Blob([response.arrayBuffer], { type: response.headers['content-type'] || 'image/png' });
 			
 			// Copy to clipboard using ClipboardItem
-			if (navigator.clipboard && (window ).ClipboardItem) {
-				const item = new (window ).ClipboardItem({
+			if (navigator.clipboard && (window as any).ClipboardItem) {
+				const item = new (window as any).ClipboardItem({
 					'image/png': blob
 				});
 				await navigator.clipboard.write([item]);
@@ -791,7 +897,7 @@ export class ImageEditor extends Modal {
 					tempCanvas.toBlob(async (blob) => {
 						if (blob && navigator.clipboard) {
 							try {
-								const item = new (window ).ClipboardItem({
+								const item = new (window as any).ClipboardItem({
 									'image/png': blob
 								});
 								await navigator.clipboard.write([item]);
@@ -807,14 +913,17 @@ export class ImageEditor extends Modal {
 				img.src = dataUrl;
 			}
 			
+			getLogger().log('✅ Image copied to clipboard successfully');
+			
 			// Close the editor
 			this.close();
 			
 		} catch (error: any) {
-			getLogger().error('Copy to clipboard without save failed:', error);
+			getLogger().error('Copy to clipboard failed:', error);
 			new Notice(t('imageEditor.copyFailed', { message: error.message }));
 		}
 	}
+	
 	
 	private createFinalImage(): string {
 		return this.getFinalCroppedImage();
@@ -1546,37 +1655,6 @@ export class ImageEditor extends Modal {
 		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 		return `screenshot-${timestamp}.png`;
 	}
-
-	private async saveAndCopyMarkdown() {
-		if (!this.canvas) return;
-		
-		try {
-			// Get the final cropped image
-			const dataUrl = this.getFinalCroppedImage();
-			
-			// Get filename from user input or generate default
-			const fileName = this.getFileName();
-			
-			// Save image to vault and get the path
-			const savedPath = await this.saveImageToVault(dataUrl, fileName);
-			
-			// Create markdown content with image path (or fallback to filename if save failed)
-			const imagePath = savedPath || fileName;
-			const markdownContent = `![Screenshot](${imagePath})`;
-			
-			// Copy markdown text to clipboard
-			await navigator.clipboard.writeText(markdownContent);
-			
-			// Show success message
-			new Notice(`✅ 图片Markdown已复制！\n文件: ${fileName}`);
-			
-			this.close();
-			
-		} catch (error: any) {
-			new Notice(t('imageEditor.copyFailed', { message: error.message }));
-			getLogger().error('Save and copy markdown failed:', error);
-		}
-	}
 	
 	private async saveImageToVault(dataUrl: string, fileName: string): Promise<string | null> {
 		try {
@@ -1617,54 +1695,6 @@ export class ImageEditor extends Modal {
 			return null;
 		}
 	}
-
-	private async saveAndAddToAIQueue() {
-		if (!this.canvas) return;
-		
-		try {
-			// Get the final cropped image
-			const dataUrl = this.getFinalCroppedImage();
-			
-			// Get filename from user input or generate default
-			const fileName = this.getFileName();
-			
-			// Show progress notice
-			const notice = new Notice(t('imageEditor.savingAndAddingToQueue'), 2000);
-			
-			try {
-				// Save the image to vault first and get the path
-				const savedPath = await this.saveImageToVault(dataUrl, fileName);
-				getLogger().log('Image saved to vault:', savedPath);
-				
-				// Show AI panel first (only if not already visible)
-				await this.plugin.ensureAIChatPanelVisible();
-				
-				// Add image to queue with both local path and dataUrl
-				await this.plugin.addImageToAIQueue(dataUrl, fileName, savedPath);
-				
-				// Close the editor
-				this.close();
-				
-				notice.hide();
-				new Notice(t('imageEditor.imageAddedToQueue'));
-				
-			} catch (error: any) {
-				notice.hide();
-				getLogger().error('Add to AI queue failed:', error);
-				new Notice(t('imageEditor.addToQueueFailed', { message: error.message }));
-			}
-			
-		} catch (error: any) {
-			getLogger().error('Save and add to AI queue failed:', error);
-			new Notice(t('imageEditor.operationFailed', { message: error.message }));
-		}
-	}
-
-	
-
-
-
-
 
 	private getFinalCroppedImage(): string {
 		if (!this.canvas || !this.ctx) {
