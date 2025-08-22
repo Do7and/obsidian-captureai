@@ -160,12 +160,10 @@ export default {
   "settings.imageUpload.desc": "控制图像如何上传和保存",
   
   // Commands
-  "commands.captureArea.name": "捕获选定区域",
-  "commands.captureFull.name": "捕获全屏",
-  "commands.openAiChat.name": "打开 AI 会话面板",
-  "commands.toggleAiChat.name": "切换 AI 会话面板",
-  "commands.testDesktopCapturer.name": "测试桌面捕获 API",
-  "commands.processClipboard.name": "处理剪贴板图像",
+  "commands.captureNormal.name": "截图",
+  "commands.captureMinimized.name": "最小化窗口截图",
+  "commands.toggleAiChat.name": "切换到 AI 会话面板",
+
   
   // Notices
   "notice.screenshotSaved": "截图已保存到: {{filePath}}",
@@ -184,6 +182,7 @@ export default {
   "ui.add": "添加",
   "ui.remove": "移除",
   "ui.captureAI": "截图捕获",
+  "ui.minimizedCapture": "最小化窗口截图",
   "ui.aiChatPanel": "AI 会话面板",
   "ui.sendOnlyButton": "仅发送消息（不调用AI）",
   
@@ -221,6 +220,8 @@ export default {
   "notice.electronRemoteNotAvailable": "Electron remote 不可用 - 请尝试重启 Obsidian",
   "notice.desktopCapturerNotAvailable": "desktopCapturer 不可用",
   "notice.screenRecordingPermissionDenied": "屏幕录制权限被拒绝。请在系统偏好设置中授予 Obsidian 屏幕录制权限。",
+  "notice.windowControlNotAvailable": "窗口控制不可用 - 请确保您在桌面版上运行",
+  "notice.minimizedCaptureFailed": "最小化窗口截图失败: {{message}}",
   "notice.screenPermissionCheckFailed": "屏幕录制权限检查失败。请检查系统权限。",
   "notice.noScreenSourcesFound": "未找到屏幕源 - 请检查屏幕录制权限",
   "notice.noThumbnailAvailable": "无缩略图可用",

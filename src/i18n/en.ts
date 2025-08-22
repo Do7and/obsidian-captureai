@@ -160,12 +160,10 @@ export default {
   "settings.imageUpload.desc": "Control how images are uploaded and saved",
   
   // Commands
-  "commands.captureArea.name": "Capture selected area",
-  "commands.captureFull.name": "Capture full screen",
-  "commands.openAiChat.name": "Open AI Chat Panel",
+  "commands.captureNormal.name": "Capture selected area",
+  "commands.captureMinimized.name": "Minimized window capture",
   "commands.toggleAiChat.name": "Toggle AI Chat Panel",
-  "commands.testDesktopCapturer.name": "Test desktopCapturer API",
-  "commands.processClipboard.name": "Process clipboard image",
+
   
   // Notices
   "notice.screenshotSaved": "Screenshot saved to: {{filePath}}",
@@ -184,6 +182,7 @@ export default {
   "ui.add": "Add",
   "ui.remove": "Remove",
   "ui.captureAI": "CaptureAI",
+  "ui.minimizedCapture": "Minimized window capture",
   "ui.aiChatPanel": "AI Chat Panel",
   "ui.sendOnlyButton": "Send message only (no AI response)",
   
@@ -221,6 +220,8 @@ export default {
   "notice.electronRemoteNotAvailable": "Electron remote not available - try restarting Obsidian",
   "notice.desktopCapturerNotAvailable": "desktopCapturer not available",
   "notice.screenRecordingPermissionDenied": "Screen recording permission denied. Please grant screen recording permission to Obsidian in System Preferences.",
+  "notice.windowControlNotAvailable": "Window control not available - please ensure you are running on desktop",
+  "notice.minimizedCaptureFailed": "Minimized window capture failed: {{message}}",
   "notice.screenPermissionCheckFailed": "Screen recording permission check failed. Please check system permissions.",
   "notice.noScreenSourcesFound": "No screen sources found - check screen recording permissions",
   "notice.noThumbnailAvailable": "No thumbnail available",

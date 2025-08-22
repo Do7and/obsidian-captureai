@@ -67,45 +67,36 @@ export default class ImageCapturePlugin extends Plugin {
 			this.screenshotManager.startRegionCapture();
 		});
 
+		// Add minimized capture ribbon icon
+		this.addRibbonIcon('minimize', t('ui.minimizedCapture'), (evt: MouseEvent) => {
+			this.screenshotManager.startRegionCapture(true);
+		});
+
 		// Add AI Chat ribbon icon (only if AI is enabled)
 		if (this.settings.enableAIAnalysis) {
 			this.addRibbonIcon('bot', t('ui.aiChatPanel'), (evt: MouseEvent) => {
-				this.showAIChatPanel();
+				this.toggleAIChatPanel();
 			});
 		}
 		
 		
 
 		this.addCommand({
-			id: 'capture-selected-area',
-			name: t('commands.captureArea.name'),
+			id: 'capture-normal-window',
+			name: t('commands.captureNormal.name'),
 			callback: () => this.screenshotManager.startRegionCapture()
 		});
 
 		this.addCommand({
-			id: 'capture-full-screen',
-			name: t('commands.captureFull.name'),
-			callback: () => this.screenshotManager.captureFullScreen()
-		});
-
-		this.addCommand({
-			id: 'show-ai-chat',
-			name: t('commands.openAiChat.name'),
-			callback: () => this.showAIChatPanel()
+			id: 'capture-minimized-window',
+			name: t('commands.captureMinimized.name'),
+			callback: () => this.screenshotManager.startRegionCapture(true)
 		});
 
 		this.addCommand({
 			id: 'toggle-ai-chat',
 			name: t('commands.toggleAiChat.name'),
 			callback: () => this.toggleAIChatPanel()
-		});
-
-		this.addCommand({
-			id: 'test-desktop-capturer',
-			name: t('commands.testDesktopCapturer.name'),
-			callback: async () => {
-				await this.testAdvancedCapture();
-			}
 		});
 
 		this.addSettingTab(new ImageCaptureSettingTab(this.app, this));
@@ -245,31 +236,9 @@ export default class ImageCapturePlugin extends Plugin {
 			this.app.workspace.revealLeaf(aiLeaf);
 			getLogger().log('AI panel already exists, just revealing it');
 		} else {
-			// Panel doesn't exist, create it
+			// Panel doesn't exist, create it using toggle logic
 			getLogger().log('Creating new AI panel');
-			await this.showAIChatPanel();
-		}
-	}
-
-	async showAIChatPanel(): Promise<void> {
-		try {
-			// Remove any existing instances to prevent duplicates
-			this.app.workspace.detachLeavesOfType(AI_CHAT_VIEW_TYPE);
-			
-			// Create new leaf in right sidebar and set view state
-			const leaf = this.app.workspace.getRightLeaf(false);
-			if (leaf) {
-				await leaf.setViewState({
-					type: AI_CHAT_VIEW_TYPE,
-					active: true,
-				});
-				
-				// Reveal the leaf
-				this.app.workspace.revealLeaf(leaf);
-			}
-		} catch (error) {
-			getLogger().error('Failed to show AI chat panel:', error);
-			throw new Error(`Failed to create AI chat panel: ${error.message}`);
+			await this.toggleAIChatPanel();
 		}
 	}
 
@@ -291,8 +260,21 @@ export default class ImageCapturePlugin extends Plugin {
 					this.app.workspace.revealLeaf(aiLeaf);
 				}
 			} else {
-				// If doesn't exist, create and show it
-				await this.showAIChatPanel();
+				// If doesn't exist, create and show it (migrated from showAIChatPanel)
+				// Remove any existing instances to prevent duplicates
+				this.app.workspace.detachLeavesOfType(AI_CHAT_VIEW_TYPE);
+				
+				// Create new leaf in right sidebar and set view state
+				const leaf = this.app.workspace.getRightLeaf(false);
+				if (leaf) {
+					await leaf.setViewState({
+						type: AI_CHAT_VIEW_TYPE,
+						active: true,
+					});
+					
+					// Reveal the leaf
+					this.app.workspace.revealLeaf(leaf);
+				}
 			}
 		} catch (error) {
 			getLogger().error('Failed to toggle AI chat panel:', error);
@@ -327,85 +309,7 @@ export default class ImageCapturePlugin extends Plugin {
   </g>
 </svg>`);
     }
-	async testAdvancedCapture() {
-		try {
-			new Notice(t('notice.testingAdvancedCapture'));
-			getLogger().log('Testing advanced capture methods...');
-			
-			const electron = this.getElectronAPI();
-			if (electron && electron.remote) {
-				try {
-					const remoteElectron = electron.remote.require('electron');
-					const desktopCapturer = remoteElectron.desktopCapturer;
-					const fs = electron.remote.require('fs');
-					const path = electron.remote.require('path');
-					
-					if (desktopCapturer) {
-						new Notice(t('notice.remoteDesktopCapturerAccessible'));
-						getLogger().log('Remote desktopCapturer accessible, testing capture...');
-						
-						const sources = await desktopCapturer.getSources({
-							types: ['screen'],
-							thumbnailSize: { width: 0, height: 0 }
-						});
-						
-						new Notice(t('notice.foundScreenSources', { count: sources.length }));
-						getLogger().log(`Found ${sources.length} screen sources:`, sources);
-						
-						if (sources.length > 0) {
-							const primarySource = sources[0];
-							new Notice(t('notice.primarySource', { name: primarySource.name }));
-							getLogger().log(`Primary source: ${primarySource.name}`);
-							
-							const fullSources = await desktopCapturer.getSources({
-								types: ['screen'],
-								thumbnailSize: { width: 1920, height: 1080 }
-							});
-							
-							if (fullSources.length > 0) {
-								const thumbnail = fullSources[0].thumbnail;
-								if (thumbnail && !thumbnail.isEmpty()) {
-									new Notice(t('notice.screenshotCapturedSuccessfully'));
-									getLogger().log('Screenshot captured successfully!');
-									getLogger().log('Thumbnail size:', thumbnail.getSize());
-									
-									const dataURL = thumbnail.toDataURL();
-									getLogger().log('Data URL length:', dataURL.length);
-									
-									const base64Data = dataURL.replace(/^data:image\/png;base64,/, "");
-									const fileName = `screenshot-${Date.now()}.png`;
-									const filePath = path.join((this.app.vault as VaultWithAdapter).adapter?.getBasePath?.() || '', fileName);
-									
-									fs.writeFile(filePath, base64Data, 'base64', (err: any) => {
-										if (err) {
-											new Notice(t('notice.failedToSaveScreenshot', { message: err.message }));
-											getLogger().error('Failed to save screenshot:', err);
-										} else {
-											new Notice(t('notice.screenshotSavedToFile', { fileName }));
-											getLogger().log(`Screenshot saved to: ${filePath}`);
-										}
-									});
-									
-									return true;
-								}
-							}
-						}
-					} else {
-						new Notice(t('notice.desktopCapturerNotAvailableRemote'));
-						getLogger().log('desktopCapturer not available through remote');
-					}
-				} catch (e: any) {
-					new Notice(t('notice.errorAccessingRemoteDesktopCapturer', { message: e.message }));
-					getLogger().log('Error accessing remote desktopCapturer:', e);
-				}
-			}
-			
-			new Notice(t('notice.advancedCaptureTestCompleted'));
-		} catch (error: any) {
-			new Notice(t('notice.advancedTestError', { message: error.message }));
-			getLogger().error('Error in advanced test:', error);
-		}
-	}
+	
 
 	getElectronAPI() {
 		try {

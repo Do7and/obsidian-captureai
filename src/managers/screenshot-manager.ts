@@ -13,6 +13,10 @@ export class ScreenshotManager {
 	private startX = 0;
 	private startY = 0;
 	private selectionCompleteCallback: ((region: Region | null) => void) | null = null;
+	
+	// Cache Electron API for performance
+	private electronAPI: any = null;
+	private desktopCapturer: any = null;
 
 	// WeakMap storage for overlay element properties - replaces (element as any) patterns
 	private overlayElements = new WeakMap<HTMLElement, {
@@ -26,7 +30,46 @@ export class ScreenshotManager {
 		this.plugin = plugin;
 	}
 
-	async startRegionCapture() {
+	/**
+	 * Wait for window to be minimized by checking its state
+	 */
+	private async waitForWindowMinimized(window: any): Promise<void> {
+		return new Promise((resolve) => {
+			let checkCount = 0;
+			const maxChecks = 50; // 50 * 10ms = 500ms max
+			
+			const checkMinimized = () => {
+				checkCount++;
+				getLogger().log(`🔍 Checking window state (attempt ${checkCount}): minimized=${window.isMinimized()}, visible=${window.isVisible()}, focused=${window.isFocused()}`);
+				
+				// Try multiple detection methods
+				const isMinimized = window.isMinimized();
+				const isNotVisible = !window.isVisible();
+				const isNotFocused = !window.isFocused();
+				
+				// Consider minimized if any of these conditions are true
+				if (isMinimized || (isNotVisible && isNotFocused)) {
+					getLogger().log('✅ Window minimized detected - ready for capture');
+					resolve();
+					return;
+				}
+				
+				if (checkCount >= maxChecks) {
+					getLogger().log('⏰ Max checks reached, proceeding with capture');
+					resolve();
+					return;
+				}
+				
+				// Check again after a short interval
+				setTimeout(checkMinimized, 10);
+			};
+			
+			// Start checking after a tiny delay to let the minimize start
+			setTimeout(checkMinimized, 20);
+		});
+	}
+
+	async startRegionCapture(minimizeWindow: boolean = false) {
 		// 原子性检查和设置状态，防止竞态条件
 		if (this.isScreenshotModeActive) {
 			getLogger().log('🚫 Screenshot mode already active, ignoring new request');
@@ -35,18 +78,75 @@ export class ScreenshotManager {
 		// 立即设置状态，防止后续调用通过检查
 		this.isScreenshotModeActive = true;
 		
+		let currentWindow: any = null;
+		
 		try {
 			getLogger().log('🚀 Starting region capture process...');
 			
-			getLogger().log('🔍 Creating overlay for region selection...');
-			this.createOverlay();
+			// Handle window minimization if requested
+			if (minimizeWindow) {
+				// Get Electron window instance
+				const electron = this.plugin.getElectronAPI();
+				if (!electron || !electron.remote) {
+					getLogger().error('❌ Electron API not available for window control');
+					new Notice(t('notice.electronAPINotAvailable'));
+					return;
+				}
+
+				const { BrowserWindow } = electron.remote;
+				currentWindow = BrowserWindow.getFocusedWindow();
+				
+				if (!currentWindow) {
+					getLogger().error('❌ Could not get current window reference');
+					new Notice(t('notice.windowControlNotAvailable'));
+					return;
+				}
+
+				getLogger().log('🔍 Minimizing window...');
+				// Minimize the current window
+				currentWindow.minimize();
+				
+				// Wait for window to actually minimize using state detection with fallback
+				try {
+					await this.waitForWindowMinimized(currentWindow);
+				} catch (error) {
+					getLogger().log('⚠️ Window state detection failed, using fallback delay');
+					await new Promise(resolve => setTimeout(resolve, 100));
+				}
+			}
 			
-			getLogger().log('🔍 Waiting for region selection...');
-			const region = await this.waitForRegionSelection();
-			if (!region) {
-				getLogger().log('❌ Region selection cancelled by user');
-				new Notice(t('notice.regionSelectionCancelled'));
-				return;
+			let region: Region | null = null;
+			
+			if (minimizeWindow) {
+				// For minimized capture, skip region selection and use full screen
+				getLogger().log('🔍 Using full screen region for minimized capture...');
+				
+				// Create a default selection region in the center of the screen (60% of screen size)
+				const centerX = screen.width / 2;
+				const centerY = screen.height / 2;
+				const defaultWidth = Math.floor(screen.width * 0.6);
+				const defaultHeight = Math.floor(screen.height * 0.6);
+				
+				region = {
+					x: Math.floor(centerX - defaultWidth / 2),
+					y: Math.floor(centerY - defaultHeight / 2),
+					width: defaultWidth,
+					height: defaultHeight
+				};
+				
+				getLogger().log('🔍 Created default center selection region:', region);
+			} else {
+				// Normal capture with region selection
+				getLogger().log('🔍 Creating overlay for region selection...');
+				this.createOverlay();
+				
+				getLogger().log('🔍 Waiting for region selection...');
+				region = await this.waitForRegionSelection();
+				if (!region) {
+					getLogger().log('❌ Region selection cancelled by user');
+					new Notice(t('notice.regionSelectionCancelled'));
+					return;
+				}
 			}
 			
 			getLogger().log('✅ Region selected:', region);
@@ -55,17 +155,42 @@ export class ScreenshotManager {
 			const screenshot = await this.captureScreen();
 			if (!screenshot) {
 				getLogger().error('❌ Failed to capture screen');
+				// Restore window before showing notice if it was minimized
+				if (currentWindow) {
+					currentWindow.restore();
+					currentWindow.focus();
+				}
 				new Notice(t('notice.screenCaptureFailed'));
 				return;
 			}
 			
-			getLogger().log('✅ Screen captured successfully');
-			getLogger().log('🔍 Creating extended crop with surrounding area...');
-			const extendedImage = await this.createExtendedCrop(screenshot, region);
+			// Immediately restore window after successful capture (async, non-blocking)
+			if (currentWindow) {
+				getLogger().log('🔍 Restoring window (async)...');
+				// Don't await - let this run in background while we process the image
+				currentWindow.restore();
+				currentWindow.focus();
+			}
 			
-			getLogger().log('✅ Extended image created successfully');
-			getLogger().log('🔍 Opening image editor...');
-			this.plugin.imageEditor.showEditor(extendedImage.imageData, region, extendedImage.extendedRegion, screenshot);
+			getLogger().log('✅ Screen captured successfully');
+			
+			if (minimizeWindow) {
+				// For minimized capture, create extended crop to show selection handles
+				getLogger().log('🔍 Creating extended crop with default selection...');
+				const extendedImage = await this.createExtendedCrop(screenshot, region);
+				
+				getLogger().log('✅ Extended image created successfully');
+				getLogger().log('🔍 Opening image editor with default selection...');
+				this.plugin.imageEditor.showEditor(extendedImage.imageData, region, extendedImage.extendedRegion, screenshot);
+			} else {
+				// Normal capture with extended crop
+				getLogger().log('🔍 Creating extended crop with surrounding area...');
+				const extendedImage = await this.createExtendedCrop(screenshot, region);
+				
+				getLogger().log('✅ Extended image created successfully');
+				getLogger().log('🔍 Opening image editor...');
+				this.plugin.imageEditor.showEditor(extendedImage.imageData, region, extendedImage.extendedRegion, screenshot);
+			}
 			
 		} catch (error: any) {
 			getLogger().error('❌ Region capture failed:', error);
@@ -74,7 +199,18 @@ export class ScreenshotManager {
 				message: error.message,
 				stack: error.stack
 			});
-			new Notice(t('notice.regionCaptureFailed', { message: error.message }));
+			
+			// Try to restore window even on error if it was minimized
+			if (currentWindow) {
+				try {
+					currentWindow.restore();
+					currentWindow.focus();
+				} catch (restoreError) {
+					getLogger().error('❌ Failed to restore window:', restoreError);
+				}
+			}
+			
+			new Notice(t(minimizeWindow ? 'notice.minimizedCaptureFailed' : 'notice.regionCaptureFailed', { message: error.message }));
 			// Clean up overlay on failure
 			this.removeOverlay();
 		} finally {
@@ -83,23 +219,7 @@ export class ScreenshotManager {
 		}
 	}
 
-	async captureFullScreen() {
-		try {
-			new Notice(t('notice.fullScreenCapturing'));
-			
-			const screenshot = await this.captureScreen();
-			if (!screenshot) {
-				new Notice(t('notice.screenCaptureFailed'));
-				return;
-			}
-			
-			this.plugin.imageEditor.showEditor(screenshot, {x: 0, y: 0, width: 0, height: 0});
-			
-		} catch (error: any) {
-			new Notice(t('notice.fullScreenCaptureFailed', { message: error.message }));
-			getLogger().error('Full screen capture failed:', error);
-		}
-	}
+
 
 	private createOverlay() {
 		this.overlay = document.createElement('div');
@@ -322,54 +442,36 @@ export class ScreenshotManager {
 		try {
 			getLogger().log('🔍 Starting screen capture...');
 			
-			const electron = this.plugin.getElectronAPI();
-			getLogger().log('🔍 Electron API:', electron ? 'Available' : 'Not available');
-			
-			if (!electron) {
-				getLogger().error('❌ Electron API not available');
-				new Notice(t('notice.electronAPINotAvailable'));
-				return null;
-			}
-			
-			if (!electron.remote) {
-				getLogger().error('❌ Electron remote not available');
-				new Notice(t('notice.electronRemoteNotAvailable'));
-				return null;
-			}
-			
-			getLogger().log('🔍 Getting electron modules...');
-			const remoteElectron = electron.remote.require('electron');
-			const desktopCapturer = remoteElectron.desktopCapturer;
-			
-			if (!desktopCapturer) {
-				getLogger().error('❌ desktopCapturer not available');
-				new Notice(t('notice.desktopCapturerNotAvailable'));
-				return null;
-			}
-			
-			// First, try to get screen sources with a small thumbnail to check availability
-			getLogger().log('🔍 Checking screen access permissions...');
-			try {
-				const testSources = await desktopCapturer.getSources({
-					types: ['screen'],
-					thumbnailSize: { width: 150, height: 150 }
-				});
+			// Use cached Electron API for better performance
+			if (!this.electronAPI) {
+				getLogger().log('🔍 Initializing Electron API (first time)...');
+				this.electronAPI = this.plugin.getElectronAPI();
 				
-				getLogger().log(`🔍 Permission check: Found ${testSources.length} screen sources`);
-				if (testSources.length === 0) {
-					getLogger().error('❌ No screen sources available - permission denied');
-					new Notice(t('notice.screenRecordingPermissionDenied'));
+				if (!this.electronAPI) {
+					getLogger().error('❌ Electron API not available');
+					new Notice(t('notice.electronAPINotAvailable'));
 					return null;
 				}
-			} catch (permError: any) {
-				getLogger().error('❌ Permission check failed:', permError);
-				new Notice(t('notice.screenPermissionCheckFailed'));
-				return null;
+				
+				if (!this.electronAPI.remote) {
+					getLogger().error('❌ Electron remote not available');
+					new Notice(t('notice.electronRemoteNotAvailable'));
+					return null;
+				}
+				
+				const remoteElectron = this.electronAPI.remote.require('electron');
+				this.desktopCapturer = remoteElectron.desktopCapturer;
+				
+				if (!this.desktopCapturer) {
+					getLogger().error('❌ desktopCapturer not available');
+					new Notice(t('notice.desktopCapturerNotAvailable'));
+					return null;
+				}
 			}
 			
-			// Now get the actual screen capture with higher resolution
-			getLogger().log('🔍 Getting full screen capture...');
-			const sources = await desktopCapturer.getSources({
+			// Fast path using cached API
+			getLogger().log('🚀 Using cached Electron API for fast capture...');
+			const sources = await this.desktopCapturer.getSources({
 				types: ['screen'],
 				thumbnailSize: { 
 					width: screen.width,
@@ -380,8 +482,8 @@ export class ScreenshotManager {
 			getLogger().log(`🔍 Found ${sources.length} screen sources for capture`);
 			
 			if (sources.length === 0) {
-				getLogger().error('❌ No screen sources found for capture');
-				new Notice(t('notice.noScreenSourcesFound'));
+				getLogger().error('❌ No screen sources found - permission denied or no screens available');
+				new Notice(t('notice.screenRecordingPermissionDenied'));
 				return null;
 			}
 			
@@ -416,7 +518,7 @@ export class ScreenshotManager {
 				
 				for (const size of alternativeSizes) {
 					getLogger().log(`🔍 Trying alternative size: ${size.width}x${size.height}`);
-					const altSources = await desktopCapturer.getSources({
+					const altSources = await this.desktopCapturer.getSources({
 						types: ['screen'],
 						thumbnailSize: size
 					});

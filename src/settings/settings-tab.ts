@@ -124,10 +124,10 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				.setName(t('ui.aiChatPanel'))
 				.setDesc(t('settings.aiChatPanel.desc'))
 				.addButton(button => button
-					.setButtonText(t('commands.openAiChat.name'))
+					.setButtonText(t('commands.toggleAiChat.name'))
 					.onClick(async () => {
 						try {
-							await this.plugin.showAIChatPanel();
+							await this.plugin.toggleAIChatPanel();
 							new Notice(t('notice.aiChatOpened'));
 						} catch (error) {
 							new Notice(t('notice.aiChatFailed') + `: ${error.message}`);
