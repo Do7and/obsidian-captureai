@@ -1398,6 +1398,18 @@ export class AIChatView extends ItemView {
 			const file = (e.target as HTMLInputElement).files?.[0];
 			if (file) {
 				try {
+					// 检查文件类型
+					if (!this.isValidImageFile(file)) {
+						new Notice(`不支持的文件类型: ${file.name}。只支持图片文件。`);
+						return;
+					}
+					
+					// 检查文件大小
+					if (!this.isValidImageSize(file)) {
+						new Notice(`文件过大: ${file.name} (${this.formatFileSize(file.size)})，最大支持 ${this.formatFileSize(AIChatView.MAX_IMAGE_SIZE)}`);
+						return;
+					}
+					
 					const dataUrl = await this.fileToDataUrl(file);
 					
 					// Treat browse files as temporary images (don't save to vault immediately)
@@ -1761,6 +1773,48 @@ export class AIChatView extends ItemView {
 		getLogger().log('✅ Image preview cleared');
 	}
 
+	// 拖拽限制常量
+	private static readonly MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
+	private static readonly ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'];
+	private static readonly ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'];
+
+	/**
+	 * 检查文件是否为允许的图片类型
+	 */
+	private isValidImageFile(file: File): boolean {
+		const hasValidType = AIChatView.ALLOWED_IMAGE_TYPES.includes(file.type.toLowerCase());
+		const hasValidExtension = AIChatView.ALLOWED_IMAGE_EXTENSIONS.some(ext => 
+			file.name.toLowerCase().endsWith(ext)
+		);
+		return hasValidType || hasValidExtension;
+	}
+
+	/**
+	 * 检查文件大小是否合法
+	 */
+	private isValidImageSize(file: File): boolean {
+		return file.size <= AIChatView.MAX_IMAGE_SIZE;
+	}
+
+	/**
+	 * 格式化文件大小显示
+	 */
+	private formatFileSize(bytes: number): string {
+		if (bytes === 0) return '0 Bytes';
+		const k = 1024;
+		const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+	}
+
+	/**
+	 * 获取输入文本框元素
+	 */
+	private getTextInputElement(inputArea: HTMLElement): HTMLTextAreaElement | null {
+		const inputData = this.inputAreaElements.get(inputArea);
+		return inputData?.textInput || null;
+	}
+
 	private setupDragAndDrop(inputArea: HTMLElement): void {
 		const dropZone = inputArea.querySelector('.ai-chat-drop-zone') as HTMLElement;
 		if (!dropZone) return;
@@ -1805,66 +1859,136 @@ export class AIChatView extends ItemView {
 
 			if (!e.dataTransfer) return;
 
-			// First, try to handle Obsidian internal drag (from markdown files, etc.)
-			try {
-				const dragData = e.dataTransfer.getData('text/plain');
-				getLogger().log('Drag data received:', dragData);
-				
-				if (dragData) {
-					// First, check if this is already a vault file by extracting the path
-					const filePath = this.extractFilePathFromDragData(dragData);
-					if (filePath) {
-						// Check if file exists in vault
-						const vault = this.plugin.app.vault;
-						const abstractFile = vault.getAbstractFileByPath(filePath);
-						
-						if (abstractFile && abstractFile instanceof TFile && abstractFile.extension.match(/^(png|jpe?g|gif|webp|bmp|svg)$/i)) {
-							// This is a vault image file - use it directly without re-saving
-							getLogger().log('Found existing vault image file:', filePath);
-							const dataUrl = await this.fileToDataUrl(await this.getFileFromVault(abstractFile));
-							this.showImagePreview(dataUrl, abstractFile.name, filePath, 'vault');
-							return; // Successfully handled as existing vault file
-						}
+			// 调试：打印数据类型（保留用于问题排查）
+			getLogger().log('=== Drag Drop Debug Info ===');
+			getLogger().log('Available types:', e.dataTransfer.types);
+			getLogger().log('Files count:', e.dataTransfer.files.length);
+			getLogger().log('=== End Debug Info ===');
+
+			// 获取文本输入框
+			const textInput = this.getTextInputElement(inputArea);
+			
+			let hasProcessedData = false;
+			let processedImages = 0;
+			let skippedFiles = 0;
+
+			// 1. 优先处理文件拖拽（最可靠）
+			const files = e.dataTransfer.files;
+			if (files && files.length > 0) {
+				getLogger().log('Processing file drops:', files.length, 'files');
+				const validImages: File[] = [];
+				const invalidFiles: {file: File, reason: string}[] = [];
+
+				// 验证所有文件
+				for (const file of Array.from(files)) {
+					if (!this.isValidImageFile(file)) {
+						invalidFiles.push({file, reason: '不支持的文件类型'});
+						continue;
 					}
 					
-					// If not found in vault, try to handle as vault file drop (for other formats)
-					const vaultFile = await this.handleVaultFileDrop(dragData);
-					if (vaultFile && vaultFile.type.startsWith('image/')) {
-						getLogger().log('Successfully processed vault file:', vaultFile.name);
-						const dataUrl = await this.fileToDataUrl(vaultFile);
-						// Extract the file path from the vault file processing
-						const extractedPath = this.extractFilePathFromDragData(dragData);
-						this.showImagePreview(dataUrl, vaultFile.name, extractedPath, 'vault');
-						return; // Successfully handled as vault file, exit early
+					if (!this.isValidImageSize(file)) {
+						invalidFiles.push({
+							file, 
+							reason: `文件过大 (${this.formatFileSize(file.size)})，最大支持 ${this.formatFileSize(AIChatView.MAX_IMAGE_SIZE)}`
+						});
+						continue;
+					}
+					
+					validImages.push(file);
+				}
+
+				// 处理无效文件
+				if (invalidFiles.length > 0) {
+					const errorMsg = invalidFiles.map(({file, reason}) => 
+						`${file.name}: ${reason}`
+					).join('\n');
+					new Notice(`以下文件无法处理:\n${errorMsg}`, 5000);
+					skippedFiles = invalidFiles.length;
+				}
+
+				// 处理有效图片
+				try {
+					for (const file of validImages) {
+						const dataUrl = await this.fileToDataUrl(file);
+						this.showImagePreview(dataUrl, file.name, null, 'external');
+						processedImages++;
+						hasProcessedData = true;
+					}
+				} catch (error) {
+					getLogger().error('Failed to process dropped images:', error);
+					new Notice(`处理图片失败: ${error.message}`);
+				}
+			}
+
+			// 2. 如果没有文件，处理文本数据
+			if (!hasProcessedData) {
+				const draggedText = e.dataTransfer.getData('text/plain');
+				if (draggedText && draggedText.trim()) {
+					getLogger().log('Processing text data');
+					
+					// 检查是否为 Obsidian vault 文件引用
+					if (draggedText.startsWith('[[') || draggedText.includes('obsidian://')) {
+						const filePath = this.extractFilePathFromDragData(draggedText);
+						if (filePath) {
+							const vault = this.plugin.app.vault;
+							const abstractFile = vault.getAbstractFileByPath(filePath);
+							
+							if (abstractFile && abstractFile instanceof TFile) {
+								const isImageFile = AIChatView.ALLOWED_IMAGE_EXTENSIONS.some(ext => 
+									abstractFile.extension.toLowerCase() === ext.substring(1)
+								);
+								
+								if (isImageFile) {
+									if (abstractFile.stat.size > AIChatView.MAX_IMAGE_SIZE) {
+										new Notice(`文件过大: ${abstractFile.name} (${this.formatFileSize(abstractFile.stat.size)})，最大支持 ${this.formatFileSize(AIChatView.MAX_IMAGE_SIZE)}`);
+										return;
+									}
+									
+									const dataUrl = await this.fileToDataUrl(await this.getFileFromVault(abstractFile));
+									this.showImagePreview(dataUrl, abstractFile.name, filePath, 'vault');
+									processedImages++;
+									hasProcessedData = true;
+									getLogger().log('Processed vault image file:', filePath);
+								} else {
+									new Notice(`不支持的文件类型: ${abstractFile.extension}。只支持图片文件。`);
+									return;
+								}
+							}
+						}
+					} 
+					// 其他所有情况都作为纯文本处理
+					else {
+						if (textInput) {
+							const currentValue = textInput.value;
+							const newValue = currentValue ? `${currentValue}\n${draggedText.trim()}` : draggedText.trim();
+							textInput.value = newValue;
+							textInput.focus();
+							textInput.setSelectionRange(newValue.length, newValue.length);
+							hasProcessedData = true;
+							getLogger().log('Processed as pure text:', draggedText.substring(0, 50) + '...');
+						}
 					}
 				}
-			} catch (error) {
-				getLogger().log('Vault file processing failed, trying external files:', error);
 			}
 
-			// If vault file processing failed, try external files
-			const files = e.dataTransfer.files;
-			if (!files || files.length === 0) return;
-
-			// Filter for image files only
-			const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-			
-			if (imageFiles.length === 0) {
-				new Notice(t('notice.pleaseDropImageFilesOnly'));
-				return;
-			}
-
-			try {
-				// Process all external image files as temporary images
-				for (const file of imageFiles) {
-					const dataUrl = await this.fileToDataUrl(file);
-					// Treat external drag files as temporary images (don't save to vault immediately)
-					// They will only be saved when manually saving conversation
-					this.showImagePreview(dataUrl, file.name, null, 'external');
+			// 3. 显示处理结果
+			if (hasProcessedData) {
+				let message = '';
+				if (processedImages > 0) {
+					message = `已添加 ${processedImages} 张图片到待发送区`;
+				} else {
+					message = '已插入文本到输入框';
 				}
-			} catch (error) {
-				getLogger().error('Failed to process dropped images:', error);
-				new Notice(`Failed to process images: ${error.message}`);
+				
+				if (skippedFiles > 0) {
+					message += ` (跳过 ${skippedFiles} 个文件)`;
+				}
+				
+				if (message) {
+					new Notice(message);
+				}
+			} else {
+				new Notice('未找到可处理的内容。支持：图片文件拖拽、纯文本拖拽。');
 			}
 		};
 
