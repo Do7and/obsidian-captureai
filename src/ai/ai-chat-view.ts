@@ -566,15 +566,51 @@ export class AIChatView extends ItemView {
 
 	private async copyMessage(message: AIMessage): Promise<void> {
 		try {
-			if (message.image && message.content) {
-				// Copy both image and text
+			// Parse image references from message content using the new architecture
+			const imageReferences = this.aiManager.parseImageReferences(message.content || '');
+			
+			if (imageReferences.length > 0 && message.content) {
+				// Message contains both images and text - process temp: protocols
+				const processedContent = this.messageRenderer.processContentTempProtocols(message.content);
+				
+				// If there's exactly one image, try to copy both image and text
+				if (imageReferences.length === 1) {
+					const imageRef = imageReferences[0];
+					if (imageRef.path.startsWith('temp:')) {
+						const tempId = imageRef.path.replace('temp:', '');
+						const tempData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+						if (tempData?.dataUrl) {
+							await this.copyImageAndText(tempData.dataUrl, processedContent);
+							return;
+						}
+					}
+				}
+				
+				// Fallback to copying processed text content
+				await navigator.clipboard.writeText(processedContent);
+				new Notice(t('aiChat.textCopied'));
+			} else if (imageReferences.length > 0) {
+				// Only images, no text - copy the first image
+				const imageRef = imageReferences[0];
+				if (imageRef.path.startsWith('temp:')) {
+					const tempId = imageRef.path.replace('temp:', '');
+					const tempData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+					if (tempData?.dataUrl) {
+						await this.copyImage(tempData.dataUrl);
+						return;
+					}
+				}
+				new Notice('图片数据未找到');
+			} else if (message.image && message.content) {
+				// Legacy: Copy both image and text
 				await this.copyImageAndText(message.image, message.content);
 			} else if (message.image) {
-				// Copy only image
+				// Legacy: Copy only image
 				await this.copyImage(message.image);
 			} else if (message.content) {
-				// Copy only text
-				await navigator.clipboard.writeText(message.content);
+				// Copy only text (process any temp: protocols)
+				const processedContent = this.messageRenderer.processContentTempProtocols(message.content);
+				await navigator.clipboard.writeText(processedContent);
 				new Notice(t('aiChat.textCopied'));
 			}
 		} catch (error) {
@@ -611,7 +647,9 @@ export class AIChatView extends ItemView {
 	private async copySelectionAsMarkdown(message: AIMessage, selection: Selection): Promise<void> {
 		try {
 			const selectedContent = this.getSelectionAsMarkdown(message, selection);
-			await navigator.clipboard.writeText(selectedContent);
+			// Process temp: protocols in the selected content
+			const processedContent = this.messageRenderer.processContentTempProtocols(selectedContent);
+			await navigator.clipboard.writeText(processedContent);
 			new Notice(t('aiChat.selectionCopied'));
 		} catch (error) {
 			getLogger().error('Failed to copy selection:', error);
@@ -640,37 +678,56 @@ export class AIChatView extends ItemView {
 				const element = node as Element;
 				
 				if (element.tagName === 'IMG') {
-					// Convert image to markdown - use local path if available
+					// Convert image to markdown - handle new temp: protocol architecture
 					const src = element.getAttribute('src');
 					const alt = element.getAttribute('alt') || 'image';
 					if (src) {
-						// Check if this image has a local path in our message data
-						const allImages = (message as ExtendedMessage).images;
-						if (allImages && allImages.length > 0) {
-							// Find matching image data
-							const imageData = allImages.find((img: any) => 
-								img.dataUrl === src || 
-								(img.localPath && this.getVaultResourceUrl(img.localPath) === src)
-							);
-							if (imageData && imageData.localPath) {
-								// Use standard Markdown format with local path and source label
-								const sourceLabel = this.getImageSourceLabel(imageData);
-								markdown += `![${sourceLabel}](${imageData.localPath})`;
-							} else {
-								// Fallback to src (might be dataUrl)
-								const sourceLabel = this.getImageSourceLabel(null);
-								markdown += `![${sourceLabel}](${src})`;
+						// Check if this is a temp image by finding it in the message content
+						const imageReferences = this.aiManager.parseImageReferences(message.content || '');
+						let foundTempRef = false;
+						
+						for (const imageRef of imageReferences) {
+							if (imageRef.path.startsWith('temp:')) {
+								const tempId = imageRef.path.replace('temp:', '');
+								const tempData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
+								if (tempData?.dataUrl === src) {
+									// This is a temp: protocol image, include it as temp: for processing later
+									markdown += `![${alt}](temp:${tempId})`;
+									foundTempRef = true;
+									break;
+								}
 							}
-						} else {
-							// Single image case
-							const singleImageData = (message as ExtendedMessage).imageData;
-							const messageLocalPath = (message as ExtendedMessage).localPath;
-							if (singleImageData && messageLocalPath) {
-								const sourceLabel = this.getImageSourceLabel(messageLocalPath);
-								markdown += `![${sourceLabel}](${messageLocalPath})`;
+						}
+						
+						if (!foundTempRef) {
+							// Legacy handling or non-temp images
+							const allImages = (message as ExtendedMessage).images;
+							if (allImages && allImages.length > 0) {
+								// Find matching image data
+								const imageData = allImages.find((img: any) => 
+									img.dataUrl === src || 
+									(img.localPath && this.getVaultResourceUrl(img.localPath) === src)
+								);
+								if (imageData && imageData.localPath) {
+									// Use standard Markdown format with local path and source label
+									const sourceLabel = this.getImageSourceLabel(imageData);
+									markdown += `![${sourceLabel}](${imageData.localPath})`;
+								} else {
+									// Fallback to src (might be dataUrl)
+									const sourceLabel = this.getImageSourceLabel(null);
+									markdown += `![${sourceLabel}](${src})`;
+								}
 							} else {
-								const sourceLabel = this.getImageSourceLabel(null);
-								markdown += `![${sourceLabel}](${src})`;
+								// Single image case
+								const singleImageData = (message as ExtendedMessage).imageData;
+								const messageLocalPath = (message as ExtendedMessage).localPath;
+								if (singleImageData && messageLocalPath) {
+									const sourceLabel = this.getImageSourceLabel(messageLocalPath);
+									markdown += `![${sourceLabel}](${messageLocalPath})`;
+								} else {
+									const sourceLabel = this.getImageSourceLabel(null);
+									markdown += `![${sourceLabel}](${src})`;
+								}
 							}
 						}
 					}
@@ -1607,9 +1664,9 @@ export class AIChatView extends ItemView {
 					imageReferences.push(`![${img.source}](${img.localPath})`);
 					getLogger().log(`📝 Added saved image reference: ![${img.source}](${img.localPath})`);
 				} else if (img.tempId) {
-					// 临时图片 - 在编辑视图下统一显示为 [tempimage]
-					imageReferences.push(`![tempimage](temp:${img.tempId})`);
-					getLogger().log(`📝 Added temp image reference: ![tempimage](temp:${img.tempId})`);
+					// 临时图片 - 使用source作为alt文本
+					imageReferences.push(`![${img.source}](temp:${img.tempId})`);
+					getLogger().log(`📝 Added temp image reference: ![${img.source}](temp:${img.tempId})`);
 				} else {
 					getLogger().warn(`⚠️ Image ignored - no localPath or tempId:`, {
 						fileName: img.fileName,
@@ -2509,33 +2566,17 @@ export class AIChatView extends ItemView {
 		for (const message of conversation.messages) {
 			const processedMessage: AIMessage = { ...message };
 			
-			// Parse message content to find temp: references
-			const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
-			let updatedContent = message.content;
-			let match;
-			
-			while ((match = tempImageRegex.exec(message.content)) !== null) {
-				const [fullMatch, alt, tempId] = match;
-				
-				try {
-					// Get temporary image data from ImageReferenceManager
-					const tempImageData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
-					if (!tempImageData) {
-						getLogger().warn(`Temp image not found for ID: ${tempId}`);
-						continue;
+			// Use MessageRenderManager to process temp: protocols
+			if (message.content && message.content.includes('temp:')) {
+				processedMessage.content = this.messageRenderer.processContentTempProtocolsWithReplacer(
+					message.content,
+					(tempData, alt, tempId) => {
+						// Replace temp: reference with data URL, using real source for alt text
+						return `![${tempData.source}](${tempData.dataUrl})`;
 					}
-					
-					// Replace temp: reference with data URL, using real source for alt text
-					const markdownImage = `![${tempImageData.source}](${tempImageData.dataUrl})`;
-					updatedContent = updatedContent.replace(fullMatch, markdownImage);
-					
-				} catch (error) {
-					getLogger().error(`Failed to convert temporary image ${tempId}:`, error);
-					// Keep the original reference if conversion fails
-				}
+				);
 			}
 			
-			processedMessage.content = updatedContent;
 			processedMessages.push(processedMessage);
 		}
 		
@@ -2576,47 +2617,43 @@ export class AIChatView extends ItemView {
 		for (const message of conversation.messages) {
 			const processedMessage: AIMessage = { ...message };
 			
-			// Parse message content to find temp: references
-			const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
-			let updatedContent = message.content;
-			let match;
-			
-			while ((match = tempImageRegex.exec(message.content)) !== null) {
-				const [fullMatch, alt, tempId] = match;
+			// Process temp: references using MessageRenderManager
+			if (message.content && message.content.includes('temp:')) {
+				const tempReferences = this.messageRenderer.parseTempImageReferences(message.content);
+				let updatedContent = message.content;
 				
-				try {
-					// Get temporary image data from ImageReferenceManager
-					const tempImageData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
-					if (!tempImageData) {
-						getLogger().warn(`Temp image not found for ID: ${tempId}`);
-						continue;
-					}
-					
-					// Choose target folder based on source
-					let targetFolder: string;
-					if (tempImageData.source === 'external') {
-						targetFolder = otherSourceLocation;
-					} else if (tempImageData.source === 'screenshot') {
-						targetFolder = screenshotSaveLocation;
+				for (const ref of tempReferences) {
+					if (ref.tempData) {
+						try {
+							// Choose target folder based on source
+							let targetFolder: string;
+							if (ref.tempData.source === 'external') {
+								targetFolder = otherSourceLocation;
+							} else if (ref.tempData.source === 'screenshot') {
+								targetFolder = screenshotSaveLocation;
+							} else {
+								// For other sources, use conversation images folder
+								targetFolder = conversationImageFolder;
+							}
+							
+							// Save image to vault
+							const savedImagePath = await this.saveTempImageToVault(ref.tempId, ref.tempData.dataUrl, targetFolder);
+							
+							// Replace temp: reference with vault file path, using real source for alt text
+							const markdownImage = `![${ref.tempData.source}](${savedImagePath})`;
+							updatedContent = updatedContent.replace(ref.fullMatch, markdownImage);
+						} catch (error) {
+							getLogger().error(`Failed to save temporary image ${ref.tempId}:`, error);
+							// Keep the original reference if saving fails
+						}
 					} else {
-						// For other sources, use conversation images folder
-						targetFolder = conversationImageFolder;
+						getLogger().warn(`Temp image not found for ID: ${ref.tempId}`);
 					}
-					
-					// Save image to vault
-					const savedImagePath = await this.saveTempImageToVault(tempId, tempImageData.dataUrl, targetFolder);
-					
-					// Replace temp: reference with vault file path, using real source for alt text
-					const markdownImage = `![${tempImageData.source}](${savedImagePath})`;
-					updatedContent = updatedContent.replace(fullMatch, markdownImage);
-					
-				} catch (error) {
-					getLogger().error(`Failed to save temporary image ${tempId}:`, error);
-					// Keep the original reference if saving fails
 				}
+				
+				processedMessage.content = updatedContent;
 			}
 			
-			processedMessage.content = updatedContent;
 			processedMessages.push(processedMessage);
 		}
 		
@@ -3375,31 +3412,25 @@ tags:
 			await vault.createFolder(attachmentsFolder);
 		}
 
-		// Parse temp: references and replace them
-		const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
+		// Process temp: references using MessageRenderManager
 		let updatedContent = content;
-		let match;
-
-		while ((match = tempImageRegex.exec(content)) !== null) {
-			const [fullMatch, alt, tempId] = match;
-
-			try {
-				// Get temporary image data from ImageReferenceManager
-				const tempImageData = this.aiManager.getImageReferenceManager().getTempImageData(tempId);
-				if (!tempImageData) {
-					continue;
+		if (content.includes('temp:')) {
+			const tempReferences = this.messageRenderer.parseTempImageReferences(content);
+			
+			for (const ref of tempReferences) {
+				if (ref.tempData) {
+					try {
+						// Save image to attachments folder
+						const savedImagePath = await this.saveTempImageToAttachments(ref.tempId, ref.tempData.dataUrl, attachmentsFolder);
+						
+						// Replace temp: reference with local file path
+						const markdownImage = `![${ref.tempData.source}](${savedImagePath})`;
+						updatedContent = updatedContent.replace(ref.fullMatch, markdownImage);
+					} catch (error) {
+						getLogger().error(`Failed to save temporary image ${ref.tempId}:`, error);
+						// Keep the original reference if saving fails
+					}
 				}
-
-				// Save image to attachments folder
-				const savedImagePath = await this.saveTempImageToAttachments(tempId, tempImageData.dataUrl, attachmentsFolder);
-				
-				// Replace temp: reference with local file path
-				const markdownImage = `![${tempImageData.source}](${savedImagePath})`;
-				updatedContent = updatedContent.replace(fullMatch, markdownImage);
-
-			} catch (error) {
-				getLogger().error(`Failed to save temporary image ${tempId}:`, error);
-				// Keep the original reference if saving fails
 			}
 		}
 

@@ -747,8 +747,9 @@ export class ImageEditor extends Modal {
 			// Show AI panel first (only if not already visible)
 			await this.plugin.ensureAIChatPanelVisible();
 			
-			// Add image to queue as temporary image - 临时图片用固定标识 'tempimage'
-			await this.plugin.addImageToAIQueue(dataUrl, 'tempimage', null);
+			// Add image to queue as temporary image - 生成合适的文件名
+			const fileName = `edited-${Date.now()}.png`;
+			await this.plugin.addImageToAIQueue(dataUrl, fileName, null);
 			
 			getLogger().log('✅ Image successfully added to AI queue (temp)');
 			

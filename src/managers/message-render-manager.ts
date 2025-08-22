@@ -117,6 +117,62 @@ export class MessageRenderManager {
     }
     
     /**
+     * 处理消息内容中的temp协议，将其转换为实际的base64 data URLs
+     * 使用source作为alt文本，提供有意义的描述
+     */
+    processContentTempProtocols(content: string): string {
+        return this.processContentTempProtocolsWithReplacer(content, (tempData, alt, tempId) => {
+            // Use source as alt text to provide meaningful description
+            return `![${tempData.source}](${tempData.dataUrl})`;
+        });
+    }
+    
+    /**
+     * 通用的temp协议解析和替换方法
+     * @param content 包含temp协议的内容
+     * @param replacer 替换函数，接收(tempData, alt, tempId)参数，返回替换后的字符串
+     * @returns 处理后的内容
+     */
+    processContentTempProtocolsWithReplacer(content: string, replacer: (tempData: any, alt: string, tempId: string) => string): string {
+        const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
+        return content.replace(tempImageRegex, (match, alt, tempId) => {
+            const tempData = this.chatView.aiManager.getImageReferenceManager().getTempImageData(tempId);
+            if (tempData) {
+                return replacer(tempData, alt, tempId);
+            } else {
+                getLogger().warn('Temp image not found for ID:', tempId);
+                // 保持原样或返回警告
+                return match;
+            }
+        });
+    }
+    
+    /**
+     * 解析内容中的所有temp协议引用
+     * @param content 要解析的内容
+     * @returns temp引用的数组，每个元素包含{alt, tempId, tempData, fullMatch}
+     */
+    parseTempImageReferences(content: string): Array<{alt: string, tempId: string, tempData: any, fullMatch: string}> {
+        const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
+        const references: Array<{alt: string, tempId: string, tempData: any, fullMatch: string}> = [];
+        let match;
+        
+        while ((match = tempImageRegex.exec(content)) !== null) {
+            const [fullMatch, alt, tempId] = match;
+            const tempData = this.chatView.aiManager.getImageReferenceManager().getTempImageData(tempId);
+            
+            references.push({
+                alt,
+                tempId,
+                tempData,
+                fullMatch
+            });
+        }
+        
+        return references;
+    }
+    
+    /**
      * 清理资源
      */
     destroy(): void {
@@ -596,18 +652,7 @@ export class MessageRenderManager {
         let processedContent = this.extractAndRenderThinkingBlocks(container, content);
         
         // Convert temp: protocol images to actual data URLs for Obsidian rendering
-        const tempImageRegex = /!\[(.*?)\]\(temp:([^)]+)\)/g;
-        processedContent = processedContent.replace(tempImageRegex, (match, alt, tempId) => {
-            const tempData = this.chatView.aiManager.getImageReferenceManager().getTempImageData(tempId);
-            if (tempData) {
-                // Use dataUrl from ImageReferenceManager
-                return `![${alt}](${tempData.dataUrl})`;
-            } else {
-                // Temp image not found, show placeholder
-                getLogger().warn('Temp image not found for ID:', tempId);
-                return `![Image not found](data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`;
-            }
-        });
+        processedContent = this.processContentTempProtocols(processedContent);
         
         // LaTeX delimiter conversion - 修复转换逻辑和注释
         // \( ... \) -> $...$ (行内公式)

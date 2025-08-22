@@ -1266,9 +1266,9 @@ export class AIManager {
 
 		for (const dataUrl of imageDataUrls) {
 			// 使用ImageReferenceManager来创建临时图片，确保唯一性和引用计数
-			const tempId = this.imageRefManager.addTempImage(dataUrl, 'screenshot', 'tempimage');
+			const tempId = this.imageRefManager.addTempImage(dataUrl, 'screenshot', 'screenshot.png');
 			tempImages[tempId] = dataUrl;
-			placeholders.push(`![tempimage](temp:${tempId})`);
+			placeholders.push(`![screenshot](temp:${tempId})`);
 			
 			getLogger().log(`Created temp image placeholder: temp:${tempId}`);
 		}
