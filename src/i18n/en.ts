@@ -11,6 +11,14 @@ export default {
   "settings.enableDebugLogging.desc": "Enable debug logging to console for troubleshooting. Recommended to disable.",
   "settings.showSendOnlyButton.name": "Show Send-Only Button",
   "settings.showSendOnlyButton.desc": "Show a button next to the send button that adds messages to chat without sending to AI",
+  "settings.showNormalCaptureButton.name": "Show Normal Capture Button",
+  "settings.showNormalCaptureButton.desc": "Show normal screenshot capture button in ribbon",
+  "settings.enableMinimizedCapture.name": "Enable Minimized Capture",
+  "settings.enableMinimizedCapture.desc": "Enable minimized window capture feature and command",
+  "settings.showMinimizedCaptureButton.name": "Show Minimized Capture Button",
+  "settings.showMinimizedCaptureButton.desc": "Show minimized window capture button in ribbon",
+  "settings.showAIChatPanelButton.name": "Show AI Chat Panel Button", 
+  "settings.showAIChatPanelButton.desc": "Show AI chat panel button in ribbon",
   "settings.imageFormat.name": "Image format",
   "settings.imageFormat.desc": "Choose the format for saved images",
   "settings.language.name": "Language",
@@ -527,6 +535,7 @@ export default {
   "notice.copyFailedUseSave": "❌ Copy failed, please use save function",
   "notice.failedToParseConversation": "❌ Failed to parse conversation",
   "notice.tempImageLimitWarning": "📸 Current conversation has {{count}} temporary images, recommend saving conversation to avoid high memory usage",
+  "notice.reloadPluginRequired": "⚙️ UI changes require plugin reload to take effect",
 
   // Missing placeholder translations
   "placeholder.editMessageContent": "Edit message content...",

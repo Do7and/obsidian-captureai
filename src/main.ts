@@ -36,6 +36,8 @@ export default class ImageCapturePlugin extends Plugin {
 	screenshotManager: ScreenshotManager;
 	imageEditor: ImageEditor;
 	aiManager: AIManager;
+	// Store ribbon icon references for dynamic management
+	private ribbonIcons: Map<string, HTMLElement> = new Map();
 
 	async onload() {
 		await this.loadSettings();
@@ -63,43 +65,81 @@ export default class ImageCapturePlugin extends Plugin {
 			(leaf) => new AIChatView(leaf, this)
 		);
 
-		this.addRibbonIcon('camera', t('ui.captureAI'), (evt: MouseEvent) => {
-			this.screenshotManager.startRegionCapture();
-		});
+		// Initialize UI elements based on settings
+		this.updateUIElements();
+		
+		
 
-		// Add minimized capture ribbon icon
-		this.addRibbonIcon('minimize', t('ui.minimizedCapture'), (evt: MouseEvent) => {
-			this.screenshotManager.startRegionCapture(true);
-		});
+		// Initialize commands based on settings
+		this.updateCommands();
 
-		// Add AI Chat ribbon icon (only if AI is enabled)
-		if (this.settings.enableAIAnalysis) {
-			this.addRibbonIcon('bot', t('ui.aiChatPanel'), (evt: MouseEvent) => {
+		this.addSettingTab(new ImageCaptureSettingTab(this.app, this));
+	}
+
+	/**
+	 * Update ribbon icons based on current settings
+	 */
+	public updateUIElements(): void {
+		// Clear existing ribbon icons
+		this.ribbonIcons.forEach(icon => icon.remove());
+		this.ribbonIcons.clear();
+
+		// Add normal capture ribbon icon (only if enabled in settings)
+		if (this.settings.showNormalCaptureButton) {
+			const normalCaptureIcon = this.addRibbonIcon('camera', t('ui.captureAI'), (evt: MouseEvent) => {
+				this.screenshotManager.startRegionCapture();
+			});
+			this.ribbonIcons.set('normal-capture', normalCaptureIcon);
+		}
+
+		// Add minimized capture ribbon icon (only if feature enabled AND button enabled)
+		if (this.settings.enableMinimizedCapture && this.settings.showMinimizedCaptureButton) {
+			const minimizedCaptureIcon = this.addRibbonIcon('minimize', t('ui.minimizedCapture'), (evt: MouseEvent) => {
+				this.screenshotManager.startRegionCapture(true);
+			});
+			this.ribbonIcons.set('minimized-capture', minimizedCaptureIcon);
+		}
+
+		// Add AI Chat ribbon icon (only if AI is enabled AND button is enabled in settings)
+		if (this.settings.enableAIAnalysis && this.settings.showAIChatPanelButton) {
+			const aiChatIcon = this.addRibbonIcon('bot', t('ui.aiChatPanel'), (evt: MouseEvent) => {
 				this.toggleAIChatPanel();
 			});
+			this.ribbonIcons.set('ai-chat', aiChatIcon);
 		}
-		
-		
+	}
 
+	/**
+	 * Update commands based on current settings
+	 */
+	public updateCommands(): void {
+		// Remove existing commands
+		this.removeCommand('capture-normal-window');
+		this.removeCommand('capture-minimized-window');
+		this.removeCommand('toggle-ai-chat');
+
+		// Add normal capture command (always available)
 		this.addCommand({
 			id: 'capture-normal-window',
 			name: t('commands.captureNormal.name'),
 			callback: () => this.screenshotManager.startRegionCapture()
 		});
 
-		this.addCommand({
-			id: 'capture-minimized-window',
-			name: t('commands.captureMinimized.name'),
-			callback: () => this.screenshotManager.startRegionCapture(true)
-		});
+		// Add minimized capture command (only if feature is enabled)
+		if (this.settings.enableMinimizedCapture) {
+			this.addCommand({
+				id: 'capture-minimized-window',
+				name: t('commands.captureMinimized.name'),
+				callback: () => this.screenshotManager.startRegionCapture(true)
+			});
+		}
 
+		// Add AI chat toggle command (always available)
 		this.addCommand({
 			id: 'toggle-ai-chat',
 			name: t('commands.toggleAiChat.name'),
 			callback: () => this.toggleAIChatPanel()
 		});
-
-		this.addSettingTab(new ImageCaptureSettingTab(this.app, this));
 	}
 
 	async onunload() {
@@ -209,6 +249,9 @@ export default class ImageCapturePlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		// Update UI elements and commands dynamically when settings change
+		this.updateUIElements();
+		this.updateCommands();
 	}
 
 

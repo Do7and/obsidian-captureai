@@ -11,6 +11,14 @@ export default {
   "settings.enableDebugLogging.desc": "启用控制台调试日志用于故障排除。建议禁用。",
   "settings.showSendOnlyButton.name": "显示仅发送按钮",
   "settings.showSendOnlyButton.desc": "在发送按钮旁显示一个仅发送到聊天的按钮，不会发给AI处理",
+  "settings.showNormalCaptureButton.name": "显示普通截图按钮",
+  "settings.showNormalCaptureButton.desc": "在工具栏中显示普通截图按钮",
+  "settings.enableMinimizedCapture.name": "启用最小化截图功能",
+  "settings.enableMinimizedCapture.desc": "启用最小化窗口截图功能和命令",
+  "settings.showMinimizedCaptureButton.name": "显示最小化截图按钮",
+  "settings.showMinimizedCaptureButton.desc": "在工具栏中显示最小化截图按钮",
+  "settings.showAIChatPanelButton.name": "显示AI聊天面板按钮",
+  "settings.showAIChatPanelButton.desc": "在工具栏中显示AI聊天面板按钮",
   "settings.imageFormat.name": "图像格式",
   "settings.imageFormat.desc": "选择保存图像的格式",
   "settings.language.name": "语言",
@@ -528,6 +536,7 @@ export default {
   "notice.copyFailedUseSave": "❌ 复制失败，请使用保存功能",
   "notice.failedToParseConversation": "❌ 解析会话失败",
   "notice.tempImageLimitWarning": "📸 当前会话已有{{count}}张临时图片，建议保存会话以避免内存占用过高",
+  "notice.reloadPluginRequired": "⚙️ 界面更改需要重新加载插件才能生效",
 
   // Missing placeholder translations
   "placeholder.editMessageContent": "编辑消息内容...",

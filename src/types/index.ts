@@ -127,6 +127,11 @@ export interface ImageCaptureSettings {
 	enableDebugLogging: boolean;        // Enable debug logging to console
 	// Send-only button settings
 	showSendOnlyButton: boolean;        // Whether to show the "send only" button
+	// UI control settings
+	showNormalCaptureButton: boolean;       // Whether to show normal capture button
+	enableMinimizedCapture: boolean;        // Whether to enable minimized capture feature
+	showMinimizedCaptureButton: boolean;    // Whether to show minimized capture button (sub-option)
+	showAIChatPanelButton: boolean;         // Whether to show AI chat panel button
 	// Internal tracking for UI refresh
 	_modelConfigsLastCount?: number;   // Internal: tracks model count for settings refresh
 }
@@ -346,7 +351,12 @@ export const DEFAULT_SETTINGS: ImageCaptureSettings = {
 	// Debug settings
 	enableDebugLogging: false,
 	// Send-only button settings
-	showSendOnlyButton: false
+	showSendOnlyButton: false,
+	// UI control settings
+	showNormalCaptureButton: true,
+	enableMinimizedCapture: false,
+	showMinimizedCaptureButton: true,
+	showAIChatPanelButton: false
 };
 
 export interface EditTool {

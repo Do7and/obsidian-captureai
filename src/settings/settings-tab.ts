@@ -28,7 +28,6 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 		// Register listener for plugin settings changes
 		this.registerSettingsListener();
 
-		containerEl.createEl('h2', { text: t('settings.title') });
 
 		// 通用设置分类
 		containerEl.createEl('h3', { text: t('settings.general') });
@@ -77,6 +76,43 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 
 		// Screenshot功能设置分类
 		containerEl.createEl('h3', { text: t('settings.screenshotFunction') });
+
+		// 显示普通截图按钮设置
+		new Setting(containerEl)
+			.setName(t('settings.showNormalCaptureButton.name'))
+			.setDesc(t('settings.showNormalCaptureButton.desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showNormalCaptureButton)
+				.onChange(async (value) => {
+					this.plugin.settings.showNormalCaptureButton = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// 启用最小化截图功能设置
+		new Setting(containerEl)
+			.setName(t('settings.enableMinimizedCapture.name'))
+			.setDesc(t('settings.enableMinimizedCapture.desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableMinimizedCapture)
+				.onChange(async (value) => {
+					this.plugin.settings.enableMinimizedCapture = value;
+					await this.plugin.saveSettings();
+					// 刷新设置页面以显示/隐藏子选项
+					this.display();
+				}));
+
+		// 显示最小化截图按钮设置（仅在启用最小化截图功能时显示）
+		if (this.plugin.settings.enableMinimizedCapture) {
+			new Setting(containerEl)
+				.setName(t('settings.showMinimizedCaptureButton.name'))
+				.setDesc(t('settings.showMinimizedCaptureButton.desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.showMinimizedCaptureButton)
+					.onChange(async (value) => {
+						this.plugin.settings.showMinimizedCaptureButton = value;
+						await this.plugin.saveSettings();
+					}));
+		}
 
 		new Setting(containerEl)
 			.setName(t('settings.defaultSaveLocation.name'))
@@ -133,6 +169,19 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 							new Notice(t('notice.aiChatFailed') + `: ${error.message}`);
 						}
 					}));
+
+			// 显示AI聊天面板按钮设置（仅在AI功能启用时显示）
+			if (this.plugin.settings.enableAIAnalysis) {
+				new Setting(containerEl)
+					.setName(t('settings.showAIChatPanelButton.name'))
+					.setDesc(t('settings.showAIChatPanelButton.desc'))
+					.addToggle(toggle => toggle
+						.setValue(this.plugin.settings.showAIChatPanelButton)
+						.onChange(async (value) => {
+							this.plugin.settings.showAIChatPanelButton = value;
+							await this.plugin.saveSettings();
+						}));
+			}
 
 			// 第一块：AI API配置相关设置
 			containerEl.createEl('h4', { text: t('settings.aiApiConfig') });
