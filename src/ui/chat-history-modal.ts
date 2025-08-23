@@ -3,6 +3,7 @@ import ImageCapturePlugin from '../main';
 import { AIConversation } from '../ai/ai-manager';
 import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
+import { parseTimestamp } from '../utils/time';
 
 interface ConversationHistoryItem {
 	file: TFile;
@@ -250,40 +251,6 @@ export class ChatHistoryModal extends Modal {
 		}
 	}
 
-	/**
-	 * Parse timestamp string as local time to avoid timezone issues
-	 */
-	private parseTimestampAsLocal(timestampStr: string): Date {
-		// Try ISO format first (from comments)
-		try {
-			const isoDate = new Date(timestampStr);
-			if (!isNaN(isoDate.getTime()) && timestampStr.includes('T')) {
-				return isoDate;
-			}
-		} catch (e) {
-			// Continue to local parsing
-		}
-		
-		// Parse local timestamp format: "2025/08/07 01:27:20" or "2025-08-07 01:27:20"
-		const normalizedStr = timestampStr.replace(/\//g, '-');
-		const parts = normalizedStr.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-		if (parts) {
-			const [, year, month, day, hour, minute, second] = parts;
-			// Create date in local time (month is 0-indexed in Date constructor)
-			return new Date(
-				parseInt(year), 
-				parseInt(month) - 1, 
-				parseInt(day), 
-				parseInt(hour), 
-				parseInt(minute), 
-				parseInt(second)
-			);
-		}
-		
-		// Fallback to default parsing
-		return new Date(timestampStr);
-	}
-
 	private async parseBestNoteFormat(content: string, conversation: AIConversation): Promise<void> {
 		// Split content by lines to parse line by line
 		const lines = content.split('\n');
@@ -319,7 +286,7 @@ export class ChatHistoryModal extends Modal {
 				
 				let timestamp = new Date();
 				try {
-					timestamp = this.parseTimestampAsLocal(timestampStr);
+					timestamp = parseTimestamp(timestampStr);
 				} catch (error) {
 					getLogger().warn('Could not parse timestamp:', timestampStr);
 				}
@@ -364,7 +331,7 @@ export class ChatHistoryModal extends Modal {
 				// Parse timestamp and finalize current message
 				const timestampStr = timestampMatch[1];
 				try {
-					currentMessage.timestamp = this.parseTimestampAsLocal(timestampStr);
+					currentMessage.timestamp = parseTimestamp(timestampStr);
 				} catch (e) {
 					getLogger().warn('Could not parse timestamp:', timestampStr);
 				}

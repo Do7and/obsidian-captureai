@@ -5,6 +5,7 @@ import { ChatHistoryModal } from '../ui/chat-history-modal';
 import { MessageRenderManager } from '../managers/message-render-manager';
 import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
+import { formatLocalDateTime, formatTimestampForFilename, formatDisplayTime } from '../utils/time';
 
 // Interface definitions for type safety
 interface AppWithSettings extends App {
@@ -2032,7 +2033,7 @@ export class AIChatView extends ItemView {
 			}
 			
 			// Generate unique filename to avoid conflicts
-			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+			const timestamp = formatTimestampForFilename();
 			const extension = fileName.split('.').pop() || 'png';
 			const baseName = fileName.replace(/\.[^/.]+$/, ''); // Remove extension
 			const uniqueFileName = `${baseName}-${timestamp}.${extension}`;
@@ -2222,22 +2223,7 @@ export class AIChatView extends ItemView {
 
 
 	private formatTime(date: Date): string {
-		const today = new Date();
-		const yesterday = new Date(today);
-		yesterday.setDate(yesterday.getDate() - 1);
-		
-		// Check if the date is today
-		if (date.toDateString() === today.toDateString()) {
-			return '今天 ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-		}
-		// Check if the date is yesterday
-		else if (date.toDateString() === yesterday.toDateString()) {
-			return '昨天 ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-		}
-		// For other dates, show full date and time
-		else {
-			return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-		}
+		return formatDisplayTime(date);
 	}
 
 	private showImageModal(imageSrc: string): void {
@@ -2797,7 +2783,7 @@ export class AIChatView extends ItemView {
 		const extension = mimeType.split('/')[1] || 'png';
 		
 		// Generate filename using original fileName
-		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const timestamp = formatTimestampForFilename();
 		
 		// Remove extension from original fileName if it exists, then add the correct extension
 		const baseFileName = originalFileName.replace(/\.[^/.]+$/, '');
@@ -2870,8 +2856,8 @@ export class AIChatView extends ItemView {
 		let markdown = ``;
 		
 		// Properties section (similar to BestNote)
-		const currentTime = new Date().toISOString();
-		const createdTime = conversation.createdAt ? conversation.createdAt.toISOString() : currentTime;
+		const currentTime = formatLocalDateTime(new Date());
+		const createdTime = conversation.createdAt ? formatLocalDateTime(conversation.createdAt) : currentTime;
 		
 		// For auto-save mode, use a fixed timestamp for comparison unless explicitly updating
 		let lastModifiedTime = currentTime;
@@ -2898,7 +2884,7 @@ tags:
 			
 			// Message header with BestNote format including timestamp and includeInContext info
 			const includeInContextInfo = message.includeInContext !== false ? 'true' : 'false';
-			markdown += `${messageType}: <!-- ${message.timestamp.toISOString()}|includeInContext:${includeInContextInfo} -->\n`;
+			markdown += `${messageType}: <!-- ${formatLocalDateTime(message.timestamp)}|includeInContext:${includeInContextInfo} -->\n`;
 			
 			// Add text content first if present
 			if (message.content) {
@@ -3588,7 +3574,7 @@ tags:
 		const extension = mimeType.split('/')[1] || 'png';
 		
 		// Generate filename using original fileName
-		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const timestamp = formatTimestampForFilename();
 		
 		// Remove extension from original fileName if it exists, then add the correct extension
 		const baseFileName = originalFileName.replace(/\.[^/.]+$/, '');

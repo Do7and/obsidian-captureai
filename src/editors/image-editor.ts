@@ -3,6 +3,7 @@ import ImageCapturePlugin from '../main';
 import { EditTool, Region, StrokeSize, StrokeSetting, LLM_PROVIDERS } from '../types';
 import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
+import { formatTimestampForFilename } from '../utils/time';
 
 // Simple interface for history state
 interface HistoryState {
@@ -589,7 +590,7 @@ export class ImageEditor extends Modal {
 		});
 		
 		// Generate default filename
-		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const timestamp = formatTimestampForFilename();
 		const defaultFileName = `screenshot-${timestamp}.png`;
 		
 		const fileNameInput = inputRow.createEl('input', { 
@@ -1653,7 +1654,7 @@ export class ImageEditor extends Modal {
 		}
 		
 		// Fallback to timestamp-based filename
-		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const timestamp = formatTimestampForFilename();
 		return `screenshot-${timestamp}.png`;
 	}
 	

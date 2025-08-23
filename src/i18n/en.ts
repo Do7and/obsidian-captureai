@@ -79,8 +79,8 @@ export default {
 
   // Context Settings
   "settings.contextSettings": "Context Settings",
-  "settings.maxContextMessages.name": "Max Context Messages",
-  "settings.maxContextMessages.desc": "Maximum number of historical messages to include in AI conversations",
+  "settings.maxContextMessages.name": "Max Context Message Blocks",
+  "settings.maxContextMessages.desc": "Maximum number of historical message blocks to include in AI conversations (each block counts as 1 regardless of image count)",
   "settings.includeSystemPrompt.name": "Include System Prompt",
   "settings.includeSystemPrompt.desc": "Whether to include system prompt in conversation context",
 

@@ -396,7 +396,7 @@ export class AIManager {
 
 		// 2. Add historical context messages - SIMPLE CHRONOLOGICAL ORDER
 		if (conversation && conversation.messages.length > 0) {
-			// Filter by includeInContext and take most recent messages
+			// Filter by includeInContext and take most recent message blocks
 			let historicalMessages = conversation.messages
 				.filter(msg => {
 					// Skip error messages
@@ -407,18 +407,18 @@ export class AIManager {
 					if (msg.includeInContext === false) return false;
 					return true;
 				})
-				.slice(-contextSettings.maxContextMessages); // Take most recent N messages
+				.slice(-contextSettings.maxContextMessages); // Take most recent N message blocks
 
-			getLogger().log(`📋 Processing ${historicalMessages.length} historical messages`);
+			getLogger().log(`📋 Processing ${historicalMessages.length} historical message blocks (max: ${contextSettings.maxContextMessages})`);
 
-			// Convert each message to API format - NO IMAGE LIMITS
+			// Convert each message block to API format - each block counts as 1 regardless of images
 			for (const msg of historicalMessages) {
 				const role = msg.type === 'user' ? 'user' : 'assistant';
 				
 				// Parse image references from content
 				const imageReferences = this.parseImageReferences(msg.content || '');
 				
-				getLogger().log(`🔍 Message: "${msg.content?.substring(0, 50)}..." has ${imageReferences.length} images`);
+				getLogger().log(`🔍 Message block: "${msg.content?.substring(0, 50)}..." has ${imageReferences.length} images`);
 				
 				// Remove image markdown from text content
 				let textContent = msg.content || '';
@@ -431,7 +431,7 @@ export class AIManager {
 				
 				// Process images if model supports vision
 				if (imageReferences.length > 0 && isVisionCapable) {
-					// Message with images
+					// Message block with images - combine ALL content in one API message
 					const messageContent: MessageContentItem[] = [];
 					
 					// Add text content if exists
@@ -439,36 +439,38 @@ export class AIManager {
 						messageContent.push({ type: 'text', text: textContent });
 					}
 					
-					// Add ALL images - no artificial limits
+					// Add ALL images from this message block
 					for (const imageRef of imageReferences) {
 						getLogger().log(`🔍 Resolving image: ${imageRef.path}`);
-						const imageDataUrl = await this.resolveImageForAPI(imageRef.path);
-						
-						if (imageDataUrl) {
-							messageContent.push({
-								type: 'image_url',
-								image_url: { url: imageDataUrl }
-							});
-							getLogger().log(`✅ Added image to context: ${imageRef.path}`);
-						} else {
-							getLogger().warn(`❌ Failed to resolve image: ${imageRef.path}`);
+						try {
+							const imageDataUrl = await this.resolveImageForAPI(imageRef.path);
+							if (imageDataUrl) {
+								messageContent.push({
+									type: 'image_url',
+									image_url: { url: imageDataUrl }
+								});
+								getLogger().log(`✅ Added image to message block`);
+							}
+						} catch (error) {
+							getLogger().warn(`⚠️ Failed to load image for context:`, error);
 						}
 					}
 					
+					// Add this message block as one API message
 					messages.push({
 						role: role,
 						content: messageContent
 					});
-					
-					getLogger().log(`✅ Added multimodal message with ${messageContent.filter(c => c.type === 'image_url').length} images`);
+					getLogger().log(`✅ Added message block with ${messageContent.length} content items`);
 				} else {
-					// Text-only message (no images or model doesn't support vision)
-					messages.push({
-						role: role,
-						content: textContent || msg.content || ''
-					});
-					
-					getLogger().log(`📝 Added text-only message: "${(textContent || msg.content || '').substring(0, 100)}..."`);
+					// Text-only message block or no images
+					if (textContent && textContent.trim()) {
+						messages.push({
+							role: role,
+							content: textContent
+						});
+						getLogger().log(`✅ Added text-only message block`);
+					}
 				}
 			}
 		}

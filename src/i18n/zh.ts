@@ -79,8 +79,8 @@ export default {
 
   // Context Settings
   "settings.contextSettings": "上下文设置",
-  "settings.maxContextMessages.name": "最大上下文消息数",
-  "settings.maxContextMessages.desc": "AI会话时包含的历史消息最大数量",
+  "settings.maxContextMessages.name": "最大上下文消息块数",
+  "settings.maxContextMessages.desc": "AI会话时包含的历史消息块最大数量（一个消息块无论包含多少张图片都计为1块）",
   "settings.includeSystemPrompt.name": "包含系统提示",
   "settings.includeSystemPrompt.desc": "是否在上下文中包含系统提示词",
 

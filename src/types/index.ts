@@ -118,7 +118,7 @@ export interface ImageCaptureSettings {
 	customProviders: {[providerId: string]: CustomProvider};
 	// Context settings for AI conversations
 	contextSettings: {
-		maxContextMessages: number;      // Maximum number of historical messages to include
+		maxContextMessages: number;      // Maximum number of historical message blocks to include (1 block = 1 UI message regardless of image count)
 		includeSystemPrompt: boolean;    // Whether to include system prompt in context
 	};
 	// Debug settings
