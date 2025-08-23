@@ -119,9 +119,7 @@ export interface ImageCaptureSettings {
 	// Context settings for AI conversations
 	contextSettings: {
 		maxContextMessages: number;      // Maximum number of historical messages to include
-		maxContextImages: number;        // Maximum number of historical images to include
 		includeSystemPrompt: boolean;    // Whether to include system prompt in context
-		contextStrategy: 'recent' | 'smart'; // Strategy for selecting context messages
 	};
 	// Debug settings
 	enableDebugLogging: boolean;        // Enable debug logging to console
@@ -344,9 +342,7 @@ export const DEFAULT_SETTINGS: ImageCaptureSettings = {
 	customProviders: {},
 	contextSettings: {
 		maxContextMessages: 20,
-		maxContextImages: 3,
-		includeSystemPrompt: true,
-		contextStrategy: 'recent'
+		includeSystemPrompt: true
 	},
 	// Debug settings
 	enableDebugLogging: false,

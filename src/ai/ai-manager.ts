@@ -151,6 +151,7 @@ export interface AIMessage {
 	image?: string;
 	timestamp: Date;
 	isTyping?: boolean;
+	includeInContext?: boolean;  // 是否参与上下文构建，默认为true
 }
 
 export interface AIConversation {
@@ -357,14 +358,12 @@ export class AIManager {
 		return await this.callTextOnlyAPI(message, defaultModelConfig);
 	}
 
-	// Context building function for conversation history
+	// Context building function for conversation history - COMPLETELY SIMPLIFIED
 	async buildContextMessages(conversation: AIConversation | null, currentMessage: string, currentImages?: string[], modelConfig?: ModelConfig, includeModeprompt?: boolean): Promise<any[]> {
 		const messages: any[] = [];
 		const contextSettings = this.plugin.settings.contextSettings || {
 			maxContextMessages: 20,
-			maxContextImages: 3,
-			includeSystemPrompt: true,
-			contextStrategy: 'recent'
+			includeSystemPrompt: true
 		};
 
 		// Debug logging
@@ -395,57 +394,31 @@ export class AIManager {
 			});
 		}
 
-		// 2. Add historical context messages (不包含当前要发送的消息)
+		// 2. Add historical context messages - SIMPLE CHRONOLOGICAL ORDER
 		if (conversation && conversation.messages.length > 0) {
-			// Get all historical messages (不包含当前发送的消息)
-			let historicalMessages = conversation.messages.slice();
-			let imageCount = 0;
+			// Filter by includeInContext and take most recent messages
+			let historicalMessages = conversation.messages
+				.filter(msg => {
+					// Skip error messages
+					if (msg.type === 'assistant' && msg.content.startsWith('Error:')) return false;
+					// Skip typing indicators  
+					if (msg.isTyping) return false;
+					// Skip messages excluded from context (default true if undefined)
+					if (msg.includeInContext === false) return false;
+					return true;
+				})
+				.slice(-contextSettings.maxContextMessages); // Take most recent N messages
 
-			// Filter out error messages to prevent context pollution
-			historicalMessages = historicalMessages.filter(msg => {
-				// Skip error messages that start with "Error:"
-				if (msg.type === 'assistant' && msg.content.startsWith('Error:')) {
-					return false;
-				}
-				// Skip typing indicators
-				if (msg.isTyping) return false;
-				return true;
-			});
+			getLogger().log(`📋 Processing ${historicalMessages.length} historical messages`);
 
-			// Apply context strategy
-			if (contextSettings.contextStrategy === 'recent') {
-				// Take the most recent messages up to the limit
-				historicalMessages = historicalMessages.slice(-contextSettings.maxContextMessages);
-			} else if (contextSettings.contextStrategy === 'smart') {
-				// Smart selection: prioritize messages with images and recent messages
-				const messagesWithImages = historicalMessages.filter(m => {
-					const { imageReferences, tempImageRefs } = this.parseMarkdownContent(m.content || '');
-					return imageReferences.length > 0 || tempImageRefs.length > 0;
-				});
-				const messagesWithoutImages = historicalMessages.filter(m => {
-					const { imageReferences, tempImageRefs } = this.parseMarkdownContent(m.content || '');
-					return imageReferences.length === 0 && tempImageRefs.length === 0;
-				});
-				
-				// Take recent image messages first (up to maxContextImages)
-				const recentImageMessages = messagesWithImages.slice(-contextSettings.maxContextImages);
-				imageCount = recentImageMessages.length;
-				
-				// Fill remaining slots with recent text messages
-				const remainingSlots = contextSettings.maxContextMessages - recentImageMessages.length;
-				const recentTextMessages = messagesWithoutImages.slice(-remainingSlots);
-				
-				// Combine and sort by timestamp
-				historicalMessages = [...recentImageMessages, ...recentTextMessages]
-					.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-			}
-
-			// Convert historical messages to API format
+			// Convert each message to API format - NO IMAGE LIMITS
 			for (const msg of historicalMessages) {
 				const role = msg.type === 'user' ? 'user' : 'assistant';
 				
-				// Parse message content to extract image references
+				// Parse image references from content
 				const imageReferences = this.parseImageReferences(msg.content || '');
+				
+				getLogger().log(`🔍 Message: "${msg.content?.substring(0, 50)}..." has ${imageReferences.length} images`);
 				
 				// Remove image markdown from text content
 				let textContent = msg.content || '';
@@ -456,22 +429,19 @@ export class AIManager {
 				// Clean up extra whitespace
 				textContent = textContent.replace(/\n\s*\n/g, '\n\n').trim();
 				
-				// Check if message has images and model supports vision
-				const hasImages = imageReferences.length > 0 && isVisionCapable && imageCount < contextSettings.maxContextImages;
-				
-				if (hasImages) {
-					// Message with images - only include if model supports vision
+				// Process images if model supports vision
+				if (imageReferences.length > 0 && isVisionCapable) {
+					// Message with images
 					const messageContent: MessageContentItem[] = [];
 					
-					// 只有当文本内容不为空时才添加文本部分
+					// Add text content if exists
 					if (textContent && textContent.trim()) {
 						messageContent.push({ type: 'text', text: textContent });
 					}
 					
-					// Add images using unified resolution method
+					// Add ALL images - no artificial limits
 					for (const imageRef of imageReferences) {
-						if (imageCount >= contextSettings.maxContextImages) break;
-						
+						getLogger().log(`🔍 Resolving image: ${imageRef.path}`);
 						const imageDataUrl = await this.resolveImageForAPI(imageRef.path);
 						
 						if (imageDataUrl) {
@@ -479,7 +449,9 @@ export class AIManager {
 								type: 'image_url',
 								image_url: { url: imageDataUrl }
 							});
-							imageCount++;
+							getLogger().log(`✅ Added image to context: ${imageRef.path}`);
+						} else {
+							getLogger().warn(`❌ Failed to resolve image: ${imageRef.path}`);
 						}
 					}
 					
@@ -487,76 +459,52 @@ export class AIManager {
 						role: role,
 						content: messageContent
 					});
+					
+					getLogger().log(`✅ Added multimodal message with ${messageContent.filter(c => c.type === 'image_url').length} images`);
 				} else {
-					// Text-only message (either no images or model doesn't support vision)
+					// Text-only message (no images or model doesn't support vision)
 					messages.push({
 						role: role,
 						content: textContent || msg.content || ''
 					});
+					
+					getLogger().log(`📝 Added text-only message: "${(textContent || msg.content || '').substring(0, 100)}..."`);
 				}
 			}
 		}
 
-		// 3. Handle mode prompt logic
+		// 3. Handle mode prompt logic - SIMPLIFIED
 		const currentMode = this.getCurrentMode();
 		const hasImages: boolean = !!(currentImages && currentImages.length > 0);
 		
-		// 判断是否需要添加 mode prompt
-		if (hasImages) {
-			// 有图片时，判断是否需要添加 mode prompt
-			const shouldApply = this.shouldApplyModePrompt(conversation, hasImages, currentMode);
+		// Simple mode prompt logic - add if needed
+		const shouldApply = this.shouldApplyModePrompt(conversation, hasImages, currentMode);
+		if (shouldApply) {
+			const modePrompt = this.getModePrompt(currentMode);
+			if (modePrompt && modePrompt.trim()) {
+				messages.push({
+					role: 'system',
+					content: modePrompt
+				});
+			}
 			
-			if (shouldApply) {
-				const modePrompt = this.getModePrompt(currentMode);
-				if (modePrompt && modePrompt.trim()) {
-					// 添加独立的 mode prompt 消息块，使用 system role
-					messages.push({
-						role: 'system',
-						content: modePrompt
-					});
-				}
-				
-				// 更新对话的 mode 状态
-				if (conversation) {
-					conversation.lastModeUsed = currentMode;
-				}
+			// Update conversation mode state
+			if (conversation) {
+				conversation.lastModeUsed = currentMode;
 			}
-		} else {
-			// 没有图片时，检查 mode 是否是图片相关
-			const isImageRelatedMode = this.isImageRelatedMode(currentMode);
-			if (!isImageRelatedMode) {
-				// 非图片相关的 mode，可以添加 mode prompt
-				const shouldApply = this.shouldApplyModePrompt(conversation, hasImages, currentMode);
-				
-				if (shouldApply) {
-					const modePrompt = this.getModePrompt(currentMode);
-					if (modePrompt && modePrompt.trim()) {
-						messages.push({
-							role: 'system',
-							content: modePrompt
-						});
-					}
-					
-					// 更新对话的 mode 状态
-					if (conversation) {
-						conversation.lastModeUsed = currentMode;
-					}
-				}
-			}
-			// 如果是图片相关的 mode 但没有图片，则不添加 mode prompt（避免歧义）
 		}
 
-		// 4. Add current user message (纯净的用户消息，不包含 mode prompt)
+		// 4. Add current user message - SIMPLIFIED
 		if (currentImages && currentImages.length > 0 && isVisionCapable) {
-			// Current message with images - multimodal format
+			// Current message with images
 			const messageContent: MessageContentItem[] = [];
 			
-			// 只有当文本内容不为空时才添加文本部分
+			// Add text content if exists
 			if (currentMessage && currentMessage.trim()) {
 				messageContent.push({ type: 'text', text: currentMessage });
 			}
 			
-			// Add current images
+			// Add ALL current images - no limits
 			for (const imageDataUrl of currentImages) {
 				messageContent.push({
 					type: 'image_url',
@@ -568,12 +516,14 @@ export class AIManager {
 				role: 'user',
 				content: messageContent
 			});
+			getLogger().log(`✅ Added current message with ${currentImages.length} images`);
 		} else {
 			// Current text-only message
 			messages.push({
 				role: 'user',
 				content: currentMessage
 			});
+			getLogger().log(`📝 Added current text message`);
 		}
 
 		getLogger().log('🔧 buildContextMessages result:', {
@@ -1048,27 +998,40 @@ export class AIManager {
 	/**
 	 * 统一的图片解析函数 - 将图片引用转换为API可用的base64数据
 	 */
-	private async resolveImageForAPI(imageRef: string): Promise<string | null> {
+	async resolveImageForAPI(imageRef: string): Promise<string | null> {
+		getLogger().log(`🔍 resolveImageForAPI called with: "${imageRef}"`);
+		
 		if (imageRef.startsWith('temp:')) {
 			// 临时图片 - 从内存获取base64
 			const tempId = imageRef.replace('temp:', '');
+			getLogger().log(`🔍 Looking for temp image: ${tempId}`);
 			const tempData = this.imageRefManager.getTempImageData(tempId);
 			if (tempData) {
+				getLogger().log(`✅ Found temp image data, dataUrl length: ${tempData.dataUrl?.length || 0}`);
 				return tempData.dataUrl;
 			}
-			getLogger().warn(`Temp image not found: ${tempId}`);
+			getLogger().warn(`❌ Temp image not found: ${tempId}`);
 			return null;
 		} else {
 			// Vault图片 - 从文件加载base64
 			if (imageRef.startsWith('data:')) {
 				// 已经是base64格式，直接返回
+				getLogger().log(`✅ Image is already base64, length: ${imageRef.length}`);
 				return imageRef;
 			} else if (imageRef.startsWith('[') && imageRef.endsWith(']')) {
 				// 跳过占位符路径
+				getLogger().log(`⏭️ Skipping placeholder path: ${imageRef}`);
 				return null;
 			} else {
 				// 从vault路径加载
-				return await this.loadImageDataFromPath(imageRef);
+				getLogger().log(`🔍 Loading vault image from path: ${imageRef}`);
+				const result = await this.loadImageDataFromPath(imageRef);
+				if (result) {
+					getLogger().log(`✅ Loaded vault image, dataUrl length: ${result.length}`);
+				} else {
+					getLogger().warn(`❌ Failed to load vault image: ${imageRef}`);
+				}
+				return result;
 			}
 		}
 	}

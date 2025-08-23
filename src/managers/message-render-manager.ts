@@ -210,6 +210,18 @@ export class MessageRenderManager {
                 }
             }
         });
+        
+        // 添加复选框change事件监听
+        this.messagesContainer.addEventListener('change', (e) => {
+            const target = e.target as HTMLElement;
+            if (target instanceof HTMLInputElement && target.type === 'checkbox' && target.classList.contains('ai-chat-include-context-checkbox')) {
+                const action = target.getAttribute('data-action');
+                const messageId = target.getAttribute('data-message-id');
+                if (action && messageId) {
+                    this.handleMessageAction(messageId, action, target);
+                }
+            }
+        });
     }
     
     /**
@@ -245,7 +257,29 @@ export class MessageRenderManager {
             case 'insert':
                 this.chatView.insertMessageAtCursor(message);
                 break;
+            case 'toggle-context':
+                this.handleToggleIncludeInContext(messageId, button as HTMLInputElement);
+                break;
         }
+    }
+    
+    /**
+     * 处理复选框状态切换
+     */
+    private handleToggleIncludeInContext(messageId: string, checkbox: HTMLInputElement): void {
+        const conversation = this.chatView.aiManager.getCurrentConversationData();
+        if (!conversation) return;
+        
+        const message = conversation.messages.find((m: AIMessage) => m.id === messageId);
+        if (!message) return;
+        
+        // 更新消息的includeInContext状态
+        message.includeInContext = checkbox.checked;
+        
+        // 通知AIManager保存会话状态（如果有自动保存功能的话）
+        this.chatView.aiManager.saveCurrentConversation?.();
+        
+        getLogger().log(`🔄 Message ${messageId} includeInContext set to: ${checkbox.checked}`);
     }
     
     /**
@@ -383,8 +417,23 @@ export class MessageRenderManager {
             cls: 'ai-chat-message-time'
         });
         
-        // Action buttons (4 buttons as requested) - moved to header right
+        // Action buttons container with checkbox as first element
         const actionButtons = messageHeader.createEl('div', { cls: 'ai-chat-message-actions' });
+        
+        // Include in context checkbox - first element in actions group
+        const includeInContextCheckbox = actionButtons.createEl('input', { 
+            type: 'checkbox',
+            cls: 'ai-chat-include-context-checkbox',
+            attr: { 
+                'data-message-id': message.id,
+                'data-action': 'toggle-context',
+                title: t('aiChat.includeInContextTooltip'),
+                'data-tooltip': t('aiChat.includeInContextTooltip')
+            }
+        });
+        
+        // Set checkbox state based on message.includeInContext (default true)
+        includeInContextCheckbox.checked = message.includeInContext !== false;
 
         // Message content with text selection support
         const messageContent = contentSection.createEl('div', { 

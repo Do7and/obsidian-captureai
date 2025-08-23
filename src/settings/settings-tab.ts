@@ -417,9 +417,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 						if (!this.plugin.settings.contextSettings) {
 							this.plugin.settings.contextSettings = {
 								maxContextMessages: 20,
-								maxContextImages: 3,
-								includeSystemPrompt: true,
-								contextStrategy: 'recent'
+								includeSystemPrompt: true
 							};
 						}
 						this.plugin.settings.contextSettings.maxContextMessages = value;
@@ -427,27 +425,6 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					})
 				);
 
-			// Max Context Images
-			new Setting(contextContainer)
-				.setName(t('settings.maxContextImages.name'))
-				.setDesc(t('settings.maxContextImages.desc'))
-				.addSlider(slider => slider
-					.setLimits(1, 10, 1)
-					.setValue(this.plugin.settings.contextSettings?.maxContextImages || 3)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						if (!this.plugin.settings.contextSettings) {
-							this.plugin.settings.contextSettings = {
-								maxContextMessages: 20,
-								maxContextImages: 3,
-								includeSystemPrompt: true,
-								contextStrategy: 'recent'
-							};
-						}
-						this.plugin.settings.contextSettings.maxContextImages = value;
-						await this.plugin.saveSettings();
-					})
-				);
 
 			// Include System Prompt
 			new Setting(contextContainer)
@@ -459,9 +436,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 						if (!this.plugin.settings.contextSettings) {
 							this.plugin.settings.contextSettings = {
 								maxContextMessages: 20,
-								maxContextImages: 3,
-								includeSystemPrompt: true,
-								contextStrategy: 'recent'
+								includeSystemPrompt: true
 							};
 						}
 						this.plugin.settings.contextSettings.includeSystemPrompt = value;
@@ -469,27 +444,6 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					})
 				);
 
-			// Context Strategy
-			new Setting(contextContainer)
-				.setName(t('settings.contextStrategy.name'))
-				.setDesc(t('settings.contextStrategy.desc'))
-				.addDropdown(dropdown => dropdown
-					.addOption('recent', t('settings.contextStrategy.recent'))
-					.addOption('smart', t('settings.contextStrategy.smart'))
-					.setValue(this.plugin.settings.contextSettings?.contextStrategy || 'recent')
-					.onChange(async (value: 'recent' | 'smart') => {
-						if (!this.plugin.settings.contextSettings) {
-							this.plugin.settings.contextSettings = {
-								maxContextMessages: 20,
-								maxContextImages: 3,
-								includeSystemPrompt: true,
-								contextStrategy: 'recent'
-							};
-						}
-						this.plugin.settings.contextSettings.contextStrategy = value;
-						await this.plugin.saveSettings();
-					})
-				);
 		}
 
 		// Shortcuts Section

@@ -296,8 +296,19 @@ export class ChatHistoryModal extends Modal {
 				
 				// Start new message with timestamp
 				const messageType = messageWithTimestampMatch[1] === 'user' ? 'user' : 'assistant';
-				const timestampStr = messageWithTimestampMatch[2];
+				const timestampAndContextInfo = messageWithTimestampMatch[2];
 				const initialContent = messageWithTimestampMatch[3] || '';
+				
+				// Parse timestamp and includeInContext info
+				let timestampStr = timestampAndContextInfo;
+				let includeInContext = true; // default value
+				
+				// Check if there's includeInContext info in the comment
+				const contextInfoMatch = timestampAndContextInfo.match(/(.*?)\|includeInContext:(true|false)$/);
+				if (contextInfoMatch) {
+					timestampStr = contextInfoMatch[1];
+					includeInContext = contextInfoMatch[2] === 'true';
+				}
 				
 				let timestamp = new Date();
 				try {
@@ -309,7 +320,8 @@ export class ChatHistoryModal extends Modal {
 				currentMessage = {
 					id: 'loaded_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
 					type: messageType as 'user' | 'assistant',
-					timestamp: timestamp
+					timestamp: timestamp,
+					includeInContext: includeInContext
 				};
 				
 				currentContent = initialContent ? [initialContent] : [];
@@ -331,7 +343,8 @@ export class ChatHistoryModal extends Modal {
 				currentMessage = {
 					id: 'loaded_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
 					type: messageType as 'user' | 'assistant',
-					timestamp: new Date()
+					timestamp: new Date(),
+					includeInContext: true // 默认为true（加载失败时的默认勾选）
 				};
 				
 				currentContent = initialContent ? [initialContent] : [];

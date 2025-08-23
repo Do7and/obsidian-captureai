@@ -147,6 +147,7 @@ export class ScreenshotManager {
 					new Notice(t('notice.regionSelectionCancelled'));
 					return;
 				}
+				await new Promise(resolve => setTimeout(resolve, 20));
 			}
 			
 			getLogger().log('✅ Region selected:', region);
@@ -407,12 +408,17 @@ export class ScreenshotManager {
 	}
 
 	private removeOverlay() {
+		getLogger().log('🧹 Starting overlay cleanup...');
+		
+		
 		if (this.overlay) {
 			const overlayData = this.overlayElements.get(this.overlay);
 			if (overlayData && overlayData.cleanup) {
+				getLogger().log('🧹 Running event cleanup...');
 				overlayData.cleanup();
 			}
 			if (this.overlay.parentNode) {
+				getLogger().log('🧹 Removing main overlay element...');
 				this.overlay.parentNode.removeChild(this.overlay);
 			}
 			
@@ -422,13 +428,28 @@ export class ScreenshotManager {
 				const mouseIndicator = overlayData.mouseIndicator;
 				const coordDisplay = overlayData.coordDisplay;
 				
-				[instructionEl, mouseIndicator, coordDisplay].forEach(el => {
+				[instructionEl, mouseIndicator, coordDisplay].forEach((el, index) => {
 					if (el && el.parentNode) {
+						getLogger().log(`🧹 Removing element ${index}: ${el.className}`);
 						el.parentNode.removeChild(el);
 					}
 				});
+				
+				// Clear the WeakMap entry
+				this.overlayElements.delete(this.overlay);
 			}
 		}
+		
+		// Force cleanup any lingering elements with screenshot classes
+		getLogger().log('🧹 Checking for lingering elements...');
+		const lingeringElements = document.querySelectorAll('.screenshot-overlay-base, .screenshot-selection-base, .screenshot-instruction-base, .screenshot-mouse-indicator-base, .screenshot-coord-display-base');
+		lingeringElements.forEach((el, index) => {
+			getLogger().log(`🧹 Found lingering element ${index}: ${el.className}`);
+			if (el.parentNode) {
+				el.parentNode.removeChild(el);
+			}
+		});
+		
 		this.overlay = null;
 		this.selectionBox = null;
 		this.selectionCompleteCallback = null;

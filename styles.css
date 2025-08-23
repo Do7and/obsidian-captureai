@@ -987,6 +987,28 @@ button.btn-transparent-md,
 	font-weight: 500;
 }
 
+/* Include in context checkbox */
+.ai-chat-include-context-checkbox {
+	width: 18px;
+	height: 18px;
+	margin: 3px 6px 3px 0;
+	cursor: pointer;
+	accent-color: var(--interactive-accent);
+	opacity: 0.7;
+	transition: opacity 0.2s ease;
+	/* Align with button center */
+	align-self: center;
+	flex-shrink: 0;
+}
+
+.ai-chat-include-context-checkbox:hover {
+	opacity: 1;
+}
+
+.ai-chat-message:hover .ai-chat-include-context-checkbox {
+	opacity: 1;
+}
+
 .ai-chat-message-content {
 	background: transparent;
 	border: none;
@@ -1008,6 +1030,7 @@ button.btn-transparent-md,
 /* Action buttons - now in header on right */
 .ai-chat-message-actions {
 	display: flex;
+	align-items: center;
 	gap: 2px;
 	opacity: 0.6;
 	transition: opacity 0.2s ease;

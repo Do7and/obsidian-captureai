@@ -451,82 +451,6 @@ export class AIChatView extends ItemView {
 		await this.updateContent();
 	}
 
-	private async sendTextMessage(message: string): Promise<void> {
-		try {
-			// Create or get current conversation
-			let conversation = this.aiManager.getCurrentConversationData();
-			if (!conversation) {
-				// Create a new text-only conversation with temporary title
-				conversation = this.aiManager.createNewConversation('新对话');
-			}
-
-			// Add user message
-			const userMessage = {
-				id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-				type: 'user' as const,
-				content: message,
-				timestamp: new Date()
-			};
-			conversation.messages.push(userMessage);
-			await this.updateContent();
-
-			// Add typing indicator
-			const typingMessage = {
-				id: 'typing_' + Date.now(),
-				type: 'assistant' as const,
-				content: '',
-				timestamp: new Date(),
-				isTyping: true
-			};
-			conversation.messages.push(typingMessage);
-			await this.updateContent();
-
-			// Call AI API for text-only response with context
-			const response = await this.callAIForText(message, conversation);
-
-			// Remove typing indicator and add real response
-			const typingIndex = conversation.messages.findIndex(m => m.id === typingMessage.id);
-			if (typingIndex > -1) {
-				conversation.messages.splice(typingIndex, 1);
-			}
-
-			// Add AI response
-			const assistantMessage = this.createAssistantMessage(response);
-			conversation.messages.push(assistantMessage);
-			
-			await this.updateContent();
-
-		} catch (error) {
-			getLogger().error('Failed to send text message:', error);
-			// Handle error by replacing typing indicator with error message
-			const conversation = this.aiManager.getCurrentConversationData();
-			if (conversation) {
-				const typingIndex = conversation.messages.findIndex(m => m.hasOwnProperty('isTyping'));
-				if (typingIndex > -1) {
-					const typingMsg = conversation.messages[typingIndex];
-					
-					// Create error message to replace typing indicator
-					const errorMessage = this.createAssistantMessage(`❌ Error: ${error.message}`);
-					conversation.messages[typingIndex] = errorMessage; // Replace in conversation
-					
-					// Use MessageRenderManager to replace typing with error message
-					await this.messageRenderer.replaceMessage(typingMsg.id, errorMessage);
-				} else {
-					// If no typing indicator found, add error message normally
-					const errorMessage = this.createAssistantMessage(`❌ Error: ${error.message}`);
-					conversation.messages.push(errorMessage);
-					await this.messageRenderer.appendMessage(errorMessage);
-				}
-			}
-		}
-	}
-
-	private async callAIForText(message: string, conversation: AIConversation): Promise<string> {
-		// Use the new context-aware API for text-only conversations
-		// 智能判断逻辑已经在 buildContextMessages 内部处理，这里不再需要手动传递 includeModeprompt
-		return await this.aiManager.callAIWithContext(conversation, message, undefined, undefined, true);
-	}
-
 	private async renderConversation(container: HTMLElement, conversation: AIConversation): Promise<void> {
 		await this.messageRenderer.renderMessages(container, conversation.messages);
 	}
@@ -1117,23 +1041,85 @@ export class AIChatView extends ItemView {
 				let currentImages: string[] = [];
 				
 				if (!sendOnly) {
-					// Process images for vision-capable models
+					// Debug: Log the current model info
+					getLogger().log(`🔧 Current model debug:`, {
+						modelId: currentModel?.id,
+						modelName: currentModel?.name,
+						isVisionCapable,
+						messageLength: message ? message.length : 0,
+						hasMessage: !!message
+					});
+					
+					// First, process directly uploaded images
 					if (imageDataList.length > 0 && isVisionCapable) {
 						currentImages = imageDataList.map((img: any) => img.dataUrl);
+						getLogger().log(`📸 Processing ${imageDataList.length} directly uploaded images for AI:`, imageDataList.map(img => ({
+							fileName: img.fileName,
+							source: img.source,
+							hasDataUrl: !!img.dataUrl,
+							dataUrlPreview: img.dataUrl?.substring(0, 50) + '...'
+						})));
 					}
 					
-					// Build messages for AI (this includes system prompt, context, mode prompt, current message)
-					// Always build messages for AI responses, whether with images or text-only
+					// Second, check if the text message contains image references (like temp: protocol)
+					// Prepare the message content for AI (separate text from images)
+					let messageForAI = message; // This will be sent to AI (without image markdown)
+					
+					getLogger().log(`🔍 Checking for image references in message: "${message}"`);
+					getLogger().log(`🔍 Conditions: message=${!!message}, isVisionCapable=${isVisionCapable}`);
+					
+					if (message && isVisionCapable) {
+						const imageReferences = this.aiManager.parseImageReferences(message);
+						getLogger().log(`🔍 parseImageReferences returned:`, imageReferences);
+						
+						if (imageReferences.length > 0) {
+							getLogger().log(`📸 Found ${imageReferences.length} image references in text message`);
+							
+							// Extract images and convert to data URLs for AI
+							for (const imgRef of imageReferences) {
+								getLogger().log(`🔍 Processing image reference:`, imgRef);
+								const imageDataUrl = await this.aiManager.resolveImageForAPI(imgRef.path);
+								if (imageDataUrl) {
+									currentImages.push(imageDataUrl);
+									getLogger().log(`✅ Resolved image reference: ${imgRef.path}`);
+								} else {
+									getLogger().warn(`❌ Failed to resolve image reference: ${imgRef.path}`);
+								}
+							}
+							
+							// Remove image markdown from the text that will be sent to AI
+							// (but keep original message intact for user display)
+							messageForAI = message;
+							imageReferences.forEach(imgRef => {
+								const imgMarkdown = `![${imgRef.alt}](${imgRef.path})`;
+								messageForAI = messageForAI.replace(imgMarkdown, '').trim();
+							});
+							// Clean up extra whitespace
+							messageForAI = messageForAI.replace(/\n\s*\n/g, '\n\n').trim();
+							
+							getLogger().log(`🧹 Original message: "${message}"`);
+							getLogger().log(`🧹 Message for AI: "${messageForAI}"`);
+							getLogger().log(`📸 Total images for AI: ${currentImages.length}`);
+						} else {
+							getLogger().log(`ℹ️ No image references found in message`);
+						}
+					} else {
+						getLogger().log(`⚠️ Skipping image reference check because message=${!!message}, isVisionCapable=${isVisionCapable}`);
+					}
+					
+					// Build messages for AI using the cleaned message content
 					messagesToSend = await this.aiManager.buildContextMessages(
 						conversation, 
-						message, 
+						messageForAI, // Use cleaned message for AI
 						currentImages, 
 						currentModel, 
 						true
 					);
+					
+					getLogger().log(`📋 Built ${messagesToSend.length} messages for AI, currentImages count: ${currentImages.length}`);
 				}
 
-				// Create and add user message to conversation
+				// Create and add user message to conversation (using ORIGINAL message with full content for display)
 				const userMessage = await this.createUserMessage(message, imageDataList);
 				conversation.messages.push(userMessage);
 				
@@ -1711,7 +1697,8 @@ export class AIChatView extends ItemView {
 			id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
 			type: 'assistant' as const,
 			content: content,
-			timestamp: new Date()
+			timestamp: new Date(),
+			includeInContext: true // 默认参与上下文构建
 		};
 
 		// AI消息不增加图片引用计数，因为AI只是引用图片，不拥有它们
@@ -1727,7 +1714,8 @@ export class AIChatView extends ItemView {
 			id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
 			type: type,
 			content: content,
-			timestamp: new Date()
+			timestamp: new Date(),
+			includeInContext: true // 默认参与上下文构建
 		};
 
 		return message;
@@ -2900,8 +2888,9 @@ tags:
 		processedConversation.messages.forEach((message, index) => {
 			const messageType = message.type === 'user' ? 'user' : 'ai';
 			
-			// Message header with BestNote format including timestamp
-			markdown += `${messageType}: <!-- ${message.timestamp.toISOString()} -->\n`;
+			// Message header with BestNote format including timestamp and includeInContext info
+			const includeInContextInfo = message.includeInContext !== false ? 'true' : 'false';
+			markdown += `${messageType}: <!-- ${message.timestamp.toISOString()}|includeInContext:${includeInContextInfo} -->\n`;
 			
 			// Add text content first if present
 			if (message.content) {
