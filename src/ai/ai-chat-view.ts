@@ -1135,6 +1135,8 @@ export class AIChatView extends ItemView {
 				if (sendOnly) {
 					// Reset auto-save content tracking
 					this.lastAutoSaveContent = null;
+					// Restart auto-save timer for the conversation with new content
+					this.startAutoSaveTimer();
 					return;
 				}
 
@@ -1169,6 +1171,9 @@ export class AIChatView extends ItemView {
 
 				// Reset auto-save content tracking since conversation content changed
 				this.lastAutoSaveContent = null;
+				
+				// Restart auto-save timer for the conversation with new content
+				this.startAutoSaveTimer();
 
 			} catch (error) {
 				getLogger().error('Failed to send message:', error);
@@ -2291,22 +2296,20 @@ export class AIChatView extends ItemView {
 		// Clear existing timer
 		this.clearAutoSaveTimer();
 		
-		// Only start timer if auto-save is enabled and there's an active conversation
+		// Only start timer if auto-save is enabled
 		if (!this.plugin.settings.autoSaveConversations) {
 			return;
 		}
 		
 		const conversation = this.aiManager.getCurrentConversationData();
-		if (!conversation || conversation.messages.length === 0) {
-			return;
-		}
 		
-		// Set up periodic auto-save
+		// Set up periodic auto-save - start timer even for empty conversations
+		// The actual auto-save will check if there's content to save
 		this.autoSaveTimer = setInterval(() => {
 			this.performPeriodicAutoSave();
 		}, this.autoSaveInterval);
 		
-		getLogger().log('Auto-save timer started for conversation:', conversation.id);
+		getLogger().log('Auto-save timer started for conversation:', conversation?.id || 'new conversation');
 	}
 	
 	private clearAutoSaveTimer(): void {
@@ -2485,7 +2488,7 @@ export class AIChatView extends ItemView {
 
 			// Generate or use existing conversation ID
 			const conversationId = conversation.id.startsWith('loaded_') ? 
-				this.generateConversationId(conversation) : conversation.id;
+				conversation.id.replace('loaded_', '') : conversation.id;
 
 			// Convert temp images to vault files and get processed conversation
 			const processedConversation = await this.convertTempImagesToVaultFiles(conversation);
@@ -2525,7 +2528,12 @@ export class AIChatView extends ItemView {
 			}
 			
 			// 重要：更新内存中的对话数据，将临时图片引用替换为本地文件引用
+			// 同时更新conversation ID（去掉loaded_前缀）
+			processedConversation.id = conversationId;
 			this.aiManager.updateConversationInMemory(conversationId, processedConversation);
+			
+			// 更新当前跟踪的conversation ID用于自动保存
+			this.currentConversationId = conversationId;
 			
 			// 刷新显示以反映更新后的引用
 			await this.updateContent();
@@ -2846,7 +2854,7 @@ export class AIChatView extends ItemView {
 	private async generateConversationMarkdown(conversation: AIConversation, mode: 'auto' | 'manual' = 'auto', updateTimestamp: boolean = true): Promise<string> {
 		// Generate or use existing conversation ID
 		const conversationId = conversation.id.startsWith('loaded_') ? 
-			this.generateConversationId(conversation) : conversation.id;
+			conversation.id.replace('loaded_', '') : conversation.id;
 		
 		// Process conversation based on mode
 		let processedConversation = conversation;
@@ -3061,6 +3069,10 @@ tags:
 				newConversation.createdAt = conversation.createdAt;
 			}
 			
+			// Set the conversation ID to match the original loaded conversation
+			// This ensures proper file saving and updating
+			newConversation.id = conversation.id;
+			
 			// Preserve the lastModeUsed field for compatibility with smart mode logic
 			if (conversation.lastModeUsed !== undefined) {
 				newConversation.lastModeUsed = conversation.lastModeUsed;
@@ -3076,7 +3088,8 @@ tags:
 					id: 'loaded_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
 					type: message.type,
 					content: content,
-					timestamp: message.timestamp // Preserve original timestamp
+					timestamp: message.timestamp, // Preserve original timestamp
+					includeInContext: message.includeInContext // Preserve includeInContext setting
 					// 移除 tempImages 字段，现在由 ImageReferenceManager 统一管理
 				};
 				

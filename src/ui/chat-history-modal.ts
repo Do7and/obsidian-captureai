@@ -177,9 +177,10 @@ export class ChatHistoryModal extends Modal {
 
 	private async parseConversationFromMarkdown(content: string, filename: string): Promise<AIConversation | null> {
 		try {
-			// Create a new conversation object
+			// Create a new conversation object with temporary ID
+			// If we find conversationID in YAML, we'll replace this
 			const conversation: AIConversation = {
-				id: 'loaded_' + Date.now(),
+				id: 'temp_' + Date.now(),
 				title: filename.replace(/\.(md|txt)$/, ''),
 				messages: [],
 				createdAt: new Date(),
@@ -235,6 +236,12 @@ export class ChatHistoryModal extends Modal {
 				await this.parseLegacyFormat(content, conversation);
 			}
 
+			// If no conversationID was found in YAML, add loaded_ prefix
+			// This indicates it's a manually created markdown file without our metadata
+			if (conversation.id.startsWith('temp_')) {
+				conversation.id = 'loaded_' + Date.now();
+			}
+
 			return conversation.messages.length > 0 ? conversation : null;
 
 		} catch (error: any) {
@@ -287,7 +294,7 @@ export class ChatHistoryModal extends Modal {
 			const line = lines[i];
 			
 			// Check if this line starts a new message with timestamp in comment
-			const messageWithTimestampMatch = line.match(/^(user|ai):\s*<!--\s*(.*?)\s*-->\s*(.*)?$/);
+			const messageWithTimestampMatch = line.match(/^(user|ai):\s*<!--\s*(.*?)\s*-->(.*)$/);
 			if (messageWithTimestampMatch) {
 				// Save previous message if exists
 				if (currentMessage) {
