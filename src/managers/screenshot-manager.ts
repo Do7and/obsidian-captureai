@@ -313,8 +313,10 @@ export class ScreenshotManager {
 
 	private handleMouseDown(e: MouseEvent, mouseIndicator?: HTMLElement, coordDisplay?: HTMLElement) {
 		this.isSelecting = true;
-		this.startX = e.clientX;
-		this.startY = e.clientY;
+		
+		// Use direct screen coordinates - much simpler and more reliable
+		this.startX = e.screenX;
+		this.startY = e.screenY;
 		
 		// 隐藏全局滤镜，显示选择框滤镜
 		if (this.overlay) {
@@ -323,8 +325,9 @@ export class ScreenshotManager {
 		
 		if (this.selectionBox) {
 			this.selectionBox.style.display = 'block';
-			this.selectionBox.style.left = this.startX + 'px';
-			this.selectionBox.style.top = this.startY + 'px';
+			// Position selection box using client coordinates for visual display
+			this.selectionBox.style.left = e.clientX + 'px';
+			this.selectionBox.style.top = e.clientY + 'px';
 			this.selectionBox.style.width = '0px';
 			this.selectionBox.style.height = '0px';
 		}
@@ -336,37 +339,48 @@ export class ScreenshotManager {
 	}
 
 	private handleMouseMove(e: MouseEvent, mouseIndicator?: HTMLElement, coordDisplay?: HTMLElement) {
-		// Update crosshair position if not selecting
+		// Update crosshair position if not selecting (use client coordinates for visual display)
 		if (!this.isSelecting && mouseIndicator) {
 			mouseIndicator.style.left = e.clientX + 'px';
 			
 			if (coordDisplay) {
 				coordDisplay.style.left = (e.clientX + 10) + 'px';
 				coordDisplay.style.top = (e.clientY - 30) + 'px';
-				coordDisplay.textContent = `${e.clientX}, ${e.clientY}`;
+				// Show screen coordinates in display for debugging
+				coordDisplay.textContent = `Screen: ${e.screenX}, ${e.screenY}`;
 			}
 		}
 		
 		// Handle selection box during dragging
 		if (!this.isSelecting || !this.selectionBox) return;
 		
-		const width = e.clientX - this.startX;
-		const height = e.clientY - this.startY;
+		// Calculate visual selection box using client coordinates
+		const clientWidth = e.clientX - (this.selectionBox.style.left ? parseInt(this.selectionBox.style.left.replace('px', '')) : 0);
+		const clientHeight = e.clientY - (this.selectionBox.style.top ? parseInt(this.selectionBox.style.top.replace('px', '')) : 0);
 		
-		this.selectionBox.style.left = (width < 0 ? e.clientX : this.startX) + 'px';
-		this.selectionBox.style.top = (height < 0 ? e.clientY : this.startY) + 'px';
+		// Get the starting client position from the selection box
+		const startClientX = parseInt(this.selectionBox.style.left.replace('px', ''));
+		const startClientY = parseInt(this.selectionBox.style.top.replace('px', ''));
+		
+		const width = e.clientX - startClientX;
+		const height = e.clientY - startClientY;
+		
+		// Update visual selection box position using client coordinates
+		this.selectionBox.style.left = (width < 0 ? e.clientX : startClientX) + 'px';
+		this.selectionBox.style.top = (height < 0 ? e.clientY : startClientY) + 'px';
 		this.selectionBox.style.width = Math.abs(width) + 'px';
 		this.selectionBox.style.height = Math.abs(height) + 'px';
 		
 		// Update coordinate display during selection
 		if (coordDisplay) {
-			const left = parseInt(this.selectionBox.style.left);
-			const top = parseInt(this.selectionBox.style.top);
-			const w = parseInt(this.selectionBox.style.width);
-			const h = parseInt(this.selectionBox.style.height);
+			const currentScreenX = e.screenX;
+			const currentScreenY = e.screenY;
+			const screenWidth = Math.abs(currentScreenX - this.startX);
+			const screenHeight = Math.abs(currentScreenY - this.startY);
 			coordDisplay.style.left = (e.clientX + 10) + 'px';
 			coordDisplay.style.top = (e.clientY - 30) + 'px';
-			coordDisplay.textContent = `${left},${top} ${w}×${h}`;
+			// Show both screen coordinates and dimensions
+			coordDisplay.textContent = `Screen: ${Math.min(this.startX, currentScreenX)}, ${Math.min(this.startY, currentScreenY)} ${screenWidth}×${screenHeight}`;
 		}
 	}
 
@@ -374,13 +388,20 @@ export class ScreenshotManager {
 		if (!this.isSelecting) return;
 		this.isSelecting = false;
 		
-		if (this.selectionBox && this.selectionCompleteCallback) {
+		if (this.selectionCompleteCallback) {
+			// Use screen coordinates for the final region calculation
+			const currentScreenX = e.screenX;
+			const currentScreenY = e.screenY;
+			
+			// Calculate screen-based region
 			const rect: Region = {
-				x: parseInt(this.selectionBox.style.left),
-				y: parseInt(this.selectionBox.style.top),
-				width: parseInt(this.selectionBox.style.width),
-				height: parseInt(this.selectionBox.style.height)
+				x: Math.min(this.startX, currentScreenX),
+				y: Math.min(this.startY, currentScreenY),
+				width: Math.abs(currentScreenX - this.startX),
+				height: Math.abs(currentScreenY - this.startY)
 			};
+			
+			getLogger().log('🔍 Final screen-based selection region:', rect);
 			
 			if (rect.width > 10 && rect.height > 10) {
 				this.selectionCompleteCallback(rect);
@@ -602,28 +623,40 @@ export class ScreenshotManager {
 				const extensionX = Math.floor(region.width * extensionFactor);
 				const extensionY = Math.floor(region.height * extensionFactor);
 				
+				// Calculate scale factors (screenshot should match screen resolution)
+				const scaleX = img.width / screen.width;
+				const scaleY = img.height / screen.height;
+				
+				// Apply scaling to screen coordinates
+				const scaledX = region.x * scaleX;
+				const scaledY = region.y * scaleY;
+				const scaledWidth = region.width * scaleX;
+				const scaledHeight = region.height * scaleY;
+				const scaledExtensionX = extensionX * scaleX;
+				const scaledExtensionY = extensionY * scaleY;
+				
 				const extendedRegion = {
-					x: Math.max(0, region.x - extensionX),
-					y: Math.max(0, region.y - extensionY),
-					width: Math.min(img.width - Math.max(0, region.x - extensionX), region.width + extensionX * 2),
-					height: Math.min(img.height - Math.max(0, region.y - extensionY), region.height + extensionY * 2)
+					x: Math.max(0, scaledX - scaledExtensionX),
+					y: Math.max(0, scaledY - scaledExtensionY),
+					width: Math.min(img.width - Math.max(0, scaledX - scaledExtensionX), scaledWidth + scaledExtensionX * 2),
+					height: Math.min(img.height - Math.max(0, scaledY - scaledExtensionY), scaledHeight + scaledExtensionY * 2)
 				};
 				
 				// Adjust if extended region would go beyond screen bounds
-				if (region.x - extensionX < 0) {
-					extendedRegion.width = region.width + extensionX + region.x;
+				if (scaledX - scaledExtensionX < 0) {
+					extendedRegion.width = scaledWidth + scaledExtensionX + scaledX;
 				}
-				if (region.y - extensionY < 0) {
-					extendedRegion.height = region.height + extensionY + region.y;
+				if (scaledY - scaledExtensionY < 0) {
+					extendedRegion.height = scaledHeight + scaledExtensionY + scaledY;
 				}
-				if (region.x + region.width + extensionX > img.width) {
+				if (scaledX + scaledWidth + scaledExtensionX > img.width) {
 					extendedRegion.width = img.width - extendedRegion.x;
 				}
-				if (region.y + region.height + extensionY > img.height) {
+				if (scaledY + scaledHeight + scaledExtensionY > img.height) {
 					extendedRegion.height = img.height - extendedRegion.y;
 				}
 				
-				getLogger().log('🔍 Extended region:', extendedRegion);
+				getLogger().log('🔍 Extended region (scaled):', extendedRegion);
 				
 				const canvas = document.createElement('canvas');
 				const ctx = canvas.getContext('2d')!;
@@ -631,39 +664,10 @@ export class ScreenshotManager {
 				canvas.width = extendedRegion.width;
 				canvas.height = extendedRegion.height;
 				
-				// Convert region coordinates from browser to screen space
-				const windowX = window.screenX || window.screenLeft || 0;
-				const windowY = window.screenY || window.screenTop || 0;
-				
-				const isFullscreen = window.outerWidth >= screen.width * 0.95 && 
-								   window.outerHeight >= screen.height * 0.95;
-				const isMaximized = window.outerWidth === screen.width && 
-								  (window.outerHeight === screen.height || window.outerHeight === screen.height - 48);
-				
-				let screenX, screenY;
-				
-				if (isFullscreen || isMaximized) {
-					const hasVisibleUI = window.innerHeight < window.outerHeight - 10;
-					if (hasVisibleUI) {
-						const titleBarHeight = window.outerHeight - window.innerHeight;
-						screenX = extendedRegion.x;
-						screenY = extendedRegion.y + titleBarHeight;
-					} else {
-						screenX = extendedRegion.x;
-						screenY = extendedRegion.y;
-					}
-				} else {
-					screenX = windowX + extendedRegion.x;
-					screenY = windowY + extendedRegion.y + (window.outerHeight - window.innerHeight);
-				}
-				
-				getLogger().log('🔍 Final screen coordinates for extended crop:', { x: screenX, y: screenY });
-				getLogger().log('🔍 Extended crop dimensions:', { width: extendedRegion.width, height: extendedRegion.height });
-				
-				// Draw the extended crop
+				// Draw the extended crop directly using scaled coordinates
 				ctx.drawImage(
 					img,
-					screenX, screenY, extendedRegion.width, extendedRegion.height,
+					extendedRegion.x, extendedRegion.y, extendedRegion.width, extendedRegion.height,
 					0, 0, extendedRegion.width, extendedRegion.height
 				);
 				
@@ -680,99 +684,23 @@ export class ScreenshotManager {
 		return new Promise((resolve) => {
 			const img = new Image();
 			img.onload = () => {
-				getLogger().log('🔍 Starting image crop process...');
-				getLogger().log('🔍 Original region (browser coordinates):', region);
+				getLogger().log('🔍 Starting image crop process with direct screen coordinates...');
+				getLogger().log('🔍 Screen-based region:', region);
 				getLogger().log('🔍 Screenshot dimensions:', { width: img.width, height: img.height });
 				
-				// Get window position and dimensions
-				const windowX = window.screenX || window.screenLeft || 0;
-				const windowY = window.screenY || window.screenTop || 0;
-				
-				getLogger().log('🔍 Browser window position:', { x: windowX, y: windowY });
-				getLogger().log('🔍 Browser window inner size:', { 
-					width: window.innerWidth, 
-					height: window.innerHeight 
-				});
-				getLogger().log('🔍 Browser window outer size:', { 
-					width: window.outerWidth, 
-					height: window.outerHeight 
-				});
-				getLogger().log('🔍 Screen dimensions:', { 
-					width: screen.width, 
-					height: screen.height 
-				});
-				
-				// Check if we're in fullscreen mode - improved detection
-				const isFullscreen = window.outerWidth >= screen.width * 0.95 && 
-								   window.outerHeight >= screen.height * 0.95;
-				const isMaximized = window.outerWidth === screen.width && 
-								  (window.outerHeight === screen.height || window.outerHeight === screen.height - 48); // Account for taskbar
-				
-				getLogger().log('🔍 Window state detection:', {
-					isFullscreen,
-					isMaximized,
-					windowSize: { w: window.outerWidth, h: window.outerHeight },
-					screenSize: { w: screen.width, h: screen.height },
-					coverage: { 
-						w: (window.outerWidth / screen.width * 100).toFixed(1) + '%',
-						h: (window.outerHeight / screen.height * 100).toFixed(1) + '%'
-					}
-				});
-				
-				let screenX, screenY;
-				
-				if (isFullscreen || isMaximized) {
-					// In fullscreen or maximized, coordinates need minimal adjustment
-					// Check if there are any browser UI elements affecting the coordinate system
-					const hasVisibleUI = window.innerHeight < window.outerHeight - 10; // More than 10px difference suggests UI
-					
-					if (hasVisibleUI) {
-						// Account for any visible browser UI
-						const uiOffset = window.outerHeight - window.innerHeight;
-						screenX = region.x + windowX;
-						screenY = region.y + windowY + uiOffset;
-						getLogger().log('🔍 Fullscreen/Maximized with UI offset:', uiOffset);
-					} else {
-						// True fullscreen - direct mapping
-						screenX = region.x + windowX;
-						screenY = region.y + windowY;
-						getLogger().log('🔍 True fullscreen: direct coordinate mapping');
-					}
-				} else {
-					// In windowed mode, calculate browser chrome offsets
-					const titleBarHeight = window.outerHeight - window.innerHeight;
-					const sidebarWidth = (window.outerWidth - window.innerWidth) / 2;
-					
-					getLogger().log('🔍 Window chrome offsets:', { 
-						titleBarHeight, 
-						sidebarWidth 
-					});
-					
-					// Convert browser coordinates to screen coordinates
-					screenX = windowX + sidebarWidth + region.x;
-					screenY = windowY + titleBarHeight + region.y;
-				}
-				
-				getLogger().log('🔍 Converted to screen coordinates:', { 
-					x: screenX, 
-					y: screenY, 
-					width: region.width, 
-					height: region.height 
-				});
-				
-				// Calculate scale factors (screenshot should match screen resolution now)
+				// Calculate scale factors (screenshot should match screen resolution)
 				const scaleX = img.width / screen.width;
 				const scaleY = img.height / screen.height;
 				
 				getLogger().log('🔍 Scale factors:', { scaleX, scaleY });
 				
-				// Apply scaling to get final crop coordinates
-				const finalX = screenX * scaleX;
-				const finalY = screenY * scaleY;
+				// Apply scaling to get final crop coordinates - region is already in screen coordinates
+				const finalX = region.x * scaleX;
+				const finalY = region.y * scaleY;
 				const finalWidth = region.width * scaleX;
 				const finalHeight = region.height * scaleY;
 				
-				getLogger().log('🔍 Final crop coordinates:', { 
+				getLogger().log('🔍 Final crop coordinates (after scaling):', { 
 					x: finalX, 
 					y: finalY, 
 					width: finalWidth, 
@@ -809,7 +737,7 @@ export class ScreenshotManager {
 						0, 0, clampedWidth, clampedHeight  // Destination rectangle (full size)
 					);
 					
-					getLogger().log('✅ Image cropped successfully at full resolution');
+					getLogger().log('✅ Image cropped successfully using direct screen coordinates');
 				}
 				
 				resolve(canvas.toDataURL('image/png'));

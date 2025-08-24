@@ -89,6 +89,9 @@ export class ImageEditor extends Modal {
 	private fullScreenshotSize = { width: 0, height: 0 };
 	private fullScreenshotImage: HTMLImageElement | null = null;
 	
+	// Display scaling factor - ratio between canvas logical coordinates and display coordinates
+	private displayScale = 1; // How much the canvas is scaled down for display
+	
 	// Edit layer - stores all drawing operations in full screenshot coordinates
 	private editLayerCanvas: HTMLCanvasElement | null = null;
 	private editLayerCtx: CanvasRenderingContext2D | null = null;
@@ -998,6 +1001,12 @@ export class ImageEditor extends Modal {
 						
 						finalDisplayWidth = Math.floor(displayWidth * scale);
 						finalDisplayHeight = Math.floor(displayHeight * scale);
+						
+						// Store the display scale for coordinate conversion
+						this.displayScale = scale;
+					} else {
+						// No scaling needed
+						this.displayScale = 1;
 					}
 					
 					getLogger().log('Four-layer display calculation:', {
@@ -1199,21 +1208,25 @@ export class ImageEditor extends Modal {
 			const deltaX = e.clientX - this.cropResizeStart.x;
 			const deltaY = e.clientY - this.cropResizeStart.y;
 			
+			// Convert screen pixel deltas to canvas logical coordinates using display scale
+			const scaledDeltaX = deltaX / this.displayScale;
+			const scaledDeltaY = deltaY / this.displayScale;
+			
 			// Apply resize based on handle
 			switch (this.resizeHandle) {
 				case 'left':
-					this.cropRect.x = this.originalCropRect.x + deltaX;
-					this.cropRect.width = this.originalCropRect.width - deltaX;
+					this.cropRect.x = this.originalCropRect.x + scaledDeltaX;
+					this.cropRect.width = this.originalCropRect.width - scaledDeltaX;
 					break;
 				case 'right':
-					this.cropRect.width = this.originalCropRect.width + deltaX;
+					this.cropRect.width = this.originalCropRect.width + scaledDeltaX;
 					break;
 				case 'top':
-					this.cropRect.y = this.originalCropRect.y + deltaY;
-					this.cropRect.height = this.originalCropRect.height - deltaY;
+					this.cropRect.y = this.originalCropRect.y + scaledDeltaY;
+					this.cropRect.height = this.originalCropRect.height - scaledDeltaY;
 					break;
 				case 'bottom':
-					this.cropRect.height = this.originalCropRect.height + deltaY;
+					this.cropRect.height = this.originalCropRect.height + scaledDeltaY;
 					break;
 			}
 			
@@ -1548,8 +1561,12 @@ export class ImageEditor extends Modal {
 			const deltaX = e.clientX - this.layersDragStart.x;
 			const deltaY = e.clientY - this.layersDragStart.y;
 			
-			this.layersOffset.x = this.layersStartOffset.x + deltaX;
-			this.layersOffset.y = this.layersStartOffset.y + deltaY;
+			// Convert screen pixel deltas to canvas logical coordinates using display scale
+			const scaledDeltaX = deltaX / this.displayScale;
+			const scaledDeltaY = deltaY / this.displayScale;
+			
+			this.layersOffset.x = this.layersStartOffset.x + scaledDeltaX;
+			this.layersOffset.y = this.layersStartOffset.y + scaledDeltaY;
 			
 			// Re-render all layers with new offset
 			this.renderAllLayers();
