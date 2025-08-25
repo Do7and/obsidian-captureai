@@ -2254,41 +2254,31 @@ export class ImageEditor extends Modal {
 	}
 	
 	private canvasToZoomedCoords(canvasX: number, canvasY: number): { x: number, y: number } {
-		// Apply inverse zoom and viewport transformations to get logical coordinates
+		// Use the same method as crop frame detection - apply the exact transform and invert
+		if (!this.ctx) return { x: canvasX, y: canvasY };
+		
 		const canvasCenterX = (this.canvas?.width || 0) / 2;
 		const canvasCenterY = (this.canvas?.height || 0) / 2;
-		
-		// 修正后的变换序列：
-		// 1. translate(viewportOffset.x, viewportOffset.y)
-		// 2. translate(visualCenterX, visualCenterY) where visualCenter = canvasCenter + viewportOffset  
-		// 3. scale(userZoom, userZoom)
-		// 4. translate(-visualCenterX, -visualCenterY)
-		
-		// Calculate the visual center used in rendering
-		const visualCenterX = canvasCenterX + this.viewportOffset.x;  // 修正：加号
+		const visualCenterX = canvasCenterX + this.viewportOffset.x;
 		const visualCenterY = canvasCenterY + this.viewportOffset.y;
 		
-		// To reverse, we undo in OPPOSITE order:
-		let x = canvasX;
-		let y = canvasY;
+		// Apply the same transform as in rendering
+		this.ctx.save();
+		this.ctx.translate(this.viewportOffset.x, this.viewportOffset.y);
+		this.ctx.translate(visualCenterX, visualCenterY);
+		this.ctx.scale(this.userZoom, this.userZoom);
+		this.ctx.translate(-visualCenterX, -visualCenterY);
 		
-		// Undo step 4: translate(-visualCenter) → add visual center back
-		x = x + visualCenterX;
-		y = y + visualCenterY;
+		// Get the inverse transform matrix
+		const transform = this.ctx.getTransform();
+		const inverse = transform.inverse();
 		
-		// Undo step 3: scale(zoom) → divide by zoom
-		x = x / this.userZoom;
-		y = y / this.userZoom;
+		// Apply inverse transform to get the logical coordinates
+		const logicalPoint = inverse.transformPoint(new DOMPoint(canvasX, canvasY));
 		
-		// Undo step 2: translate(visualCenter) → subtract visual center
-		x = x - visualCenterX;
-		y = y - visualCenterY;
+		this.ctx.restore();
 		
-		// Undo step 1: translate(viewportOffset) → subtract viewport offset
-		x = x - this.viewportOffset.x;
-		y = y - this.viewportOffset.y;
-		
-		return { x, y };
+		return { x: logicalPoint.x, y: logicalPoint.y };
 	}
 	
 	// Special coordinate transformation for crop frame detection (ignores viewport offset)
