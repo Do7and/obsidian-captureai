@@ -374,3 +374,16 @@ export interface StrokeSetting {
 	size: StrokeSize;
 	width: number;
 }
+
+// Stroke object for zoom-aware rendering
+export interface Stroke {
+	id: string;
+	tool: string;
+	points: {x: number, y: number}[];
+	color: string;
+	thickness: number;
+	strokeSize: StrokeSize;
+	isHighlighter: boolean;
+	userZoom: number; // Zoom level when this stroke was drawn
+	timestamp: number;
+}

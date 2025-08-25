@@ -50,6 +50,8 @@ export class ImageEditor extends Modal {
 	private toolbarElements = new WeakMap<HTMLElement, {
 		colorPicker?: HTMLInputElement;
 		strokeSizeContainer?: HTMLElement;
+		zoomSlider?: HTMLInputElement;
+		zoomDisplay?: HTMLElement;
 	}>();
 	
 	private buttonProperties = new WeakMap<HTMLButtonElement, {
@@ -92,6 +94,15 @@ export class ImageEditor extends Modal {
 	// Display scaling factor - ratio between canvas logical coordinates and display coordinates
 	private displayScale = 1; // How much the canvas is scaled down for display
 	
+	// User zoom control (0.25x - 4x)
+	private userZoom = 1; // User-controlled zoom level  
+	private viewportOffset = { x: 0, y: 0 }; // Viewport pan offset
+	
+	// Viewport dragging (what the viewport-pan tool moves)
+	private isDraggingViewport = false;
+	private viewportDragStart = { x: 0, y: 0 };
+	private viewportStartOffset = { x: 0, y: 0 };
+	
 	// Edit layer - stores all drawing operations in full screenshot coordinates
 	private editLayerCanvas: HTMLCanvasElement | null = null;
 	private editLayerCtx: CanvasRenderingContext2D | null = null;
@@ -127,6 +138,10 @@ export class ImageEditor extends Modal {
 		this.originalImageData = imageUrl;
 		this.region = region;
 		this.extendedRegion = extendedRegion || null;
+		
+		// Reset zoom and viewport for each new screenshot
+		this.userZoom = 1;
+		this.viewportOffset = { x: 0, y: 0 };
 		
 		// Store original full screenshot for four-layer architecture
 		this.originalFullScreenshot = originalFullScreenshot || imageUrl;
@@ -327,7 +342,8 @@ export class ImageEditor extends Modal {
 			{ name: 'rectangle', icon: 'square', cursor: 'crosshair' },
 			{ name: 'ellipse', icon: 'circle', cursor: 'crosshair' },
 			{ name: 'arrow', icon: 'move-up-right', cursor: 'crosshair' },
-			{ name: 'hand', icon: 'move', cursor: 'crosshair' }
+			{ name: 'hand', icon: 'move', cursor: 'crosshair' },
+			{ name: 'viewport-pan', icon: 'navigation', cursor: 'grab' }
 		];
 		
 		// Tool names for tooltips
@@ -341,7 +357,8 @@ export class ImageEditor extends Modal {
 			'rectangle': t('imageEditor.rectangleTool'),
 			'ellipse': t('imageEditor.circleTool'),
 			'arrow': t('imageEditor.arrowTool'),
-			'hand': t('imageEditor.handTool')
+			'hand': t('imageEditor.handTool'),
+			'viewport-pan': 'Viewport Pan' // TODO: Add to i18n
 		};
 		
 		tools.forEach(tool => {
@@ -392,6 +409,12 @@ export class ImageEditor extends Modal {
 		
 		// Separator
 		const separator1 = toolbar.createEl('div', { cls: 'image-editor-separator' });
+		
+		// Zoom control
+		this.createZoomControls(toolbar);
+		
+		// Another separator
+		const separator1_5 = toolbar.createEl('div', { cls: 'image-editor-separator' });
 		
 		// Note: Crop frame is automatically shown for extended regions
 		
@@ -1035,6 +1058,27 @@ export class ImageEditor extends Modal {
 		// Clear the main canvas (viewport)
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 		
+		// Save canvas state before applying zoom transformations
+		this.ctx.save();
+		
+		// 正确的视觉中心计算：
+		// viewportOffset表示画面移动的方向和距离
+		// 如果画面向右移动，那么视觉中心也向右移动
+		const canvasCenterX = this.canvas.width / 2;
+		const canvasCenterY = this.canvas.height / 2;
+		
+		const visualCenterX = canvasCenterX + this.viewportOffset.x;  // 修正：应该是加号
+		const visualCenterY = canvasCenterY + this.viewportOffset.y;
+		
+		// Apply transformations:
+		// 1. First apply viewport offset
+		this.ctx.translate(this.viewportOffset.x, this.viewportOffset.y);
+		
+		// 2. Then zoom around the visual center
+		this.ctx.translate(visualCenterX, visualCenterY);
+		this.ctx.scale(this.userZoom, this.userZoom);
+		this.ctx.translate(-visualCenterX, -visualCenterY);
+		
 		// Layer 4: Full screenshot background (with offset)
 		this.renderBackgroundLayer();
 		
@@ -1044,7 +1088,10 @@ export class ImageEditor extends Modal {
 		// Layer 3: Edit layer (with same offset as background)
 		this.renderEditLayer();
 		
-		// Layer 2: Semi-transparent mask with transparent crop area
+		// Restore state to undo zoom transformations before drawing mask
+		this.ctx.restore();
+		
+		// Layer 2: Semi-transparent mask with transparent crop area (drawn with zoom)
 		this.renderSemiTransparentMask();
 		
 		// Layer 1: Preview page hole is handled by the UI structure
@@ -1097,8 +1144,33 @@ export class ImageEditor extends Modal {
 	private renderSemiTransparentMask() {
 		if (!this.canvas || !this.ctx || !this.cropModeActive) return;
 		
-		// Save current state
+		// Save current state  
 		this.ctx.save();
+		
+		// 首先计算出正确的截取框显示位置（和边缘检测一致的位置）
+		const canvasCenterX = this.canvas.width / 2;
+		const canvasCenterY = this.canvas.height / 2;
+		const visualCenterX = canvasCenterX + this.viewportOffset.x;
+		const visualCenterY = canvasCenterY + this.viewportOffset.y;
+		
+		// 临时应用变换计算正确位置
+		this.ctx.translate(this.viewportOffset.x, this.viewportOffset.y);
+		this.ctx.translate(visualCenterX, visualCenterY);
+		this.ctx.scale(this.userZoom, this.userZoom);
+		this.ctx.translate(-visualCenterX, -visualCenterY);
+		
+		const correctTopLeft = this.ctx.getTransform().transformPoint(new DOMPoint(this.cropRect.x, this.cropRect.y));
+		const correctBottomRight = this.ctx.getTransform().transformPoint(new DOMPoint(this.cropRect.x + this.cropRect.width, this.cropRect.y + this.cropRect.height));
+		
+		// 恢复状态，准备正常绘制
+		this.ctx.restore();
+		this.ctx.save();
+		
+		// 现在使用计算出的正确位置绘制
+		const correctX = correctTopLeft.x;
+		const correctY = correctTopLeft.y;
+		const correctWidth = correctBottomRight.x - correctTopLeft.x;
+		const correctHeight = correctBottomRight.y - correctTopLeft.y;
 		
 		// Set global composite operation to draw semi-transparent overlay
 		this.ctx.globalCompositeOperation = 'source-over';
@@ -1106,28 +1178,36 @@ export class ImageEditor extends Modal {
 		// Draw semi-transparent overlay outside the crop area
 		this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
 		
-		// Draw overlay in 4 rectangles around the crop area
-		// Top rectangle
-		this.ctx.fillRect(0, 0, this.canvas.width, this.cropRect.y);
-		// Bottom rectangle  
-		this.ctx.fillRect(0, this.cropRect.y + this.cropRect.height, this.canvas.width, this.canvas.height - (this.cropRect.y + this.cropRect.height));
-		// Left rectangle
-		this.ctx.fillRect(0, this.cropRect.y, this.cropRect.x, this.cropRect.height);
-		// Right rectangle
-		this.ctx.fillRect(this.cropRect.x + this.cropRect.width, this.cropRect.y, this.canvas.width - (this.cropRect.x + this.cropRect.width), this.cropRect.height);
+		// Calculate much larger bounds to ensure full coverage
+		const largeBounds = Math.max(this.canvas.width, this.canvas.height) * 2;
+		const maskLeft = -largeBounds;
+		const maskTop = -largeBounds;
+		const maskRight = this.canvas.width + largeBounds;
+		const maskBottom = this.canvas.height + largeBounds;
 		
-		// Draw crop frame border
+		// Draw overlay in 4 large rectangles around the CORRECT crop area
+		// Top rectangle
+		this.ctx.fillRect(maskLeft, maskTop, maskRight - maskLeft, Math.max(0, correctY - maskTop));
+		
+		// Bottom rectangle
+		this.ctx.fillRect(maskLeft, correctY + correctHeight, 
+			maskRight - maskLeft, maskBottom - (correctY + correctHeight));
+		
+		// Left rectangle 
+		this.ctx.fillRect(maskLeft, correctY, 
+			Math.max(0, correctX - maskLeft), correctHeight);
+		
+		// Right rectangle
+		this.ctx.fillRect(correctX + correctWidth, correctY, 
+			maskRight - (correctX + correctWidth), correctHeight);
+		
+		// Draw crop frame border (白色) - 使用正确计算的位置
 		this.ctx.strokeStyle = '#ffffff';
 		this.ctx.lineWidth = 2;
 		this.ctx.setLineDash([]);
-		this.ctx.strokeRect(this.cropRect.x, this.cropRect.y, this.cropRect.width, this.cropRect.height);
+		this.ctx.strokeRect(correctX, correctY, correctWidth, correctHeight);
 		
-		// Draw inner border for better visibility
-		this.ctx.strokeStyle = '#000000';
-		this.ctx.lineWidth = 1;
-		this.ctx.strokeRect(this.cropRect.x + 1, this.cropRect.y + 1, this.cropRect.width - 2, this.cropRect.height - 2);
-		
-		// Restore state
+		// Restore canvas state
 		this.ctx.restore();
 	}
 
@@ -1147,13 +1227,13 @@ export class ImageEditor extends Modal {
 	private handleCanvasMouseDown(e: MouseEvent) {
 		if (!this.canvas) return;
 		
-		const rect = this.canvas.getBoundingClientRect();
-		const canvasX = (e.clientX - rect.left) * (this.canvas.width / rect.width);
-		const canvasY = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+		// Get screen to canvas coordinates (same as used for rendering)
+		const canvasCoords = this.screenToCanvasCoords(e.clientX, e.clientY);
 		
 		// Priority 1: Check for crop frame resizing (only in crop mode)
+		// Use the same coordinate system as crop frame rendering
 		if (this.cropModeActive) {
-			const resizeHandle = this.getCropResizeHandle(canvasX, canvasY);
+			const resizeHandle = this.getCropResizeHandle(canvasCoords.x, canvasCoords.y);
 			if (resizeHandle) {
 				this.isResizingCrop = true;
 				this.resizeHandle = resizeHandle;
@@ -1171,9 +1251,18 @@ export class ImageEditor extends Modal {
 			return;
 		}
 		
-		// Priority 3: Drawing tools - convert to full screenshot coordinates
-		const fullScreenshotX = canvasX - this.layersOffset.x;
-		const fullScreenshotY = canvasY - this.layersOffset.y;
+		// Priority 2.5: Viewport pan tool for viewport dragging
+		if (this.currentTool === 'viewport-pan') {
+			this.isDraggingViewport = true;
+			this.viewportDragStart = { x: e.clientX, y: e.clientY };
+			this.viewportStartOffset = { ...this.viewportOffset };
+			return;
+		}
+		
+		// Priority 3: Drawing tools - need proper coordinate transformation for accuracy
+		const zoomedCoords = this.canvasToZoomedCoords(canvasCoords.x, canvasCoords.y);
+		const fullScreenshotX = zoomedCoords.x - this.layersOffset.x;
+		const fullScreenshotY = zoomedCoords.y - this.layersOffset.y;
 		
 		// Check if drawing within full screenshot bounds
 		if (fullScreenshotX >= 0 && fullScreenshotX <= this.fullScreenshotSize.width &&
@@ -1199,34 +1288,39 @@ export class ImageEditor extends Modal {
 	private handleCanvasMouseMove(e: MouseEvent) {
 		if (!this.canvas) return;
 		
-		const rect = this.canvas.getBoundingClientRect();
-		const canvasX = (e.clientX - rect.left) * (this.canvas.width / rect.width);
-		const canvasY = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+		// Get screen to canvas coordinates (same as used for rendering)
+		const canvasCoords = this.screenToCanvasCoords(e.clientX, e.clientY);
 		
 		// Handle crop frame resizing
 		if (this.isResizingCrop && this.resizeHandle) {
 			const deltaX = e.clientX - this.cropResizeStart.x;
 			const deltaY = e.clientY - this.cropResizeStart.y;
 			
-			// Convert screen pixel deltas to canvas logical coordinates using display scale
-			const scaledDeltaX = deltaX / this.displayScale;
-			const scaledDeltaY = deltaY / this.displayScale;
+			// Convert screen delta to canvas delta
+			const canvasDeltaX = deltaX / this.displayScale;
+			const canvasDeltaY = deltaY / this.displayScale;
+			
+			// Since the crop frame is transformed by zoom, we need to inverse the delta
+			// to get the equivalent change in original crop frame coordinates
+			// If visual movement = original movement * zoom, then original movement = visual movement / zoom
+			const originalDeltaX = canvasDeltaX / this.userZoom;
+			const originalDeltaY = canvasDeltaY / this.userZoom;
 			
 			// Apply resize based on handle
 			switch (this.resizeHandle) {
 				case 'left':
-					this.cropRect.x = this.originalCropRect.x + scaledDeltaX;
-					this.cropRect.width = this.originalCropRect.width - scaledDeltaX;
+					this.cropRect.x = this.originalCropRect.x + originalDeltaX;
+					this.cropRect.width = this.originalCropRect.width - originalDeltaX;
 					break;
 				case 'right':
-					this.cropRect.width = this.originalCropRect.width + scaledDeltaX;
+					this.cropRect.width = this.originalCropRect.width + originalDeltaX;
 					break;
 				case 'top':
-					this.cropRect.y = this.originalCropRect.y + scaledDeltaY;
-					this.cropRect.height = this.originalCropRect.height - scaledDeltaY;
+					this.cropRect.y = this.originalCropRect.y + originalDeltaY;
+					this.cropRect.height = this.originalCropRect.height - originalDeltaY;
 					break;
 				case 'bottom':
-					this.cropRect.height = this.originalCropRect.height + scaledDeltaY;
+					this.cropRect.height = this.originalCropRect.height + originalDeltaY;
 					break;
 			}
 			
@@ -1239,9 +1333,9 @@ export class ImageEditor extends Modal {
 			return;
 		}
 		
-		// Update cursor based on hover state
+		// Update cursor based on hover state - use same coordinate system as crop frame rendering
 		if (this.cropModeActive && this.canvas) {
-			const resizeHandle = this.getCropResizeHandle(canvasX, canvasY);
+			const resizeHandle = this.getCropResizeHandle(canvasCoords.x, canvasCoords.y);
 			if (resizeHandle) {
 				switch (resizeHandle) {
 					case 'left':
@@ -1255,28 +1349,55 @@ export class ImageEditor extends Modal {
 				}
 			} else if (this.currentTool === 'hand') {
 				this.canvas.style.cursor = 'move';
+			} else if (this.currentTool === 'viewport-pan') {
+				this.canvas.style.cursor = 'grab';
 			} else {
 				this.canvas.style.cursor = 'crosshair';
 			}
 		}
+		
+		// Handle drawing and other actions - need proper coordinate transformation
+		const zoomedCoords = this.canvasToZoomedCoords(canvasCoords.x, canvasCoords.y);
 		
 		// Handle layer dragging with hand tool
 		if (this.isDraggingLayers) {
 			const deltaX = e.clientX - this.layersDragStart.x;
 			const deltaY = e.clientY - this.layersDragStart.y;
 			
-			this.layersOffset.x = this.layersStartOffset.x + deltaX;
-			this.layersOffset.y = this.layersStartOffset.y + deltaY;
+			// Convert screen pixel deltas to canvas logical coordinates, accounting for zoom
+			const scaledDeltaX = deltaX / (this.displayScale * this.userZoom);
+			const scaledDeltaY = deltaY / (this.displayScale * this.userZoom);
+			
+			this.layersOffset.x = this.layersStartOffset.x + scaledDeltaX;
+			this.layersOffset.y = this.layersStartOffset.y + scaledDeltaY;
 			
 			// Re-render all layers with new offset
 			this.renderAllLayers();
 			return;
 		}
 		
-		// Handle drawing - convert to full screenshot coordinates
+		// Handle viewport dragging with viewport-pan tool
+		if (this.isDraggingViewport) {
+			const deltaX = e.clientX - this.viewportDragStart.x;
+			const deltaY = e.clientY - this.viewportDragStart.y;
+			
+			// Since the transformation order changed, viewport offset calculation also changes
+			// The viewport offset is now applied BEFORE zoom, so screen movement maps directly
+			const scaledDeltaX = deltaX / this.displayScale;
+			const scaledDeltaY = deltaY / this.displayScale;
+			
+			this.viewportOffset.x = this.viewportStartOffset.x + scaledDeltaX;
+			this.viewportOffset.y = this.viewportStartOffset.y + scaledDeltaY;
+			
+			// Re-render all layers with new viewport offset
+			this.renderAllLayers();
+			return;
+		}
+		
+		// Handle drawing - use zoomed coordinates for accurate drawing
 		if (this.isDrawing && this.editLayerCtx) {
-			const fullScreenshotX = canvasX - this.layersOffset.x;
-			const fullScreenshotY = canvasY - this.layersOffset.y;
+			const fullScreenshotX = zoomedCoords.x - this.layersOffset.x;
+			const fullScreenshotY = zoomedCoords.y - this.layersOffset.y;
 			
 			// Check if still within full screenshot bounds
 			if (fullScreenshotX >= 0 && fullScreenshotX <= this.fullScreenshotSize.width &&
@@ -1498,20 +1619,42 @@ export class ImageEditor extends Modal {
 	private getCropResizeHandle(x: number, y: number): string | null {
 		if (!this.cropModeActive) return null;
 		
-		const threshold = 10; // Pixels
-		const rect = this.cropRect;
+		const canvasCenterX = (this.canvas?.width || 0) / 2;
+		const canvasCenterY = (this.canvas?.height || 0) / 2;
 		
-		// Check edges
-		if (Math.abs(x - rect.x) < threshold && y >= rect.y - threshold && y <= rect.y + rect.height + threshold) {
+		const rect = this.cropRect;
+		const visualCenterX = canvasCenterX + this.viewportOffset.x;
+		const visualCenterY = canvasCenterY + this.viewportOffset.y;
+		
+		// 用Canvas API获取实际的变换后位置
+		if (!this.ctx) return null;
+		
+		this.ctx.save();
+		this.ctx.translate(this.viewportOffset.x, this.viewportOffset.y);
+		this.ctx.translate(visualCenterX, visualCenterY);
+		this.ctx.scale(this.userZoom, this.userZoom);
+		this.ctx.translate(-visualCenterX, -visualCenterY);
+		
+		const actualTopLeft = this.ctx.getTransform().transformPoint(new DOMPoint(rect.x, rect.y));
+		const actualTopRight = this.ctx.getTransform().transformPoint(new DOMPoint(rect.x + rect.width, rect.y));
+		const actualBottomLeft = this.ctx.getTransform().transformPoint(new DOMPoint(rect.x, rect.y + rect.height));
+		const actualBottomRight = this.ctx.getTransform().transformPoint(new DOMPoint(rect.x + rect.width, rect.y + rect.height));
+		
+		this.ctx.restore();
+		
+		const threshold = 10;
+		
+		// 边缘检测 - 使用黑色框的正确坐标
+		if (Math.abs(x - actualTopLeft.x) < threshold && y >= actualTopLeft.y - threshold && y <= actualBottomLeft.y + threshold) {
 			return 'left';
 		}
-		if (Math.abs(x - (rect.x + rect.width)) < threshold && y >= rect.y - threshold && y <= rect.y + rect.height + threshold) {
+		if (Math.abs(x - actualTopRight.x) < threshold && y >= actualTopRight.y - threshold && y <= actualBottomRight.y + threshold) {
 			return 'right';
 		}
-		if (Math.abs(y - rect.y) < threshold && x >= rect.x - threshold && x <= rect.x + rect.width + threshold) {
+		if (Math.abs(y - actualTopLeft.y) < threshold && x >= actualTopLeft.x - threshold && x <= actualTopRight.x + threshold) {
 			return 'top';
 		}
-		if (Math.abs(y - (rect.y + rect.height)) < threshold && x >= rect.x - threshold && x <= rect.x + rect.width + threshold) {
+		if (Math.abs(y - actualBottomLeft.y) < threshold && x >= actualBottomLeft.x - threshold && x <= actualBottomRight.x + threshold) {
 			return 'bottom';
 		}
 		
@@ -1529,6 +1672,12 @@ export class ImageEditor extends Modal {
 		// Handle layer dragging completion
 		if (this.isDraggingLayers) {
 			this.isDraggingLayers = false;
+			return;
+		}
+		
+		// Handle viewport dragging completion  
+		if (this.isDraggingViewport) {
+			this.isDraggingViewport = false;
 			return;
 		}
 		
@@ -1553,6 +1702,9 @@ export class ImageEditor extends Modal {
 		if (this.isDraggingLayers) {
 			this.isDraggingLayers = false;
 		}
+		if (this.isDraggingViewport) {
+			this.isDraggingViewport = false;
+		}
 	}
 	
 	private handleGlobalMouseMove(e: MouseEvent) {
@@ -1561,9 +1713,9 @@ export class ImageEditor extends Modal {
 			const deltaX = e.clientX - this.layersDragStart.x;
 			const deltaY = e.clientY - this.layersDragStart.y;
 			
-			// Convert screen pixel deltas to canvas logical coordinates using display scale
-			const scaledDeltaX = deltaX / this.displayScale;
-			const scaledDeltaY = deltaY / this.displayScale;
+			// Convert screen pixel deltas to canvas logical coordinates, accounting for zoom
+			const scaledDeltaX = deltaX / (this.displayScale * this.userZoom);
+			const scaledDeltaY = deltaY / (this.displayScale * this.userZoom);
 			
 			this.layersOffset.x = this.layersStartOffset.x + scaledDeltaX;
 			this.layersOffset.y = this.layersStartOffset.y + scaledDeltaY;
@@ -1577,6 +1729,9 @@ export class ImageEditor extends Modal {
 		// Handle layer dragging completion globally
 		if (this.isDraggingLayers) {
 			this.isDraggingLayers = false;
+		}
+		if (this.isDraggingViewport) {
+			this.isDraggingViewport = false;
 		}
 	}
 
@@ -1922,6 +2077,185 @@ export class ImageEditor extends Modal {
 			this.fileNameWarning.textContent = '';
 			this.fileNameWarning.title = '';
 		}
+	}
+
+	private createZoomControls(toolbar: HTMLElement) {
+		// Create zoom control container with horizontal layout
+		const zoomContainer = toolbar.createDiv({ cls: 'zoom-controls-container' });
+		zoomContainer.style.display = 'flex';
+		zoomContainer.style.alignItems = 'center';
+		zoomContainer.style.gap = '4px';
+		
+		// Zoom out button
+		const zoomOutBtn = zoomContainer.createEl('button', { cls: 'btn-base btn-icon zoom-btn' });
+		setIcon(zoomOutBtn, 'zoom-out');
+		zoomOutBtn.setAttribute('data-tooltip', 'Zoom Out');
+		zoomOutBtn.addEventListener('click', () => {
+			this.setUserZoom(Math.max(0.25, this.userZoom / 1.25));
+		});
+		
+		// Zoom slider
+		const zoomSlider = zoomContainer.createEl('input', { 
+			type: 'range',
+			cls: 'zoom-slider',
+		});
+		zoomSlider.style.width = '80px';
+		zoomSlider.style.margin = '0 4px';
+		zoomSlider.min = Math.log(0.25).toString();
+		zoomSlider.max = Math.log(4).toString();
+		zoomSlider.step = '0.01';
+		zoomSlider.value = Math.log(this.userZoom).toString();
+		
+		// Zoom level display
+		const zoomDisplay = zoomContainer.createEl('span', { 
+			cls: 'zoom-display',
+			text: Math.round(this.userZoom * 100) + '%'
+		});
+		zoomDisplay.style.minWidth = '40px';
+		zoomDisplay.style.textAlign = 'center';
+		zoomDisplay.style.fontSize = '12px';
+		
+		// Zoom in button
+		const zoomInBtn = zoomContainer.createEl('button', { cls: 'btn-base btn-icon zoom-btn' });
+		setIcon(zoomInBtn, 'zoom-in');
+		zoomInBtn.setAttribute('data-tooltip', 'Zoom In');
+		zoomInBtn.addEventListener('click', () => {
+			this.setUserZoom(Math.min(4, this.userZoom * 1.25));
+		});
+		
+		// Reset zoom button (100%)
+		const resetZoomBtn = zoomContainer.createEl('button', { cls: 'btn-base zoom-reset-btn' });
+		resetZoomBtn.textContent = '1:1';
+		resetZoomBtn.style.fontSize = '10px';
+		resetZoomBtn.style.minWidth = '24px';
+		resetZoomBtn.setAttribute('data-tooltip', 'Reset Zoom (100%)');
+		resetZoomBtn.addEventListener('click', () => {
+			this.setUserZoom(1.0);
+		});
+		
+		// Slider change handler
+		zoomSlider.addEventListener('input', (e) => {
+			const logValue = parseFloat((e.target as HTMLInputElement).value);
+			const zoomValue = Math.exp(logValue);
+			
+			// Update zoom without updating slider (to avoid circular updates)
+			this.userZoom = Math.max(0.25, Math.min(4, zoomValue));
+			
+			// Update only the display text, not the slider
+			zoomDisplay.textContent = Math.round(this.userZoom * 100) + '%';
+			
+			// Re-render with new zoom
+			this.renderAllLayers();
+			
+			getLogger().log('🔍 User zoom changed to:', this.userZoom);
+		});
+		
+		// Store references for later updates
+		this.toolbarElements.set(toolbar, {
+			...this.toolbarElements.get(toolbar),
+			zoomSlider,
+			zoomDisplay
+		});
+		
+		getLogger().log('🔍 Created zoom controls with initial zoom:', this.userZoom);
+	}
+	
+	private setUserZoom(zoom: number) {
+		// Clamp zoom to valid range
+		this.userZoom = Math.max(0.25, Math.min(4, zoom));
+		
+		// Update UI
+		this.updateZoomDisplay();
+		
+		// Re-render with new zoom
+		this.renderAllLayers();
+		
+		getLogger().log('🔍 User zoom changed to:', this.userZoom);
+	}
+	
+	private updateZoomDisplay() {
+		// Update zoom display for the current toolbar
+		const toolbar = document.querySelector('.image-editor-toolbar');
+		if (toolbar) {
+			const toolbarData = this.toolbarElements.get(toolbar as HTMLElement);
+			if (toolbarData?.zoomSlider && toolbarData?.zoomDisplay) {
+				toolbarData.zoomSlider.value = Math.log(this.userZoom).toString();
+				toolbarData.zoomDisplay.textContent = Math.round(this.userZoom * 100) + '%';
+			}
+		}
+	}
+
+	// Coordinate transformation helpers
+	private screenToCanvasCoords(screenX: number, screenY: number): { x: number, y: number } {
+		if (!this.canvas) return { x: screenX, y: screenY };
+		
+		const rect = this.canvas.getBoundingClientRect();
+		
+		// Convert screen coordinates to canvas logical coordinates
+		const canvasX = (screenX - rect.left) * (this.canvas.width / rect.width);
+		const canvasY = (screenY - rect.top) * (this.canvas.height / rect.height);
+		
+		return { x: canvasX, y: canvasY };
+	}
+	
+	private canvasToZoomedCoords(canvasX: number, canvasY: number): { x: number, y: number } {
+		// Apply inverse zoom and viewport transformations to get logical coordinates
+		const canvasCenterX = (this.canvas?.width || 0) / 2;
+		const canvasCenterY = (this.canvas?.height || 0) / 2;
+		
+		// 修正后的变换序列：
+		// 1. translate(viewportOffset.x, viewportOffset.y)
+		// 2. translate(visualCenterX, visualCenterY) where visualCenter = canvasCenter + viewportOffset  
+		// 3. scale(userZoom, userZoom)
+		// 4. translate(-visualCenterX, -visualCenterY)
+		
+		// Calculate the visual center used in rendering
+		const visualCenterX = canvasCenterX + this.viewportOffset.x;  // 修正：加号
+		const visualCenterY = canvasCenterY + this.viewportOffset.y;
+		
+		// To reverse, we undo in OPPOSITE order:
+		let x = canvasX;
+		let y = canvasY;
+		
+		// Undo step 4: translate(-visualCenter) → add visual center back
+		x = x + visualCenterX;
+		y = y + visualCenterY;
+		
+		// Undo step 3: scale(zoom) → divide by zoom
+		x = x / this.userZoom;
+		y = y / this.userZoom;
+		
+		// Undo step 2: translate(visualCenter) → subtract visual center
+		x = x - visualCenterX;
+		y = y - visualCenterY;
+		
+		// Undo step 1: translate(viewportOffset) → subtract viewport offset
+		x = x - this.viewportOffset.x;
+		y = y - this.viewportOffset.y;
+		
+		return { x, y };
+	}
+	
+	// Special coordinate transformation for crop frame detection (ignores viewport offset)
+	private canvasToCropCoords(canvasX: number, canvasY: number): { x: number, y: number } {
+		// Apply only zoom inverse transformation, not viewport offset
+		const zoomCenterX = (this.canvas?.width || 0) / 2;
+		const zoomCenterY = (this.canvas?.height || 0) / 2;
+		
+		// Apply only zoom inverse transformation
+		let x = canvasX - zoomCenterX;
+		let y = canvasY - zoomCenterY;
+		x = x / this.userZoom;
+		y = y / this.userZoom;
+		x = x + zoomCenterX;
+		y = y + zoomCenterY;
+		
+		return { x, y };
+	}
+	
+	private screenToZoomedCoords(screenX: number, screenY: number): { x: number, y: number } {
+		const canvasCoords = this.screenToCanvasCoords(screenX, screenY);
+		return this.canvasToZoomedCoords(canvasCoords.x, canvasCoords.y);
 	}
 
 	cleanup() {
