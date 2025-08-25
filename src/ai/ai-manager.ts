@@ -54,7 +54,6 @@ class ImageReferenceManager {
 		// 初始引用计数为1（预发送区或其他地方会立即持有引用）
 		this.refCounts.set(uniqueTempId, 1);
 		
-		getLogger().log(`Added temp image: ${uniqueTempId}, source: ${source}, fileName: ${fileName}`);
 		return uniqueTempId;
 	}
 	
@@ -67,13 +66,11 @@ class ImageReferenceManager {
 	addRef(tempId: string): void {
 		const currentCount = this.refCounts.get(tempId) || 0;
 		this.refCounts.set(tempId, currentCount + 1);
-		getLogger().log(`🔼 Adding ref for ${tempId}: ${currentCount} -> ${currentCount + 1}`);
 	}
 	
 	// 减少引用计数
 	removeRef(tempId: string): void {
 		const currentCount = this.refCounts.get(tempId) || 0;
-		getLogger().log(`🔽 Removing ref for ${tempId}: ${currentCount} -> ${currentCount - 1}`);
 		
 		if (currentCount > 0) {
 			this.refCounts.set(tempId, currentCount - 1);
@@ -81,7 +78,6 @@ class ImageReferenceManager {
 		
 		// 如果引用计数为0，清理图片数据
 		if (this.refCounts.get(tempId) === 0) {
-			getLogger().warn(`🗑️ Cleaning up temp image ${tempId} (ref count reached 0)`);
 			this.cleanupTempImage(tempId);
 		}
 	}
@@ -90,15 +86,12 @@ class ImageReferenceManager {
 	private cleanupTempImage(tempId: string): void {
 		this.tempImages.delete(tempId);
 		this.refCounts.delete(tempId);
-		getLogger().log(`Cleaned up temp image: ${tempId}`);
 	}
 	
 	// 清理所有临时图片 (会话结束时调用)
 	cleanup(): void {
-		const count = this.tempImages.size;
 		this.tempImages.clear();
 		this.refCounts.clear();
-		getLogger().log(`Cleaned up ${count} temporary images`);
 	}
 	
 	// 获取所有临时图片的统计信息
@@ -345,18 +338,7 @@ export class AIManager {
 
 
 
-	async callAIForTextOnly(message: string): Promise<string> {
-		// Use the current default model for text-only conversation
-		const defaultModelConfig = this.plugin.settings.modelConfigs.find(
-			mc => mc.id === this.plugin.settings.defaultModelConfigId
-		);
-		
-		if (!defaultModelConfig) {
-			throw new Error('No default model configured');
-		}
-		
-		return await this.callTextOnlyAPI(message, defaultModelConfig);
-	}
+	
 
 	// Context building function for conversation history - COMPLETELY SIMPLIFIED
 	async buildContextMessages(conversation: AIConversation | null, currentMessage: string, currentImages?: string[], modelConfig?: ModelConfig, includeModeprompt?: boolean): Promise<any[]> {
@@ -379,12 +361,6 @@ export class AIManager {
 		);
 		
 		const isVisionCapable = targetModelConfig?.isVisionCapable || false;
-		
-		getLogger().log('🔧 Model info:', {
-			modelName: targetModelConfig?.name || 'unknown',
-			isVisionCapable
-		});
-
 
 		messages.push({
 			role: 'system',
@@ -406,8 +382,6 @@ export class AIManager {
 					return true;
 				})
 				.slice(-contextSettings.maxContextMessages); // Take most recent N message blocks
-
-			getLogger().log(`📋 Processing ${historicalMessages.length} historical message blocks (max: ${contextSettings.maxContextMessages})`);
 
 			// Convert each message block to API format - each block counts as 1 regardless of images
 			for (const msg of historicalMessages) {
@@ -439,7 +413,6 @@ export class AIManager {
 					
 					// Add ALL images from this message block
 					for (const imageRef of imageReferences) {
-						getLogger().log(`🔍 Resolving image: ${imageRef.path}`);
 						try {
 							const imageDataUrl = await this.resolveImageForAPI(imageRef.path);
 							if (imageDataUrl) {
@@ -447,7 +420,6 @@ export class AIManager {
 									type: 'image_url',
 									image_url: { url: imageDataUrl }
 								});
-								getLogger().log(`✅ Added image to message block`);
 							}
 						} catch (error) {
 							getLogger().warn(`⚠️ Failed to load image for context:`, error);
@@ -459,7 +431,6 @@ export class AIManager {
 						role: role,
 						content: messageContent
 					});
-					getLogger().log(`✅ Added message block with ${messageContent.length} content items`);
 				} else {
 					// Text-only message block or no images
 					if (textContent && textContent.trim()) {
@@ -467,7 +438,6 @@ export class AIManager {
 							role: role,
 							content: textContent
 						});
-						getLogger().log(`✅ Added text-only message block`);
 					}
 				}
 			}
@@ -516,14 +486,12 @@ export class AIManager {
 				role: 'user',
 				content: messageContent
 			});
-			getLogger().log(`✅ Added current message with ${currentImages.length} images`);
 		} else {
 			// Current text-only message
 			messages.push({
 				role: 'user',
 				content: currentMessage
 			});
-			getLogger().log(`📝 Added current text message`);
 		}
 
 		getLogger().log('🔧 buildContextMessages result:', {
@@ -668,59 +636,6 @@ export class AIManager {
 		}
 		
 		throw new Error('Unknown provider response format');
-	}
-
-
-	private async callTextOnlyAPI(message: string, modelConfig: ModelConfig): Promise<string> {
-		const provider = LLM_PROVIDERS.find(p => p.id === modelConfig.providerId);
-		
-		if (!provider) {
-			throw new Error(`Unknown provider: ${modelConfig.providerId}`);
-		}
-
-		// Get provider credentials
-		const credentials = this.plugin.settings.providerCredentials[modelConfig.providerId];
-		if (!credentials || !credentials.verified || !credentials.apiKey.trim()) {
-			throw new Error('Provider credentials not verified');
-		}
-
-		getLogger().log(`Calling text-only AI API - Provider: ${modelConfig.providerId}, Model: ${modelConfig.modelId}`);
-
-		let response: RequestUrlResponse;
-
-		if (modelConfig.providerId === 'openai') {
-			response = await this.callOpenAITextOnly(message, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'anthropic') {
-			response = await this.callClaudeTextOnly(message, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'google') {
-			response = await this.callGoogleTextOnly(message, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'openrouter') {
-			response = await this.callOpenRouterTextOnly(message, modelConfig, credentials);
-		} else if (modelConfig.providerId === 'custom' || modelConfig.providerId.startsWith('custom_')) {
-			response = await this.callCustomAPITextOnly(message, modelConfig, credentials);
-		} else {
-			throw new Error(`Unsupported provider for text chat: ${modelConfig.providerId}`);
-		}
-
-		getLogger().log(`Text API Response Status: ${response.status}`);
-
-		if (response.status < 200 || response.status >= 300) {
-			const errorText = response.text;
-			getLogger().error(`Text API call failed. Status: ${response.status}, Response: ${errorText}`);
-			throw new Error(`API call failed: ${response.status} ${errorText}`);
-		}
-
-		const responseText = response.text;
-		getLogger().log('Text API Response:', responseText.substring(0, 200) + '...');
-		
-		let data;
-		try {
-			data = JSON.parse(responseText);
-		} catch (parseError) {
-			getLogger().error('Failed to parse JSON response:', parseError);
-			throw new Error(`Invalid JSON response from API. Response starts with: ${responseText.substring(0, 100)}`);
-		}
-		return this.extractResponseContent(data, modelConfig.providerId);
 	}
 
 
@@ -929,8 +844,6 @@ export class AIManager {
 			updatedConversation.messages.forEach(message => {
 				this.addImageRefsFromMessage(message);
 			});
-			
-			getLogger().log(`Updated conversation in memory: ${conversationId}`);
 		}
 	}
 
@@ -951,7 +864,6 @@ export class AIManager {
 		this.imageRefManager.cleanup();
 		this.conversations.clear();
 		this.currentConversationId = null;
-		getLogger().log('AIManager cleanup completed');
 	}
 
 	private getCurrentConversation(): AIConversation | null {
@@ -999,15 +911,12 @@ export class AIManager {
 	 * 统一的图片解析函数 - 将图片引用转换为API可用的base64数据
 	 */
 	async resolveImageForAPI(imageRef: string): Promise<string | null> {
-		getLogger().log(`🔍 resolveImageForAPI called with: "${imageRef}"`);
 		
 		if (imageRef.startsWith('temp:')) {
 			// 临时图片 - 从内存获取base64
 			const tempId = imageRef.replace('temp:', '');
-			getLogger().log(`🔍 Looking for temp image: ${tempId}`);
 			const tempData = this.imageRefManager.getTempImageData(tempId);
 			if (tempData) {
-				getLogger().log(`✅ Found temp image data, dataUrl length: ${tempData.dataUrl?.length || 0}`);
 				return tempData.dataUrl;
 			}
 			getLogger().warn(`❌ Temp image not found: ${tempId}`);

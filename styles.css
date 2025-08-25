@@ -571,6 +571,15 @@ button.btn-transparent-md,
 	line-height: 1.5;
 }
 
+/* AI API Configuration Block */
+.ai-api-config-block {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: var(--spacing-lg);
+	margin-bottom: var(--spacing-lg);
+}
+
 /* AI Chat View Styles */
 .ai-chat-container {
 					display: flex;

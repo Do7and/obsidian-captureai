@@ -170,26 +170,17 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 						}
 					}));
 
-			// 显示AI聊天面板按钮设置（仅在AI功能启用时显示）
-			if (this.plugin.settings.enableAIAnalysis) {
-				new Setting(containerEl)
-					.setName(t('settings.showAIChatPanelButton.name'))
-					.setDesc(t('settings.showAIChatPanelButton.desc'))
-					.addToggle(toggle => toggle
-						.setValue(this.plugin.settings.showAIChatPanelButton)
-						.onChange(async (value) => {
-							this.plugin.settings.showAIChatPanelButton = value;
-							await this.plugin.saveSettings();
-						}));
-			}
+			
+			
 
 			// 第一块：AI API配置相关设置
 			containerEl.createEl('h4', { text: t('settings.aiApiConfig') });
 			
-			// API Keys management
-			const apiKeysContainer = containerEl.createEl('div', { cls: 'api-keys-section' });
+			// Create gray background container for AI API configuration
+			const apiConfigContainer = containerEl.createEl('div', { cls: 'ai-api-config-block' });
 			
-			new Setting(apiKeysContainer)
+			// API Keys management
+			new Setting(apiConfigContainer)
 				.setName(t('settings.apiKeys.name'))
 				.setDesc(t('settings.apiKeys.desc'))
 				.addButton(button => button
@@ -201,7 +192,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					}));
 
 			// Model management
-			new Setting(apiKeysContainer)
+			new Setting(apiConfigContainer)
 				.setName(t('settings.modelConfigs.name'))
 				.setDesc(t('settings.modelConfigs.desc', { count: this.plugin.settings.modelConfigs.length }))
 				.addButton(button => button
@@ -215,7 +206,7 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 			if (this.plugin.settings.modelConfigs.length > 0) {
 				const allModels = this.plugin.settings.modelConfigs;
 				
-				new Setting(apiKeysContainer)
+				new Setting(apiConfigContainer)
 					.setName(t('settings.defaultModel.name'))
 					.setDesc(t('settings.defaultModel.desc'))
 					.addDropdown(dropdown => {
@@ -235,14 +226,14 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					});
 			} else {
 				// Guide to add models
-				const guideEl = apiKeysContainer.createEl('div', { 
+				const guideEl = apiConfigContainer.createEl('div', { 
 					cls: 'setting-item-description settings-guide-text',
 					text: t('settings.getStarted.guide')
 				});
 			}
 
-			// 第二块：图片上传和保存功能
-			containerEl.createEl('h4', { text: t('settings.imageUpload.name') });
+			// 第二块：杂项
+			containerEl.createEl('h4', { text: t('settings.miscellaneous.name') });
 			
 			new Setting(containerEl)
 				.setName(t('settings.imageSaveLocation.name'))
@@ -268,6 +259,43 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 						this.refreshModelDependentComponents();
 					}));
 
+			
+			
+			
+			// 显示AI聊天面板按钮设置（仅在AI功能启用时显示）
+			
+			new Setting(containerEl)
+				.setName(t('settings.showAIChatPanelButton.name'))
+				.setDesc(t('settings.showAIChatPanelButton.desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.showAIChatPanelButton)
+					.onChange(async (value) => {
+						this.plugin.settings.showAIChatPanelButton = value;
+						await this.plugin.saveSettings();
+					}));
+
+
+			// Max Context Messages
+			const contextContainer = containerEl.createEl('div', { cls: 'context-settings-container' });
+			new Setting(contextContainer)
+				.setName(t('settings.maxContextMessages.name'))
+				.setDesc(t('settings.maxContextMessages.desc'))
+				.addSlider(slider => slider
+					.setLimits(1, 20, 1)
+					.setValue(this.plugin.settings.contextSettings?.maxContextMessages || 20)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						if (!this.plugin.settings.contextSettings) {
+							this.plugin.settings.contextSettings = {
+								maxContextMessages: 10,
+							};
+						}
+						this.plugin.settings.contextSettings.maxContextMessages = value;
+						await this.plugin.saveSettings();
+					})
+				);
+
+				
 			// 第三块：会话记录相关设置
 			containerEl.createEl('h4', { text: t('settings.conversationHistory') });
 			
@@ -400,50 +428,74 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					});
 			});
 
-			// Context Settings Section
-			containerEl.createEl('h4', { text: t('settings.contextSettings') });
-			
-			const contextContainer = containerEl.createEl('div', { cls: 'context-settings-container' });
-			
-			// Max Context Messages
-			new Setting(contextContainer)
-				.setName(t('settings.maxContextMessages.name'))
-				.setDesc(t('settings.maxContextMessages.desc'))
-				.addSlider(slider => slider
-					.setLimits(1, 20, 1)
-					.setValue(this.plugin.settings.contextSettings?.maxContextMessages || 20)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						if (!this.plugin.settings.contextSettings) {
-							this.plugin.settings.contextSettings = {
-								maxContextMessages: 10,
-							};
-						}
-						this.plugin.settings.contextSettings.maxContextMessages = value;
-						await this.plugin.saveSettings();
-					})
-				);
 
 
 		}
 
 		// Shortcuts Section
-		containerEl.createEl('h3', { text: t('settings.shortcuts.name') });
-		
-		const shortcutsDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		this.createHTMLContent(shortcutsDesc, t('settings.shortcuts.help'));
 
-		// Usage Section
-		containerEl.createEl('h3', { text: t('settings.usage.name') });
+		const shortcutsContainer = containerEl.createEl("div", {
+			cls: "setting-container",
+		});
+		shortcutsContainer.createEl('h3', { text: t('settings.shortcuts.name') });
+
+
+		const shortcutslist = shortcutsContainer.createEl("ul");
+		shortcutslist.createEl("li", { text: t('settings.shortcuts.help.1')});
+		shortcutslist.createEl("li", { text: t('settings.shortcuts.help.2')});
+		shortcutslist.createEl("li", { text: t('settings.shortcuts.help.3')});
+
+
+		// // Usage Section
+		// containerEl.createEl('h3', { text: t('settings.usage.name') });
 		
-		const usageDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		this.createHTMLContent(usageDesc, t('settings.usage.helpContent'));
+		// const usageDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
+		// this.createHTMLContent(usageDesc, t('settings.usage.help'));
 
 		// Troubleshooting Section
-		containerEl.createEl('h3', { text: t('settings.troubleshooting') });
+		const troubleshootingContainer = containerEl.createEl("div", {
+			cls: "setting-container",
+		});
+		troubleshootingContainer.createEl('h3', { text: t('settings.troubleshooting') });
+
+		troubleshootingContainer.createEl("h6", { text: t('settings.troubleshooting.title.screenshot')});
+		const troubleshootinglist1 = troubleshootingContainer.createEl("ul");
+		troubleshootinglist1.createEl("li", { text: t('settings.troubleshooting.screenshot.1')});
+		troubleshootinglist1.createEl("li", { text: t('settings.troubleshooting.screenshot.2')});
+		troubleshootinglist1.createEl("li", { text: t('settings.troubleshooting.screenshot.3')});
+
+		troubleshootingContainer.createEl("h6", { text: t('settings.troubleshooting.title.ai')});
+		const troubleshootinglist2 = troubleshootingContainer.createEl("ul");
+		troubleshootinglist2.createEl("li", { text: t('settings.troubleshooting.ai.1')});
+		troubleshootinglist2.createEl("li", { text: t('settings.troubleshooting.ai.2')});
+		troubleshootinglist2.createEl("li", { text: t('settings.troubleshooting.ai.3')});
+		troubleshootinglist2.createEl("li", { text: t('settings.troubleshooting.ai.4')});
+
+		troubleshootingContainer.createEl("h6", { text: t('settings.troubleshooting.title.persist')});
+		const troubleshootinglist3 = troubleshootingContainer.createEl("ul");
+		troubleshootinglist3.createEl("li", { text: t('settings.troubleshooting.persist.1')});
+
+		const troubleshootinglist3li2 = troubleshootinglist3.createEl("li");
+		troubleshootinglist3li2.appendText(t('settings.troubleshooting.persist.2'));
+		troubleshootinglist3li2.createEl("a", {
+		href: t('settings.troubleshooting.persist.url'),
+		text: "GitHub Issues",
+		});
 		
-		const troubleshootingDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
-		this.createHTMLContent(troubleshootingDesc, t('settings.troubleshooting.helpContent'));
+
+		
+		// 插件设置页尾部 GitHub Star 模块
+		new Setting(containerEl)
+		.setName(t('settings.githubStar.name'))
+		.setDesc(t('settings.githubStar.desc'))
+		.addButton(btn =>
+			btn.setButtonText(t('settings.githubStarButton.name'))
+			.setCta()
+			.onClick(() => {
+				window.open(t('settings.githubStarButton.url'), "_blank");
+			})
+  );
+
 	}
 
 	private createHTMLContent(container: HTMLElement, htmlString: string) {

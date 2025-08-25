@@ -416,23 +416,23 @@ export class AIChatView extends ItemView {
 			}
 		}
 
-		// Instructions section
-		const instructionsSection = emptyState.createEl('div', { cls: 'ai-chat-instructions-section' });
-		instructionsSection.createEl('h3', { text: t('aiChat.howToUseTitle'), cls: 'ai-chat-section-title' });
+		// // Instructions section
+		// const instructionsSection = emptyState.createEl('div', { cls: 'ai-chat-instructions-section' });
+		// instructionsSection.createEl('h3', { text: t('aiChat.howToUseTitle'), cls: 'ai-chat-section-title' });
 		
-		const instructionsList = instructionsSection.createEl('div', { cls: 'ai-chat-instructions-list' });
-		const instructions = [
-			{ icon: '⚙️', text: t('aiChat.instruction.configureKeys') },
-			{ icon: '📷', text: t('aiChat.instruction.screenshot') },
-			{ icon: '🖼️', text: t('aiChat.instruction.dragDrop') },
-			{ icon: '💬', text: t('aiChat.instruction.typeQuestions') }
-		];
+		// const instructionsList = instructionsSection.createEl('div', { cls: 'ai-chat-instructions-list' });
+		// const instructions = [
+		// 	{ icon: '⚙️', text: t('aiChat.instruction.configureKeys') },
+		// 	{ icon: '📷', text: t('aiChat.instruction.screenshot') },
+		// 	{ icon: '🖼️', text: t('aiChat.instruction.dragDrop') },
+		// 	{ icon: '💬', text: t('aiChat.instruction.typeQuestions') }
+		// ];
 
-		instructions.forEach(instruction => {
-			const instructionEl = instructionsList.createEl('div', { cls: 'ai-chat-instruction-item' });
-			instructionEl.createEl('span', { text: instruction.icon, cls: 'ai-chat-instruction-icon' });
-			instructionEl.createEl('span', { text: instruction.text, cls: 'ai-chat-instruction-text' });
-		});
+		// instructions.forEach(instruction => {
+		// 	const instructionEl = instructionsList.createEl('div', { cls: 'ai-chat-instruction-item' });
+		// 	instructionEl.createEl('span', { text: instruction.icon, cls: 'ai-chat-instruction-icon' });
+		// 	instructionEl.createEl('span', { text: instruction.text, cls: 'ai-chat-instruction-text' });
+		// });
 	}
 
 	private async startNewConversation(): Promise<void> {
@@ -3651,7 +3651,7 @@ tags:
 			
 			// Title
 			const title = modal.contentEl.createEl('h3', { 
-				text: t('aiChat.deleteMessage'),
+				text: t('aiChat.deleteMessageButton'),
 				cls: 'ai-chat-modal-title'
 			});
 			
@@ -3677,13 +3677,13 @@ tags:
 			
 			// Cancel button
 			const cancelBtn = buttonContainer.createEl('button', { 
-				text: t('common.cancel'),
+				text: t('ui.cancel'),
 				cls: 'ai-chat-modal-button-cancel'
 			});
 			
 			// Delete button
 			const deleteBtn = buttonContainer.createEl('button', { 
-				text: t('common.delete'),
+				text: t('ui.delete'),
 				cls: 'ai-chat-modal-button-delete'
 			});
 			

@@ -268,7 +268,7 @@ export class ImageEditor extends Modal {
 		// Set the pre-calculated display scale (this will be the initial zoom level)
 		this.preCalculatedDisplayScale = scaleFactor;
 		
-		// Set initial user zoom to the calculated scale factor so image appears correctly sized
+		// Set initial user zoom to the calculated scale factor - this IS the system scaling
 		this.userZoom = scaleFactor;
 		
 		this.open();
@@ -346,13 +346,15 @@ export class ImageEditor extends Modal {
 		toolbar.style.flexShrink = '0'; // Ensure toolbar is always visible
 		this.createMainToolbar(toolbar);
 		
-		// Canvas container - sized to contain canvas naturally
+		// Canvas container - sized to contain canvas naturally  
 		const canvasContainer = container.createDiv({ cls: 'image-editor-canvas-container' });
 		canvasContainer.addClass('image-editor-canvas-container-flex');
 		// Set the exact height needed for the canvas content
 		canvasContainer.style.height = `${canvasDisplayHeight + 40}px`; // Add 40px padding
 		canvasContainer.style.flexGrow = '0'; // Don't grow
 		canvasContainer.style.flexShrink = '0'; // Don't shrink
+		// Add overflow control to prevent canvas from overflowing to other UI areas
+		canvasContainer.style.overflow = 'hidden';
 		
 		this.canvas = canvasContainer.createEl('canvas', { cls: 'image-editor-canvas' });
 		
@@ -397,7 +399,7 @@ export class ImageEditor extends Modal {
 			'ellipse': t('imageEditor.circleTool'),
 			'arrow': t('imageEditor.arrowTool'),
 			'hand': t('imageEditor.handTool'),
-			'viewport-pan': 'Viewport Pan' // TODO: Add to i18n
+			'viewport-pan': t('imageEditor.viewportPanTool')
 		};
 		
 		tools.forEach(tool => {
@@ -686,13 +688,11 @@ export class ImageEditor extends Modal {
 		
 		// Add event listener to check file validity and conflicts
 		fileNameInput.addEventListener('input', () => {
-			getLogger().log('File name input changed, checking validity and conflicts');
 			this.validateFileName();
 		});
 		
 		// Initial check
 		setTimeout(() => {
-			getLogger().log('Running initial file name validation');
 			this.validateFileName();
 		}, 100);
 		
@@ -805,18 +805,12 @@ export class ImageEditor extends Modal {
 			// Get the final image data without saving
 			const dataUrl = this.createFinalImage();
 			
-			getLogger().log('🔄 Adding image to AI queue only (temp):', {
-				dataUrlLength: dataUrl.length
-			});
-			
 			// Show AI panel first (only if not already visible)
 			await this.plugin.ensureAIChatPanelVisible();
 			
 			// Add image to queue as temporary image - 生成合适的文件名
 			const fileName = `edited-${Date.now()}.png`;
 			await this.plugin.addImageToAIQueue(dataUrl, fileName, null);
-			
-			getLogger().log('✅ Image successfully added to AI queue (temp)');
 			
 			// Close the editor
 			this.close();
@@ -842,11 +836,6 @@ export class ImageEditor extends Modal {
 			// Get filename from user input or generate default
 			const fileName = this.getFileName();
 			
-			getLogger().log('💾 Saving image only:', {
-				fileName: fileName,
-				dataUrlLength: dataUrl.length
-			});
-			
 			// Save image to vault
 			const savedPath = await this.saveImageToVault(dataUrl, fileName);
 			
@@ -857,7 +846,6 @@ export class ImageEditor extends Modal {
 				// Copy markdown text to clipboard
 				await navigator.clipboard.writeText(markdownContent);
 				
-				getLogger().log('✅ Image saved successfully');
 				new Notice(`✅ 图片已保存并复制Markdown链接！\n文件: ${fileName}`);
 			} else {
 				new Notice(`❌ 图片保存失败`);
@@ -884,10 +872,6 @@ export class ImageEditor extends Modal {
 			// Get filename from user input or generate default
 			const fileName = this.getFileName();
 			
-			getLogger().log('🔄 Saving image and adding to AI queue:', {
-				fileName: fileName,
-				dataUrlLength: dataUrl.length
-			});
 			
 			// Show progress notice
 			const notice = new Notice(t('imageEditor.savingAndAddingToQueue'), 2000);
@@ -895,15 +879,12 @@ export class ImageEditor extends Modal {
 			try {
 				// Step 1: Save the image to vault first
 				const savedPath = await this.saveImageToVault(dataUrl, fileName);
-				getLogger().log('💾 Image saved to vault:', savedPath);
 				
 				// Step 2: Show AI panel
 				await this.plugin.ensureAIChatPanelVisible();
 				
 				// Step 3: Add saved image to AI queue (use saved path, not temp)
 				await this.plugin.addImageToAIQueue(dataUrl, fileName, savedPath);
-				
-				getLogger().log('✅ Image successfully saved and added to AI queue');
 				
 				// Close the editor
 				this.close();
@@ -1776,8 +1757,6 @@ export class ImageEditor extends Modal {
 			const newZoom = Math.max(0.25, Math.min(4, this.userZoom * zoomFactor));
 			
 			this.setUserZoom(newZoom);
-			
-			getLogger().log('🔍 Mouse wheel zoom:', this.userZoom);
 		}
 	}
 
@@ -2022,14 +2001,11 @@ export class ImageEditor extends Modal {
 	 * Validate filename for legality and check for conflicts
 	 */
 	private async validateFileName(): Promise<void> {
-		getLogger().log('validateFileName called');
 		if (!this.fileNameInput || !this.fileNameWarning || !this.fileNameInvalidWarning) {
-			getLogger().log('Missing filename validation elements');
 			return;
 		}
 		
 		const fileName = this.getFileName();
-		getLogger().log('Validating file name:', fileName);
 		
 		// Check file name validity first
 		const isValidName = this.isValidFileName(fileName);
@@ -2106,14 +2082,11 @@ export class ImageEditor extends Modal {
 		}
 	}
 	private async checkFileNameConflict(): Promise<void> {
-		getLogger().log('checkFileNameConflict called');
 		if (!this.fileNameInput || !this.fileNameWarning) {
-			getLogger().log('Missing fileNameInput or fileNameWarning elements');
 			return;
 		}
 		
 		const fileName = this.getFileName();
-		getLogger().log('Checking file name:', fileName);
 		if (!fileName) {
 			this.updateFileNameWarning(false);
 			return;
@@ -2126,12 +2099,10 @@ export class ImageEditor extends Modal {
 			if (saveLocation && saveLocation.trim() !== '') {
 				targetPath = `${saveLocation}/${fileName}`;
 			}
-			getLogger().log('Checking target path:', targetPath);
 			
 			// Check if file exists in vault
 			const vault = this.plugin.app.vault;
 			const fileExists = await vault.adapter.exists(targetPath);
-			getLogger().log('File exists:', fileExists);
 			
 			if (fileExists) {
 				this.updateFileNameWarning(true);
@@ -2193,7 +2164,7 @@ export class ImageEditor extends Modal {
 		// Zoom out button (移到右侧)
 		const zoomOutBtn = zoomContainer.createEl('button', { cls: 'btn-base btn-icon zoom-btn' });
 		setIcon(zoomOutBtn, 'zoom-out');
-		zoomOutBtn.setAttribute('data-tooltip', 'Zoom Out');
+		zoomOutBtn.setAttribute('data-tooltip', t('imageEditor.zoomOutTooltip'));
 		zoomOutBtn.addEventListener('click', () => {
 			this.setUserZoom(Math.max(0.25, this.userZoom / 1.25));
 		});
@@ -2201,7 +2172,7 @@ export class ImageEditor extends Modal {
 		// Zoom in button (移到右侧)
 		const zoomInBtn = zoomContainer.createEl('button', { cls: 'btn-base btn-icon zoom-btn' });
 		setIcon(zoomInBtn, 'zoom-in');
-		zoomInBtn.setAttribute('data-tooltip', 'Zoom In');
+		zoomInBtn.setAttribute('data-tooltip', t('imageEditor.zoomInTooltip'));
 		zoomInBtn.addEventListener('click', () => {
 			this.setUserZoom(Math.min(4, this.userZoom * 1.25));
 		});
@@ -2211,7 +2182,7 @@ export class ImageEditor extends Modal {
 		resetZoomBtn.textContent = '1:1';
 		resetZoomBtn.style.fontSize = '10px';
 		resetZoomBtn.style.minWidth = '24px';
-		resetZoomBtn.setAttribute('data-tooltip', 'Reset Zoom (100%)');
+		resetZoomBtn.setAttribute('data-tooltip', t('imageEditor.resetZoomTooltip'));
 		resetZoomBtn.addEventListener('click', () => {
 			this.setUserZoom(1.0);
 		});
@@ -2240,8 +2211,6 @@ export class ImageEditor extends Modal {
 			zoomSlider,
 			zoomDisplay
 		});
-		
-		getLogger().log('🔍 Created zoom controls with initial zoom:', this.userZoom);
 	}
 	
 	private setUserZoom(zoom: number) {
@@ -2253,8 +2222,6 @@ export class ImageEditor extends Modal {
 		
 		// Re-render with new zoom
 		this.renderAllLayers();
-		
-		getLogger().log('🔍 User zoom changed to:', this.userZoom);
 	}
 	
 	private updateZoomDisplay() {

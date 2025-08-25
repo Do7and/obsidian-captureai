@@ -8,15 +8,15 @@ export default {
   "settings.useRelativePath.name": "Use relative paths",
   "settings.useRelativePath.desc": "Use relative paths for images in markdown files. When disabled, uses absolute paths.",
   "settings.enableDebugLogging.name": "Enable Debug Logging",
-  "settings.enableDebugLogging.desc": "Enable debug logging to console for troubleshooting. Recommended to disable.",
+  "settings.enableDebugLogging.desc": "Enable debug logging to console for troubleshooting",
   "settings.showSendOnlyButton.name": "Show Send-Only Button",
   "settings.showSendOnlyButton.desc": "Show a button next to the send button that adds messages to chat without sending to AI",
   "settings.showNormalCaptureButton.name": "Show Normal Capture Button",
   "settings.showNormalCaptureButton.desc": "Show normal screenshot capture button in ribbon",
-  "settings.enableMinimizedCapture.name": "Enable Minimized Capture",
+  "settings.enableMinimizedCapture.name": "Enable Minimized Obsidian Window Capture",
   "settings.enableMinimizedCapture.desc": "⚠ Limited by API, performance may be inconsistent",
-  "settings.showMinimizedCaptureButton.name": "Show Minimized Capture Button",
-  "settings.showMinimizedCaptureButton.desc": "Show minimized window capture button in ribbon",
+  "settings.showMinimizedCaptureButton.name": "Show Minimized Obsidian Window Capture Button",
+  "settings.showMinimizedCaptureButton.desc": "Show minimized Obsidian window capture button in ribbon",
   "settings.showAIChatPanelButton.name": "Show AI Chat Panel Button", 
   "settings.showAIChatPanelButton.desc": "Show AI chat panel button in ribbon",
   "settings.imageFormat.name": "Image format",
@@ -35,7 +35,7 @@ export default {
   // AI Settings
   "settings.aiFunction": "AI Chat Function",
   "settings.enableAI.name": "Enable AI",
-  "settings.enableAI.desc": "Enable AI for image analysis",
+  "settings.enableAI.desc": "Enable AI to unlock the full CaptureAI experience",
   "settings.aiApiConfig": "AI API Configuration",
   "settings.apiKey.name": "API Key",
   "settings.apiKey.desc": "API key for selected provider",
@@ -45,15 +45,15 @@ export default {
   "settings.defaultModel.desc": "Default AI model for AI interactions",
   "settings.defaultModel.visionCapable": "Vision",
   "settings.defaultModel.textOnly": "Text Only",
-  "settings.imageSaveLocation.name": "Image save location",
-  "settings.imageSaveLocation.desc": "Directory where images from other sources will be saved",
+  "settings.imageSaveLocation.name": "Save location for images from other sources",
+  "settings.imageSaveLocation.desc": "Images that are not part of the vault will be saved to the vault when manually saving a session; this setting specifies the save directory",
   "settings.conversationHistory": "Conversation History Settings",
   "settings.autoSave.name": "Auto-save conversations",
   "settings.autoSave.desc": "Automatically save AI chat conversations",
   "settings.autoSaveLocation.name": "Auto-save location",
   "settings.autoSaveLocation.desc": "Directory where chat conversations will be saved",
-  "settings.maxHistory.name": "Max history count",
-  "settings.maxHistory.desc": "Maximum number of conversations to keep (default: 5)",
+  "settings.maxHistory.name": "Max Auto-save conversation count",
+  "settings.maxHistory.desc": "When the number of auto-saved conversations exceeds the maximum limit, the oldest conversation will be automatically deleted",
   "settings.promptSettings": "Prompt Settings",
   "settings.globalPrompt.name": "Global system prompt",
   "settings.globalPrompt.desc": "Global system prompt for AI analysis",
@@ -95,55 +95,53 @@ export default {
   "settings.modelConfigs.desc": "Manage your AI models ({{count}} configured)",
   "settings.manageModels.button": "Manage Models",
   
-  // Add Custom Provider
-  "settings.addCustomProvider.name": "Add Custom Provider",
-  "settings.addCustomProvider.desc": "Add a new custom AI provider with independent configuration",
-  "settings.addCustomProvider.button": "Add Custom Provider",
-  
   // Warnings and guides
   "settings.noVisionModels.warning": "⚠️ No vision-capable models configured. Use \"Set Keys\" to add models that support image analysis.",
   "settings.getStarted.guide": "💡 Get started by clicking \"Set Keys\" to configure your AI providers and add models.",
   
   // Section names
-  "settings.usage.name": "Usage",
+  // "settings.usage.name": "Usage",
   "settings.troubleshooting.name": "Troubleshooting",
   
   // Help content
-  "settings.shortcuts.help": `
-    <p>Available keyboard shortcuts:</p>
-    <ul>
-      <li><kbd>Escape</kbd> - Cancel region selection</li>
-      <li><kbd>Ctrl/Cmd + Z</kbd> - Undo last edit</li>
-      <li><kbd>Ctrl/Cmd + Y</kbd> - Redo last edit</li>
-    </ul>
-  `,
-  "settings.usage.help": `
-    <p>How to use the screenshot capture plugin:</p>
-    <ol>
-      <li>Click the camera icon in the ribbon or use the command palette</li>
-      <li>Select "Capture selected area" or "Capture full screen"</li>
-      <li>For region capture: drag to select the area you want to capture</li>
-      <li>Use the editing tools to annotate your screenshot</li>
-      <li>Click "Save" to save the image or "Send to AI" for analysis</li>
-    </ol>
-    <p><strong>Note:</strong> This plugin requires Obsidian to be running on a desktop platform with Electron support.</p>
-  `,
-  "settings.troubleshooting.help": `
-    <p>If screenshots are not working:</p>
-    <ul>
-      <li>Make sure you're running Obsidian on desktop (not mobile)</li>
-      <li>Try restarting Obsidian</li>
-      <li>Check that you have proper screen recording permissions on macOS</li>
-      <li>Use the "Test desktopCapturer API" command to diagnose issues</li>
-    </ul>
-    <p>If AI analysis is not working:</p>
-    <ul>
-      <li>Check that your API keys are correctly configured using "Set Keys"</li>
-      <li>Ensure you have at least one vision-capable model configured</li>
-      <li>Verify your internet connection</li>
-      <li>Check the Console (Ctrl+Shift+I) for error messages</li>
-    </ul>
-  `,
+  "settings.shortcuts.help.1": "On the AI chat page, press Enter to send a message and Shift+Enter for a new line.",
+  "settings.shortcuts.help.2": "On the screenshot editing page, use the mouse wheel to zoom in and out.",
+  "settings.shortcuts.help.3": "Screenshot shortcuts need to be configured in the Obsidian Hotkeys settings page.",
+
+//   "settings.shortcuts.help": `
+// · On the AI chat page, press Enter to send a message and Shift+Enter for a new line.
+
+// · On the screenshot editing page, use the mouse wheel to zoom in and out.
+
+// · Screenshot shortcuts need to be configured in the Obsidian Hotkeys settings page.
+//   `,
+
+  // "settings.usage.help": `
+  //   <p>How to use the screenshot capture plugin:</p>
+  //   <ol>
+  //     <li>Click the camera icon in the ribbon or use the command palette</li>
+  //     <li>Select "Capture selected area" or "Capture full screen"</li>
+  //     <li>For region capture: drag to select the area you want to capture</li>
+  //     <li>Use the editing tools to annotate your screenshot</li>
+  //     <li>Click "Save" to save the image or "Send to AI" for analysis</li>
+  //   </ol>
+  //   <p><strong>Note:</strong> This plugin requires Obsidian to be running on a desktop platform with Electron support.</p>
+  // `,
+  "settings.troubleshooting.title.screenshot": "If the screenshot feature does not work:",
+  "settings.troubleshooting.screenshot.1": "Make sure you are running Obsidian desktop (not the mobile version)",
+  "settings.troubleshooting.screenshot.2": "Try restarting Obsidian",
+  "settings.troubleshooting.screenshot.3": "If you are using macOS, check whether screen recording permission has been granted",
+
+  "settings.troubleshooting.title.ai": "If the AI session does not work properly:",
+  "settings.troubleshooting.ai.1": "Verify that your API key is correctly configured via \"Set Key\"",
+  "settings.troubleshooting.ai.2": "Ensure at least one vision-capable model is configured",
+  "settings.troubleshooting.ai.3": "Check your network connection",
+  "settings.troubleshooting.ai.4": "Make sure your configured API key is valid and still has quota",
+
+  "settings.troubleshooting.title.persist": "If the issue persists:",
+  "settings.troubleshooting.persist.1": "Enable \"Enable Debug Logging\" in the settings page, and open the console (shortcut Ctrl+Shift+I) to check error messages.",
+  "settings.troubleshooting.persist.2": "If you discover a plugin bug or have any suggestions, please provide feedback at ",
+  "settings.troubleshooting.persist.url":"https://github.com/Do7and/obsidian-captureai/issues",
   
   // Other settings
   "settings.autoAnalysis.name": "Auto analysis",
@@ -156,12 +154,18 @@ export default {
   "settings.shortcuts.desc": "Customize screenshot shortcuts",
   "settings.aiBehavior.name": "AI behavior",
   "settings.aiBehavior.desc": "Default AI behavior and custom questions",
-  "settings.imageUpload.name": "Image upload and save",
-  "settings.imageUpload.desc": "Control how images are uploaded and saved",
+  "settings.miscellaneous.name": "Miscellaneous",
+  "settings.miscellaneous.desc": "Control how images are uploaded and saved",
   
+  "settings.githubStar.name": "Support CaptureAI on GitHub",
+  "settings.githubStar.desc": "If you enjoy using this plugin, consider giving it a ⭐ on GitHub!",
+  "settings.githubStarButton.name": "Open GitHub",
+  "settings.githubStarButton.url": "https://github.com/Do7and/obsidian-captureai",
+
+
   // Commands
   "commands.captureNormal.name": "Capture selected area",
-  "commands.captureMinimized.name": "Minimized window capture",
+  "commands.captureMinimized.name": "Minimized Obsidian window capture",
   "commands.toggleAiChat.name": "Toggle AI Chat Panel",
 
   
@@ -182,7 +186,7 @@ export default {
   "ui.add": "Add",
   "ui.remove": "Remove",
   "ui.captureAI": "CaptureAI",
-  "ui.minimizedCapture": "Minimized window capture",
+  "ui.minimizedCapture": "Minimized Obsidian window capture",
   "ui.aiChatPanel": "AI Chat Panel",
   "ui.sendOnlyButton": "Send message only (no AI response)",
   
@@ -221,7 +225,7 @@ export default {
   "notice.desktopCapturerNotAvailable": "desktopCapturer not available",
   "notice.screenRecordingPermissionDenied": "Screen recording permission denied. Please grant screen recording permission to Obsidian in System Preferences.",
   "notice.windowControlNotAvailable": "Window control not available - please ensure you are running on desktop",
-  "notice.minimizedCaptureFailed": "Minimized window capture failed: {{message}}",
+  "notice.minimizedCaptureFailed": "Minimized Obsidian window capture failed: {{message}}",
   "notice.screenPermissionCheckFailed": "Screen recording permission check failed. Please check system permissions.",
   "notice.noScreenSourcesFound": "No screen sources found - check screen recording permissions",
   "notice.noThumbnailAvailable": "No thumbnail available",
@@ -261,6 +265,10 @@ export default {
   "imageEditor.wavyLineTool": "Wavy Line",
   "imageEditor.dashedLineTool": "Dashed Line",
   "imageEditor.dottedLineTool": "Dotted Line",
+  "imageEditor.viewportPanTool": "Viewport Pan",
+  "imageEditor.zoomInTooltip": "Zoom In",
+  "imageEditor.zoomOutTooltip": "Zoom Out",
+  "imageEditor.resetZoomTooltip": "Reset Zoom (100%)",
   "imageEditor.strokeSize.small": "Small",
   "imageEditor.strokeSize.medium": "Medium",
   "imageEditor.strokeSize.large": "Large",
@@ -330,39 +338,6 @@ export default {
   "setKeys.visionBadge": "Vision",
   "setKeys.contextBadge": "{{count}} tokens",
 
-  // Add Custom Provider Modal
-  "addCustomProvider.title": "Add Custom AI Provider",
-  "addCustomProvider.description": "Add a new custom AI provider with your own API configuration.",
-  "addCustomProvider.providerNameLabel": "Provider Name",
-  "addCustomProvider.providerNameDescription": "Enter a name for this provider (e.g., 'My Company API')",
-  "addCustomProvider.providerNamePlaceholder": "My Company API",
-  "addCustomProvider.baseUrlLabel": "Base URL",
-  "addCustomProvider.baseUrlDescription": "Enter the base URL for the API endpoint",
-  "addCustomProvider.baseUrlPlaceholder": "https://api.302.ai",
-  "addCustomProvider.apiPathLabel": "API Path",
-  "addCustomProvider.apiPathDescription": "Enter the API path (default: /v1/chat/completions)",
-  "addCustomProvider.apiPathPlaceholder": "/v1/chat/completions",
-  "addCustomProvider.apiKeyLabel": "API Key",
-  "addCustomProvider.apiKeyDescription": "Enter the API key for this provider",
-  "addCustomProvider.apiKeyPlaceholder": "Enter API key...",
-  "addCustomProvider.modelIdLabel": "Model ID",
-  "addCustomProvider.modelIdDescription": "Enter the model ID (e.g., 'gpt-4o', 'claude-3-5-sonnet')",
-  "addCustomProvider.modelIdPlaceholder": "gpt-4o",
-  "addCustomProvider.modelNameLabel": "Model Display Name",
-  "addCustomProvider.modelNameDescription": "Enter a display name for this model",
-  "addCustomProvider.modelNamePlaceholder": "GPT-4o",
-  "addCustomProvider.visionCapableLabel": "Vision Capable",
-  "addCustomProvider.visionCapableDescription": "Check if this model supports image analysis",
-  "addCustomProvider.testButton": "Test Connection",
-  "addCustomProvider.testingButton": "Testing...",
-  "addCustomProvider.addButton": "Add Provider",
-  "addCustomProvider.testSuccess": "✅ Connection test successful!",
-  "addCustomProvider.testFailed": "❌ Connection test failed: {{error}}",
-  "addCustomProvider.addSuccess": "✅ Added {{providerName}} - {{modelName}} successfully!",
-  "addCustomProvider.providerNameRequired": "Provider name is required",
-  "addCustomProvider.baseUrlRequired": "Base URL is required",
-  "addCustomProvider.apiKeyRequired": "API key is required",
-  "addCustomProvider.modelIdRequired": "Model ID is required",
 
   // Manage Models Modal
   "manageModels.description": "Configure and manage your AI model configurations.",
@@ -438,7 +413,8 @@ export default {
   "aiChat.insertToCursorButton": "Insert at cursor",
   "aiChat.copyMessageButton": "Copy message",
   "aiChat.switchEditViewButton": "Switch edit/read view",
-  "aiChat.deleteMessageButton": "Delete message",
+  "aiChat.deleteMessageButton": "Delete message block",
+  "aiChat.confirmDeleteMessage": "Are you sure you want to delete this {{messageType}} message?",
   "aiChat.includeInContextTooltip": "Include in AI context",
   "aiChat.user": "User",
   "aiChat.aiAssistant": "AI Assistant",
@@ -480,34 +456,6 @@ export default {
   "plugin.aiChatPanelNotFound": "AI Chat panel not found or does not support image queue",
   "plugin.failedToCreateAiChatPanel": "Failed to create AI chat panel: {{message}}",
 
-  // Settings tab - hardcoded content that needs i18n
-  "settings.usage.helpContent": `
-    <p>How to use the CaptureAI plugin:</p>
-    <ol>
-      <li>Click the camera icon in the ribbon or use the command palette</li>
-      <li>Select "Capture selected area" or "Capture full screen"</li>
-      <li>For region capture: drag to select the area you want to capture</li>
-      <li>Use the editing tools to annotate your screenshot</li>
-      <li>Click "Save" to save the image or "Send to AI" for analysis</li>
-    </ol>
-    <p><strong>Note:</strong> This plugin requires Obsidian to be running on a desktop platform with Electron support.</p>
-  `,
-  "settings.troubleshooting.helpContent": `
-    <p>If screenshots are not working:</p>
-    <ul>
-      <li>Make sure you're running Obsidian on desktop (not mobile)</li>
-      <li>Try restarting Obsidian</li>
-      <li>Check that you have proper screen recording permissions on macOS</li>
-      <li>Use the "Test desktopCapturer API" command to diagnose issues</li>
-    </ul>
-    <p>If AI analysis is not working:</p>
-    <ul>
-      <li>Check that your API keys are correctly configured using "Set Keys"</li>
-      <li>Ensure you have at least one vision-capable model configured</li>
-      <li>Verify your internet connection</li>
-      <li>Check the Console (Ctrl+Shift+I) for error messages</li>
-    </ul>
-  `,
 
   // Missing Notice translations
   "notice.imageAndTextCopied": "Image and text copied to clipboard",

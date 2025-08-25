@@ -49,13 +49,11 @@ export class ScreenshotManager {
 				
 				// Consider minimized if any of these conditions are true
 				if (isMinimized || (isNotVisible && isNotFocused)) {
-					getLogger().log('✅ Window minimized detected - ready for capture');
 					resolve();
 					return;
 				}
 				
 				if (checkCount >= maxChecks) {
-					getLogger().log('⏰ Max checks reached, proceeding with capture');
 					resolve();
 					return;
 				}
@@ -72,7 +70,6 @@ export class ScreenshotManager {
 	async startRegionCapture(minimizeWindow: boolean = false) {
 		// 原子性检查和设置状态，防止竞态条件
 		if (this.isScreenshotModeActive) {
-			getLogger().log('🚫 Screenshot mode already active, ignoring new request');
 			return;
 		}
 		// 立即设置状态，防止后续调用通过检查
@@ -81,8 +78,6 @@ export class ScreenshotManager {
 		let currentWindow: any = null;
 		
 		try {
-			getLogger().log('🚀 Starting region capture process...');
-			
 			// Handle window minimization if requested
 			if (minimizeWindow) {
 				// Get Electron window instance
@@ -102,7 +97,6 @@ export class ScreenshotManager {
 					return;
 				}
 
-				getLogger().log('🔍 Minimizing window...');
 				// Minimize the current window
 				currentWindow.minimize();
 				
@@ -110,7 +104,6 @@ export class ScreenshotManager {
 				try {
 					await this.waitForWindowMinimized(currentWindow);
 				} catch (error) {
-					getLogger().log('⚠️ Window state detection failed, using fallback delay');
 					await new Promise(resolve => setTimeout(resolve, 100));
 				}
 			}
@@ -429,17 +422,12 @@ export class ScreenshotManager {
 	}
 
 	private removeOverlay() {
-		getLogger().log('🧹 Starting overlay cleanup...');
-		
-		
 		if (this.overlay) {
 			const overlayData = this.overlayElements.get(this.overlay);
 			if (overlayData && overlayData.cleanup) {
-				getLogger().log('🧹 Running event cleanup...');
 				overlayData.cleanup();
 			}
 			if (this.overlay.parentNode) {
-				getLogger().log('🧹 Removing main overlay element...');
 				this.overlay.parentNode.removeChild(this.overlay);
 			}
 			
@@ -449,9 +437,8 @@ export class ScreenshotManager {
 				const mouseIndicator = overlayData.mouseIndicator;
 				const coordDisplay = overlayData.coordDisplay;
 				
-				[instructionEl, mouseIndicator, coordDisplay].forEach((el, index) => {
+				[instructionEl, mouseIndicator, coordDisplay].forEach((el) => {
 					if (el && el.parentNode) {
-						getLogger().log(`🧹 Removing element ${index}: ${el.className}`);
 						el.parentNode.removeChild(el);
 					}
 				});
@@ -462,10 +449,8 @@ export class ScreenshotManager {
 		}
 		
 		// Force cleanup any lingering elements with screenshot classes
-		getLogger().log('🧹 Checking for lingering elements...');
 		const lingeringElements = document.querySelectorAll('.screenshot-overlay-base, .screenshot-selection-base, .screenshot-instruction-base, .screenshot-mouse-indicator-base, .screenshot-coord-display-base');
-		lingeringElements.forEach((el, index) => {
-			getLogger().log(`🧹 Found lingering element ${index}: ${el.className}`);
+		lingeringElements.forEach((el) => {
 			if (el.parentNode) {
 				el.parentNode.removeChild(el);
 			}
@@ -477,16 +462,12 @@ export class ScreenshotManager {
 		
 		// 重置截图模式状态
 		this.isScreenshotModeActive = false;
-		getLogger().log('🔄 Screenshot mode deactivated');
 	}
 
 	private async captureScreen(): Promise<string | null> {
 		try {
-			getLogger().log('🔍 Starting screen capture...');
-			
 			// Use cached Electron API for better performance
 			if (!this.electronAPI) {
-				getLogger().log('🔍 Initializing Electron API (first time)...');
 				this.electronAPI = this.plugin.getElectronAPI();
 				
 				if (!this.electronAPI) {
@@ -512,7 +493,6 @@ export class ScreenshotManager {
 			}
 			
 			// Fast path using cached API
-			getLogger().log('🚀 Using cached Electron API for fast capture...');
 			const sources = await this.desktopCapturer.getSources({
 				types: ['screen'],
 				thumbnailSize: { 
@@ -586,9 +566,7 @@ export class ScreenshotManager {
 				return null;
 			}
 			
-			getLogger().log('✅ Successfully captured screen, thumbnail size:', screenSize);
 			const dataURL = primaryThumbnail.toDataURL();
-			getLogger().log('✅ DataURL length:', dataURL.length);
 			return dataURL;
 			
 		} catch (error: any) {
@@ -615,9 +593,6 @@ export class ScreenshotManager {
 		return new Promise((resolve) => {
 			const img = new Image();
 			img.onload = () => {
-				getLogger().log('🔍 Creating extended crop...');
-				getLogger().log('🔍 Original region:', region);
-				
 				// Calculate extended region (1.2x the area around the original crop)
 				const extensionFactor = 0.2; // 20% extension on each side (total 1.4x)
 				const extensionX = Math.floor(region.width * extensionFactor);
@@ -656,8 +631,6 @@ export class ScreenshotManager {
 					extendedRegion.height = img.height - extendedRegion.y;
 				}
 				
-				getLogger().log('🔍 Extended region (scaled):', extendedRegion);
-				
 				const canvas = document.createElement('canvas');
 				const ctx = canvas.getContext('2d')!;
 				
@@ -684,15 +657,11 @@ export class ScreenshotManager {
 		return new Promise((resolve) => {
 			const img = new Image();
 			img.onload = () => {
-				getLogger().log('🔍 Starting image crop process with direct screen coordinates...');
-				getLogger().log('🔍 Screen-based region:', region);
 				getLogger().log('🔍 Screenshot dimensions:', { width: img.width, height: img.height });
 				
 				// Calculate scale factors (screenshot should match screen resolution)
 				const scaleX = img.width / screen.width;
 				const scaleY = img.height / screen.height;
-				
-				getLogger().log('🔍 Scale factors:', { scaleX, scaleY });
 				
 				// Apply scaling to get final crop coordinates - region is already in screen coordinates
 				const finalX = region.x * scaleX;
@@ -713,13 +682,6 @@ export class ScreenshotManager {
 				const clampedWidth = Math.max(1, Math.min(finalWidth, img.width - clampedX));
 				const clampedHeight = Math.max(1, Math.min(finalHeight, img.height - clampedY));
 				
-				getLogger().log('🔍 Clamped coordinates:', { 
-					x: clampedX, 
-					y: clampedY, 
-					width: clampedWidth, 
-					height: clampedHeight 
-				});
-				
 				// Create high-resolution canvas to maintain quality
 				const canvas = document.createElement('canvas');
 				canvas.width = clampedWidth;  // Use actual crop size to maintain resolution
@@ -736,8 +698,6 @@ export class ScreenshotManager {
 						clampedX, clampedY, clampedWidth, clampedHeight,  // Source rectangle
 						0, 0, clampedWidth, clampedHeight  // Destination rectangle (full size)
 					);
-					
-					getLogger().log('✅ Image cropped successfully using direct screen coordinates');
 				}
 				
 				resolve(canvas.toDataURL('image/png'));

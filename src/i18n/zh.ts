@@ -4,19 +4,19 @@ export default {
   "settings.general": "通用",
   "settings.screenshotFunction": "截图功能",
   "settings.defaultSaveLocation.name": "默认保存位置",
-  "settings.defaultSaveLocation.desc": "捕获图像将保存到的目录。留空以使用库根目录。",
+  "settings.defaultSaveLocation.desc": "截图将保存到的目录。留空以使用库根目录。",
   "settings.useRelativePath.name": "使用相对路径",
   "settings.useRelativePath.desc": "在 Markdown 文件中使用图像的相对路径。禁用时使用绝对路径。",
   "settings.enableDebugLogging.name": "启用调试日志",
-  "settings.enableDebugLogging.desc": "启用控制台调试日志用于故障排除。建议禁用。",
+  "settings.enableDebugLogging.desc": "启用控制台调试日志用于故障排除",
   "settings.showSendOnlyButton.name": "显示仅发送按钮",
   "settings.showSendOnlyButton.desc": "在发送按钮旁显示一个仅发送到聊天的按钮，不会发给AI处理",
   "settings.showNormalCaptureButton.name": "显示普通截图按钮",
   "settings.showNormalCaptureButton.desc": "在工具栏中显示普通截图按钮",
-  "settings.enableMinimizedCapture.name": "启用最小化截图功能",
+  "settings.enableMinimizedCapture.name": "启用最小化Obsidian窗口截图功能",
   "settings.enableMinimizedCapture.desc": "⚠ 受限于 API，使用体验可能不够流畅",
-  "settings.showMinimizedCaptureButton.name": "显示最小化截图按钮",
-  "settings.showMinimizedCaptureButton.desc": "在工具栏中显示最小化截图按钮",
+  "settings.showMinimizedCaptureButton.name": "显示最小化Obsidian窗口截图按钮",
+  "settings.showMinimizedCaptureButton.desc": "在工具栏中显示最小化Obsidian窗口截图按钮",
   "settings.showAIChatPanelButton.name": "显示AI聊天面板按钮",
   "settings.showAIChatPanelButton.desc": "在工具栏中显示AI聊天面板按钮",
   "settings.imageFormat.name": "图像格式",
@@ -35,7 +35,7 @@ export default {
   // AI Settings
   "settings.aiFunction": "AI 会话功能",
   "settings.enableAI.name": "启用 AI",
-  "settings.enableAI.desc": "启用发送图像给 AI 的功能",
+  "settings.enableAI.desc": "启用 AI以获得完整的CaptureAI体验",
   "settings.aiApiConfig": "AI API 配置",
   "settings.apiKey.name": "API 密钥",
   "settings.apiKey.desc": "所选提供商的 API 密钥",
@@ -45,15 +45,15 @@ export default {
   "settings.defaultModel.desc": "用于AI交互的默认AI模型",
   "settings.defaultModel.visionCapable": "视觉",
   "settings.defaultModel.textOnly": "仅文本",
-  "settings.imageSaveLocation.name": "图像保存位置",
-  "settings.imageSaveLocation.desc": "从其他来源保存图像的目录",
+  "settings.imageSaveLocation.name": "其他来源图片保存位置",
+  "settings.imageSaveLocation.desc": "不属于仓库中的图片在手动保存会话时会被保存到仓库中，此处设置其保存目录",
   "settings.conversationHistory": "会话历史设置",
   "settings.autoSave.name": "自动保存会话",
   "settings.autoSave.desc": "自动保存 AI 会话",
   "settings.autoSaveLocation.name": "自动保存位置",
   "settings.autoSaveLocation.desc": "AI会话将保存到的目录",
   "settings.maxHistory.name": "自动保存的会话最大数量",
-  "settings.maxHistory.desc": "要保留的会话最大数量",
+  "settings.maxHistory.desc": "当自动保存的会话超过最大数量时会自动删除最旧的会话",
   "settings.promptSettings": "提示词设置",
   "settings.globalPrompt.name": "全局系统提示词",
   "settings.globalPrompt.desc": "AI 会话的全局系统提示词",
@@ -95,55 +95,67 @@ export default {
   "settings.modelConfigs.desc": "管理您的AI模型 (已配置{{count}}个)",
   "settings.manageModels.button": "管理模型",
   
-  // Add Custom Provider
-  "settings.addCustomProvider.name": "添加自定义提供商",
-  "settings.addCustomProvider.desc": "添加一个新的自定义AI提供商，具有独立配置",
-  "settings.addCustomProvider.button": "添加自定义提供商",
-  
   // Warnings and guides
   "settings.noVisionModels.warning": "⚠️ 未配置支持视觉的模型。使用设置密钥添加支持图像分析的模型。",
   "settings.getStarted.guide": "💡 点击设置密钥开始配置您的AI提供商并添加模型。",
   
   // Section names
-  "settings.usage.name": "使用方法",
+  // "settings.usage.name": "使用方法",
   "settings.troubleshooting.name": "故障排除",
   
   // Help content
-  "settings.shortcuts.help": `
-    <p>可用的键盘快捷键:</p>
-    <ul>
-      <li><kbd>Escape</kbd> - 取消区域选择</li>
-      <li><kbd>Ctrl/Cmd + Z</kbd> - 撤销上次编辑</li>
-      <li><kbd>Ctrl/Cmd + Y</kbd> - 重做上次编辑</li>
-    </ul>
-  `,
-  "settings.usage.help": `
-    <p>如何使用截图插件:</p>
-    <ol>
-      <li>点击功能区中的相机图标或使用命令面板</li>
-      <li>选择"捕获选定区域"或"捕获全屏"</li>
-      <li>对于区域捕获：拖动选择要捕获的区域</li>
-      <li>使用编辑工具注释您的截图</li>
-      <li>点击"保存"保存图像或"发送到AI"进行分析</li>
-    </ol>
-    <p><strong>注意:</strong> 此插件需要Obsidian在支持Electron的桌面平台上运行。</p>
-  `,
-  "settings.troubleshooting.help": `
-    <p>如果截图不工作:</p>
-    <ul>
-      <li>确保您在桌面版Obsidian上运行（非移动版）</li>
-      <li>尝试重启Obsidian</li>
-      <li>检查您在macOS上是否有适当的屏幕录制权限</li>
-      <li>使用"测试桌面捕获API"命令诊断问题</li>
-    </ul>
-    <p>如果AI会话不工作:</p>
-    <ul>
-      <li>检查您的API密钥是否使用"设置密钥"正确配置</li>
-      <li>确保您至少配置了一个支持视觉的模型</li>
-      <li>验证您的网络连接</li>
-      <li>检查控制台 (Ctrl+Shift+I) 查看错误消息</li>
-    </ul>
-  `,
+  "settings.shortcuts.help.1": "AI会话页面可以使用enter发送消息，使用shift+enter换行",
+  "settings.shortcuts.help.2": "截图编辑页面可以使用鼠标滚轮调节放缩比例",
+  "settings.shortcuts.help.3": "有关截图的快捷键需要去Obsidian快捷键设置页面为截图命令配置",
+//   "settings.shortcuts.help": `
+// · AI会话页面可以使用enter发送消息，使用shift+enter换行
+
+// · 截图编辑页面可以使用鼠标滚轮调节放缩比例
+
+// · 有关截图的快捷键需要去Obsidian快捷键设置页面为截图命令配置
+//   `,
+  // "settings.usage.help": `
+  //   <p>如何使用截图插件:</p>
+  //   <ol>
+  //     <li>点击功能区中的相机图标或使用命令面板</li>
+  //     <li>选择"捕获选定区域"或"捕获全屏"</li>
+  //     <li>对于区域捕获：拖动选择要捕获的区域</li>
+  //     <li>使用编辑工具注释您的截图</li>
+  //     <li>点击"保存"保存图像或"发送到AI"进行分析</li>
+  //   </ol>
+  //   <p><strong>注意:</strong> 此插件需要Obsidian在支持Electron的桌面平台上运行。</p>
+  // `,
+//   "settings.troubleshooting.help": `
+// 如果截图功能无法使用:
+// - 请确认您正在使用 Obsidian 桌面版（移动端暂不支持）
+// - 尝试重启 Obsidian
+// - 如果您使用 macOS，请检查是否已授予屏幕录制权限
+
+// 如果AI 会话无法正常使用:
+// - 确认您的 API 密钥已通过「设置密钥」正确配置
+// - 确保至少配置了一个支持视觉的模型
+// - 检查您的网络连接
+// - 确保您配置的API 密钥可用并仍有额度
+
+// 若问题依然存在:
+// 在设置页中打开「启用调试日志」，打开控制台（快捷键 Ctrl+Shift+I）查看错误消息。
+// 如果您发现了插件BUG或有任何建议，请反馈至https://github.com/Do7and/obsidian-captureai/issues
+//   `,
+  "settings.troubleshooting.title.screenshot": "如果截图功能无法使用:",
+  "settings.troubleshooting.screenshot.1": "请确认您正在使用 Obsidian 桌面版（移动端暂不支持）",
+  "settings.troubleshooting.screenshot.2": "尝试重启 Obsidian",
+  "settings.troubleshooting.screenshot.3": "如果您使用 macOS，请检查是否已授予屏幕录制权限",
+
+  "settings.troubleshooting.title.ai": "如果AI 会话无法正常使用",
+  "settings.troubleshooting.ai.1": "确认您的 API 密钥已通过「设置密钥」正确配置",
+  "settings.troubleshooting.ai.2": "确保至少配置了一个支持视觉的模型",
+  "settings.troubleshooting.ai.3": "检查您的网络连接",
+  "settings.troubleshooting.ai.4": "确保您配置的API 密钥可用并仍有额度",
+
+  "settings.troubleshooting.title.persist": "若问题依然存在:",
+  "settings.troubleshooting.persist.1": "在设置页中打开「启用调试日志」，打开控制台（快捷键 Ctrl+Shift+I）查看错误消息。",
+  "settings.troubleshooting.persist.2": "如果您发现了插件BUG或有任何建议，请反馈至 ",
+  "settings.troubleshooting.persist.url":"https://github.com/Do7and/obsidian-captureai/issues",
   
   // Other settings
   "settings.autoAnalysis.name": "自动分析",
@@ -156,12 +168,17 @@ export default {
   "settings.shortcuts.desc": "自定义截图快捷方式",
   "settings.aiBehavior.name": "AI 行为",
   "settings.aiBehavior.desc": "默认 AI 行为和自定义问题",
-  "settings.imageUpload.name": "图像上传和保存",
-  "settings.imageUpload.desc": "控制图像如何上传和保存",
+  "settings.miscellaneous.name": "杂项",
+  "settings.miscellaneous.desc": "控制图像如何上传和保存",
+
+  "settings.githubStar.name": "在 GitHub 支持 CaptureAI",
+  "settings.githubStar.desc": "如果您喜欢这个插件，请考虑在 GitHub 上 ⭐ 支持它！",
+  "settings.githubStarButton.name": "打开 GitHub",
+  "settings.githubStarButton.url": "https://github.com/Do7and/obsidian-captureai",
   
   // Commands
   "commands.captureNormal.name": "截图",
-  "commands.captureMinimized.name": "最小化窗口截图",
+  "commands.captureMinimized.name": "最小化Obsidian窗口截图",
   "commands.toggleAiChat.name": "切换到 AI 会话面板",
 
   
@@ -182,7 +199,7 @@ export default {
   "ui.add": "添加",
   "ui.remove": "移除",
   "ui.captureAI": "截图捕获",
-  "ui.minimizedCapture": "最小化窗口截图",
+  "ui.minimizedCapture": "最小化Obsidian窗口截图",
   "ui.aiChatPanel": "AI 会话面板",
   "ui.sendOnlyButton": "仅发送消息（不调用AI）",
   
@@ -221,7 +238,7 @@ export default {
   "notice.desktopCapturerNotAvailable": "desktopCapturer 不可用",
   "notice.screenRecordingPermissionDenied": "屏幕录制权限被拒绝。请在系统偏好设置中授予 Obsidian 屏幕录制权限。",
   "notice.windowControlNotAvailable": "窗口控制不可用 - 请确保您在桌面版上运行",
-  "notice.minimizedCaptureFailed": "最小化窗口截图失败: {{message}}",
+  "notice.minimizedCaptureFailed": "最小化Obsidian窗口截图失败: {{message}}",
   "notice.screenPermissionCheckFailed": "屏幕录制权限检查失败。请检查系统权限。",
   "notice.noScreenSourcesFound": "未找到屏幕源 - 请检查屏幕录制权限",
   "notice.noThumbnailAvailable": "无缩略图可用",
@@ -261,6 +278,10 @@ export default {
   "imageEditor.wavyLineTool": "波浪线",
   "imageEditor.dashedLineTool": "虚线",
   "imageEditor.dottedLineTool": "点线",
+  "imageEditor.viewportPanTool": "视图平移",
+  "imageEditor.zoomInTooltip": "放大",
+  "imageEditor.zoomOutTooltip": "缩小",
+  "imageEditor.resetZoomTooltip": "重置缩放 (100%)",
   "imageEditor.strokeSize.small": "小",
   "imageEditor.strokeSize.medium": "中",
   "imageEditor.strokeSize.large": "大",
@@ -331,39 +352,6 @@ export default {
   "setKeys.visionBadge": "视觉",
   "setKeys.contextBadge": "{{count}} 令牌",
 
-  // Add Custom Provider Modal
-  "addCustomProvider.title": "添加自定义AI提供商",
-  "addCustomProvider.description": "添加一个新的自定义AI提供商及其API配置。",
-  "addCustomProvider.providerNameLabel": "提供商名称",
-  "addCustomProvider.providerNameDescription": "输入此提供商的名称 (例如: '我的公司API')",
-  "addCustomProvider.providerNamePlaceholder": "我的公司API",
-  "addCustomProvider.baseUrlLabel": "基础 URL",
-  "addCustomProvider.baseUrlDescription": "输入API端点的基础URL",
-  "addCustomProvider.baseUrlPlaceholder": "https://api.example.com/v1",
-  "addCustomProvider.apiPathLabel": "API 路径",
-  "addCustomProvider.apiPathDescription": "输入API路径 (默认: /v1/chat/completions)",
-  "addCustomProvider.apiPathPlaceholder": "/v1/chat/completions",
-  "addCustomProvider.apiKeyLabel": "API 密钥",
-  "addCustomProvider.apiKeyDescription": "输入此提供商的API密钥",
-  "addCustomProvider.apiKeyPlaceholder": "输入 API 密钥...",
-  "addCustomProvider.modelIdLabel": "模型 ID",
-  "addCustomProvider.modelIdDescription": "输入模型ID (例如: 'gpt-4o', 'claude-3-5-sonnet')",
-  "addCustomProvider.modelIdPlaceholder": "gpt-4o",
-  "addCustomProvider.modelNameLabel": "模型显示名称",
-  "addCustomProvider.modelNameDescription": "输入此模型的显示名称",
-  "addCustomProvider.modelNamePlaceholder": "GPT-4o",
-  "addCustomProvider.visionCapableLabel": "支持视觉",
-  "addCustomProvider.visionCapableDescription": "勾选此选项如果该模型支持图像分析",
-  "addCustomProvider.testButton": "测试连接",
-  "addCustomProvider.testingButton": "测试中...",
-  "addCustomProvider.addButton": "添加提供商",
-  "addCustomProvider.testSuccess": "✅ 连接测试成功！",
-  "addCustomProvider.testFailed": "❌ 连接测试失败: {{error}}",
-  "addCustomProvider.addSuccess": "✅ 成功添加 {{providerName}} - {{modelName}}！",
-  "addCustomProvider.providerNameRequired": "提供商名称是必需的",
-  "addCustomProvider.baseUrlRequired": "基础URL是必需的",
-  "addCustomProvider.apiKeyRequired": "API密钥是必需的",
-  "addCustomProvider.modelIdRequired": "模型ID是必需的",
 
   // Manage Models Modal
   "manageModels.description": "配置和管理您的 AI 模型配置。",
@@ -439,7 +427,9 @@ export default {
   "aiChat.insertToCursorButton": "插入到光标处",
   "aiChat.copyMessageButton": "复制",
   "aiChat.switchEditViewButton": "切换编辑/阅读视图",
-  "aiChat.deleteMessageButton": "删除",
+  "aiChat.deleteMessageButton": "删除消息块",
+  "aiChat.confirmDeleteMessage": "您确定要删除这条{{messageType}}消息吗？",
+  
   "aiChat.includeInContextTooltip": "是否参与AI上下文构建",
   "aiChat.user": "用户",
   "aiChat.aiAssistant": "AI 助手",
@@ -480,35 +470,6 @@ export default {
   "plugin.aiManagerNotInitialized": "AI 管理器未初始化",
   "plugin.aiChatPanelNotFound": "未找到 AI 会话面板或不支持图像队列",
   "plugin.failedToCreateAiChatPanel": "创建 AI 会话面板失败: {{message}}",
-
-  // Settings tab - hardcoded content that needs i18n
-  "settings.usage.helpContent": `
-    <p>如何使用截图插件:</p>
-    <ol>
-      <li>点击功能区中的相机图标或使用命令面板</li>
-      <li>选择"捕获选定区域"或"捕获全屏"</li>
-      <li>对于区域捕获：拖动选择要捕获的区域</li>
-      <li>使用编辑工具注释您的截图</li>
-      <li>点击"保存"保存图像或"发送到AI"进行分析</li>
-    </ol>
-    <p><strong>注意:</strong> 此插件需要Obsidian在支持Electron的桌面平台上运行。</p>
-  `,
-  "settings.troubleshooting.helpContent": `
-    <p>如果截图不工作:</p>
-    <ul>
-      <li>确保您在桌面版Obsidian上运行（非移动版）</li>
-      <li>尝试重启Obsidian</li>
-      <li>检查您在macOS上是否有适当的屏幕录制权限</li>  
-      <li>使用"测试桌面捕获API"命令诊断问题</li>
-    </ul>
-    <p>如果AI会话不工作:</p>
-    <ul>
-      <li>检查您的API密钥是否使用"设置密钥"正确配置</li>
-      <li>确保您至少配置了一个支持视觉的模型</li>
-      <li>验证您的网络连接</li>
-      <li>检查控制台 (Ctrl+Shift+I) 查看错误消息</li>
-    </ul>
-  `,
 
   // Missing Notice translations
   "notice.imageAndTextCopied": "图片和文本已复制到剪贴板",
