@@ -362,8 +362,7 @@ export class AIManager {
 	async buildContextMessages(conversation: AIConversation | null, currentMessage: string, currentImages?: string[], modelConfig?: ModelConfig, includeModeprompt?: boolean): Promise<any[]> {
 		const messages: any[] = [];
 		const contextSettings = this.plugin.settings.contextSettings || {
-			maxContextMessages: 20,
-			includeSystemPrompt: true
+			maxContextMessages: 10,
 		};
 
 		// Debug logging
@@ -386,13 +385,12 @@ export class AIManager {
 			isVisionCapable
 		});
 
-		// 1. Add system prompt (global system prompt)
-		if (contextSettings.includeSystemPrompt) {
-			messages.push({
-				role: 'system',
-				content: this.getEffectiveSystemPrompt()
-			});
-		}
+
+		messages.push({
+			role: 'system',
+			content: this.getEffectiveSystemPrompt()
+		});
+
 
 		// 2. Add historical context messages - SIMPLE CHRONOLOGICAL ORDER
 		if (conversation && conversation.messages.length > 0) {

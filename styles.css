@@ -1441,7 +1441,7 @@ button.ai-chat-action-btn:hover::after,
 	border: none !important;
 	outline: none !important;
 	box-shadow: none !important;
-	color: #D1D5DB; /* Lighter gray default */
+	color: #9CA3AF !important; /* Use consistent gray color */
 	font-size: 16px;
 	padding: 6px;
 	border-radius: 4px;
@@ -1461,7 +1461,7 @@ button.ai-chat-action-btn:hover::after,
 }
 
 .theme-dark .ai-chat-send-button-bottom {
-	color: #6B7280; /* Lighter gray for dark theme */
+	color: #6B7280 !important; /* Consistent gray for dark theme */
 }
 
 .theme-dark .ai-chat-send-button-bottom:hover:not(:disabled) {
@@ -1469,8 +1469,18 @@ button.ai-chat-action-btn:hover::after,
 }
 
 .ai-chat-send-button-bottom:disabled {
-	color: #D1D5DB;
-	cursor: not-allowed;
+	opacity: 0.4 !important;
+	cursor: not-allowed !important;
+	pointer-events: auto !important;
+}
+
+.ai-chat-send-button-bottom:disabled:hover {
+	background: transparent !important;
+	color: #9CA3AF !important;
+}
+
+.theme-dark .ai-chat-send-button-bottom:disabled:hover {
+	color: #6B7280 !important;
 }
 
 .ai-chat-send-button-bottom.no-models-disabled {
@@ -1481,13 +1491,13 @@ button.ai-chat-action-btn:hover::after,
 	border-color: var(--background-modifier-border);
 }
 
-/* Send-only button styles - similar to send button but slightly different */
+/* Send-only button styles - now consistent with send button */
 .ai-chat-send-only-button {
 	background: transparent !important;
 	border: none !important;
 	outline: none !important;
 	box-shadow: none !important;
-	color: #9CA3AF; /* More muted gray to differentiate from send button */
+	color: #9CA3AF !important; /* Same gray as send button */
 	font-size: 16px;
 	padding: 6px;
 	border-radius: 4px;
@@ -1506,15 +1516,15 @@ button.ai-chat-action-btn:hover::after,
 }
 
 .ai-chat-send-only-button:hover:not(:disabled) {
-	color: #6B7280 !important; /* Darker gray on hover */
+	color: #1F2937 !important; /* Same hover color as send button */
 }
 
 .theme-dark .ai-chat-send-only-button {
-	color: #4B5563; /* More muted gray for dark theme */
+	color: #6B7280 !important; /* Same as send button for consistency */
 }
 
 .theme-dark .ai-chat-send-only-button:hover:not(:disabled) {
-	color: #9CA3AF !important; /* Lighter gray on hover in dark theme */
+	color: #F9FAFB !important; /* Same hover color as send button */
 }
 
 .ai-chat-right-actions {
@@ -2332,8 +2342,10 @@ button.ai-chat-action-btn:hover::after,
 /* Modal styles for confirmation dialog */
 .ai-chat-modal-content {
 	width: 400px;
+	max-width: 90vw;
 	padding: var(--spacing-xl);
 	text-align: center;
+	margin: 0 auto;
 }
 
 .ai-chat-modal-title {

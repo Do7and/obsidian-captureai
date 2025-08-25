@@ -71,8 +71,8 @@ export class ChatHistoryModal extends Modal {
 	private async loadConversations(autoSavedList: HTMLElement, manualSavedList: HTMLElement) {
 		try {
 			const vault = this.plugin.app.vault;
-			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
-			const manualSaveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
+			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'captureai-folder/autosavedconversations';
+			const manualSaveLocation = this.plugin.settings.conversationSaveLocation || 'captureai-folder/conversations';
 
 			// Get all markdown files
 			const allFiles = vault.getMarkdownFiles();

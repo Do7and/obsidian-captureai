@@ -2018,7 +2018,7 @@ export class AIChatView extends ItemView {
 			const adapter = vault.adapter;
 			
 			// Use plugin's other source save location
-			const saveLocation = this.plugin.settings.otherSourceImageLocation || 'screenshots-capture/othersourceimage';
+			const saveLocation = this.plugin.settings.otherSourceImageLocation || 'captureai-folder/othersourceimage';
 			getLogger().log('Saving external image to location:', saveLocation);
 			
 			// Ensure save directory exists
@@ -2425,7 +2425,7 @@ export class AIChatView extends ItemView {
 			const finalMarkdownContent = await this.generateConversationMarkdown(conversation, 'auto', true);
 
 			// Get auto-save location from settings
-			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
+			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'captureai-folder/autosavedconversations';
 
 			// Ensure the directory exists
 			const vault = this.plugin.app.vault;
@@ -2483,7 +2483,7 @@ export class AIChatView extends ItemView {
 			const markdownContent = await this.generateConversationMarkdown(processedConversation, 'manual');
 
 			// Get save location from settings
-			const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
+			const saveLocation = this.plugin.settings.conversationSaveLocation || 'captureai-folder/conversations';
 
 			// Search for existing file with this conversationID
 			const existingFile = await this.findFileByConversationId(conversationId, saveLocation);
@@ -2601,7 +2601,7 @@ export class AIChatView extends ItemView {
 	private async cleanupOldAutoSavedConversations(): Promise<void> {
 		try {
 			const vault = this.plugin.app.vault;
-			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'screenshots-capture/autosavedconversations';
+			const autoSaveLocation = this.plugin.settings.autoSavedConversationLocation || 'captureai-folder/autosavedconversations';
 			const maxConversations = this.plugin.settings.maxAutoSavedConversations || 5;
 
 			// Get all auto-saved conversation files (now based on location only)
@@ -2697,9 +2697,9 @@ export class AIChatView extends ItemView {
 	 */
 	private async convertTempImagesToVaultFiles(conversation: AIConversation): Promise<AIConversation> {
 		const processedMessages: AIMessage[] = [];
-		const conversationSaveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
-		const otherSourceLocation = this.plugin.settings.otherSourceImageLocation || 'screenshots-capture/othersourceimage';
-		const screenshotSaveLocation = this.plugin.settings.defaultSaveLocation || 'screenshots-capture/savedscreenshots';
+		const conversationSaveLocation = this.plugin.settings.conversationSaveLocation || 'captureai-folder/conversations';
+		const otherSourceLocation = this.plugin.settings.otherSourceImageLocation || 'captureai-folder/othersourceimage';
+		const screenshotSaveLocation = this.plugin.settings.defaultSaveLocation || 'captureai-folder/savedscreenshots';
 		
 		// Ensure all folders exist
 		const vault = this.plugin.app.vault;
@@ -3168,7 +3168,7 @@ tags:
 		}
 		
 		// Save to vault
-		const saveLocation = this.plugin.settings.conversationSaveLocation || 'screenshots-capture/conversations';
+		const saveLocation = this.plugin.settings.conversationSaveLocation || 'captureai-folder/conversations';
 		const imageFolder = `${saveLocation}/images`;
 		
 		// Ensure image folder exists
@@ -3643,21 +3643,27 @@ tags:
 		return new Promise((resolve) => {
 			const modal = new Modal(this.app);
 			
+			// Remove the default modal header by clearing it
+			modal.titleEl.empty();
+			modal.titleEl.style.display = 'none';
+			
 			modal.contentEl.className = 'ai-chat-modal-content';
 			
 			// Title
 			const title = modal.contentEl.createEl('h3', { 
-				text: 'Delete Message',
+				text: t('aiChat.deleteMessage'),
 				cls: 'ai-chat-modal-title'
 			});
 			
 			// Message preview
 			const isUserMessage = message.type === 'user';
-			const messagePreview = (message.content || 'Image message').substring(0, 100);
+			const messagePreview = (message.content || t('aiChat.imageMessage')).substring(0, 100);
 			const truncated = messagePreview.length < (message.content || '').length;
 			
 			const description = modal.contentEl.createEl('p', {
-				text: `Are you sure you want to delete this ${isUserMessage ? 'user' : 'AI'} message?`,
+				text: t('aiChat.confirmDeleteMessage', { 
+					messageType: isUserMessage ? t('aiChat.user') : t('aiChat.ai') 
+				}),
 				cls: 'ai-chat-modal-description'
 			});
 			
@@ -3671,13 +3677,13 @@ tags:
 			
 			// Cancel button
 			const cancelBtn = buttonContainer.createEl('button', { 
-				text: 'Cancel',
+				text: t('common.cancel'),
 				cls: 'ai-chat-modal-button-cancel'
 			});
 			
 			// Delete button
 			const deleteBtn = buttonContainer.createEl('button', { 
-				text: 'Delete',
+				text: t('common.delete'),
 				cls: 'ai-chat-modal-button-delete'
 			});
 			

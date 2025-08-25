@@ -119,7 +119,6 @@ export interface ImageCaptureSettings {
 	// Context settings for AI conversations
 	contextSettings: {
 		maxContextMessages: number;      // Maximum number of historical message blocks to include (1 block = 1 UI message regardless of image count)
-		includeSystemPrompt: boolean;    // Whether to include system prompt in context
 	};
 	// Debug settings
 	enableDebugLogging: boolean;        // Enable debug logging to console
@@ -319,10 +318,10 @@ export function getLocalizedPrompts(language: string): typeof DEFAULT_PROMPTS.en
 
 export const DEFAULT_SETTINGS: ImageCaptureSettings = {
 	language: 'en',
-	defaultSaveLocation: 'screenshots-capture/savedscreenshots',
-	otherSourceImageLocation: 'screenshots-capture/othersourceimage',
-	conversationSaveLocation: 'screenshots-capture/conversations',
-	autoSavedConversationLocation: 'screenshots-capture/autosavedconversations',
+	defaultSaveLocation: 'captureai-folder/savedscreenshots',
+	otherSourceImageLocation: 'captureai-folder/othersourceimage',
+	conversationSaveLocation: 'captureai-folder/conversations',
+	autoSavedConversationLocation: 'captureai-folder/autosavedconversations',
 	tempImageLimit: 10,
 	enableAIAnalysis: true,
 	imageFormat: 'png',
@@ -341,8 +340,7 @@ export const DEFAULT_SETTINGS: ImageCaptureSettings = {
 	// Custom providers storage
 	customProviders: {},
 	contextSettings: {
-		maxContextMessages: 20,
-		includeSystemPrompt: true
+		maxContextMessages: 10,
 	},
 	// Debug settings
 	enableDebugLogging: false,

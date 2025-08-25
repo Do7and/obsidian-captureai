@@ -71,9 +71,9 @@ export default {
   "settings.customPrompt.desc": "自定义模式下的提示词",
   
   // Placeholders
-  "settings.defaultSaveLocation.placeholder": "输入文件夹路径 (例如: screenshots-capture/savedscreenshots)",
-  "settings.imageSaveLocation.placeholder": "输入文件夹路径 (例如: screenshots-capture/othersourceimage)",
-  "settings.autoSaveLocation.placeholder": "输入文件夹路径 (例如: screenshots-capture/autosavedconversations)",
+  "settings.defaultSaveLocation.placeholder": "输入文件夹路径 (例如: captureai-folder/savedscreenshots)",
+  "settings.imageSaveLocation.placeholder": "输入文件夹路径 (例如: captureai-folder/othersourceimage)",
+  "settings.autoSaveLocation.placeholder": "输入文件夹路径 (例如: captureai-folder/autosavedconversations)",
   "settings.globalPrompt.placeholder": "你是一个有用的AI助手...",
   "settings.screenshotPrompt.placeholder": "请分析这个截图并提供详细的见解...",
 
@@ -81,8 +81,6 @@ export default {
   "settings.contextSettings": "上下文设置",
   "settings.maxContextMessages.name": "最大上下文消息块数",
   "settings.maxContextMessages.desc": "AI会话时包含的历史消息块最大数量（一个消息块无论包含多少张图片都计为1块）",
-  "settings.includeSystemPrompt.name": "包含系统提示",
-  "settings.includeSystemPrompt.desc": "是否在上下文中包含系统提示词",
 
   // AI Chat Panel
   "settings.aiChatPanel.desc": "打开AI会话面板与您配置的模型交互",

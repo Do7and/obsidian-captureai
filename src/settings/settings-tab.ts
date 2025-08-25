@@ -410,14 +410,13 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				.setName(t('settings.maxContextMessages.name'))
 				.setDesc(t('settings.maxContextMessages.desc'))
 				.addSlider(slider => slider
-					.setLimits(5, 50, 5)
+					.setLimits(1, 20, 1)
 					.setValue(this.plugin.settings.contextSettings?.maxContextMessages || 20)
 					.setDynamicTooltip()
 					.onChange(async (value) => {
 						if (!this.plugin.settings.contextSettings) {
 							this.plugin.settings.contextSettings = {
-								maxContextMessages: 20,
-								includeSystemPrompt: true
+								maxContextMessages: 10,
 							};
 						}
 						this.plugin.settings.contextSettings.maxContextMessages = value;
@@ -425,24 +424,6 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 					})
 				);
 
-
-			// Include System Prompt
-			new Setting(contextContainer)
-				.setName(t('settings.includeSystemPrompt.name'))
-				.setDesc(t('settings.includeSystemPrompt.desc'))
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.contextSettings?.includeSystemPrompt ?? true)
-					.onChange(async (value) => {
-						if (!this.plugin.settings.contextSettings) {
-							this.plugin.settings.contextSettings = {
-								maxContextMessages: 20,
-								includeSystemPrompt: true
-							};
-						}
-						this.plugin.settings.contextSettings.includeSystemPrompt = value;
-						await this.plugin.saveSettings();
-					})
-				);
 
 		}
 

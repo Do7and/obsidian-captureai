@@ -71,9 +71,9 @@ export default {
   "settings.customPrompt.desc": "Prompt used for custom instructions from the user",
   
   // Placeholders
-  "settings.defaultSaveLocation.placeholder": "Enter folder path (e.g., screenshots-capture/savedscreenshots)",
-  "settings.imageSaveLocation.placeholder": "Enter folder path (e.g., screenshots-capture/othersourceimage)",
-  "settings.autoSaveLocation.placeholder": "Enter folder path (e.g., screenshots-capture/autosavedconversations)",
+  "settings.defaultSaveLocation.placeholder": "Enter folder path (e.g., captureai-folder/savedscreenshots)",
+  "settings.imageSaveLocation.placeholder": "Enter folder path (e.g., captureai-folder/othersourceimage)",
+  "settings.autoSaveLocation.placeholder": "Enter folder path (e.g., captureai-folder/autosavedconversations)",
   "settings.globalPrompt.placeholder": "You are a helpful AI assistant...",
   "settings.screenshotPrompt.placeholder": "Please analyze this screenshot and provide detailed insights...",
 
@@ -81,8 +81,6 @@ export default {
   "settings.contextSettings": "Context Settings",
   "settings.maxContextMessages.name": "Max Context Message Blocks",
   "settings.maxContextMessages.desc": "Maximum number of historical message blocks to include in AI conversations (each block counts as 1 regardless of image count)",
-  "settings.includeSystemPrompt.name": "Include System Prompt",
-  "settings.includeSystemPrompt.desc": "Whether to include system prompt in conversation context",
 
   // AI Chat Panel
   "settings.aiChatPanel.desc": "Open the AI chat panel to interact with your configured models",
