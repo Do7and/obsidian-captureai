@@ -44,7 +44,9 @@ export class ImageEditor extends Modal {
 		modalWidth: 0,
 		modalHeight: 0,
 		canvasWidth: 0,
-		canvasHeight: 0
+		canvasHeight: 0,
+		originalExtendedWidth: 0,
+		originalExtendedHeight: 0
 	};
 	
 	private toolbarElements = new WeakMap<HTMLElement, {
@@ -141,7 +143,8 @@ export class ImageEditor extends Modal {
 		this.extendedRegion = extendedRegion || null;
 		
 		// Reset zoom and viewport for each new screenshot
-		this.userZoom = 1;
+		// Set initial user zoom to the calculated scale factor
+		this.userZoom = 1; // Will be updated after scale calculation
 		this.viewportOffset = { x: 0, y: 0 };
 		
 		// Store original full screenshot for four-layer architecture
@@ -207,40 +210,66 @@ export class ImageEditor extends Modal {
 		// Enable crop frame by default for extended regions
 		this.cropModeActive = !!extendedRegion;
 		
-		// Calculate modal size based on content
+		// Calculate modal size based on content with maximum size constraints
 		// displayWidth/displayHeight is the 1.2x extended region size
 		const extendedRegionWidth = displayWidth;
 		const extendedRegionHeight = displayHeight;
 		
-		// Calculate required modal size - ensure enough space for all components
+		// Get window dimensions for 90% constraint
+		const windowWidth = window.innerWidth;
+		const windowHeight = window.innerHeight;
+		const maxModalWidth = Math.floor(windowWidth * 0.9);
+		const maxModalHeight = Math.floor(windowHeight * 0.9);
+		
+		// Define fixed UI element heights
 		const toolbarHeight = 80;
-		const buttonBarHeight = 120; // Increase to accommodate filename section properly
+		const buttonBarHeight = 120;
 		const headerHeight = 40;
-		const margins = 40; // margins around canvas container
-		const canvasContainerHeight = displayHeight + 40; // Canvas height plus padding
+		const margins = 40;
 		
-		const requiredModalWidth = displayWidth + margins;
-		const requiredModalHeight = toolbarHeight + canvasContainerHeight + buttonBarHeight + headerHeight + margins;
+		// Calculate available space for canvas after reserving space for UI elements
+		const availableCanvasWidth = maxModalWidth - margins;
+		const availableCanvasHeight = maxModalHeight - toolbarHeight - buttonBarHeight - headerHeight - margins - 40; // 40 for canvas padding
 		
-		// Apply minimum width constraint
-		const minModalWidth = 800;
-		const finalModalWidth = Math.max(requiredModalWidth, minModalWidth);
+		// Calculate scale factor to fit extended region into available canvas space
+		const scaleFactorByWidth = availableCanvasWidth / extendedRegionWidth;
+		const scaleFactorByHeight = availableCanvasHeight / extendedRegionHeight;
+		const scaleFactor = Math.min(scaleFactorByWidth, scaleFactorByHeight, 1.0); // Don't scale up beyond 1:1
 		
-		getLogger().log('🔍 Modal size calculation:', {
+		// Calculate final canvas dimensions
+		const finalCanvasWidth = Math.floor(extendedRegionWidth * scaleFactor);
+		const finalCanvasHeight = Math.floor(extendedRegionHeight * scaleFactor);
+		
+		// Calculate final modal dimensions
+		const finalModalWidth = Math.max(800, finalCanvasWidth + margins); // Keep minimum width of 800
+		const finalModalHeight = toolbarHeight + finalCanvasHeight + 40 + buttonBarHeight + headerHeight + margins;
+		
+		getLogger().log('🔍 Modal size calculation with constraints:', {
 			originalRegionSize: { width: region.width, height: region.height },
 			extendedRegionSize: { width: extendedRegionWidth, height: extendedRegionHeight },
-			requiredModalSize: { width: requiredModalWidth, height: requiredModalHeight },
-			finalModalSize: { width: finalModalWidth, height: requiredModalHeight }
+			windowSize: { width: windowWidth, height: windowHeight },
+			maxModalSize: { width: maxModalWidth, height: maxModalHeight },
+			availableCanvasSpace: { width: availableCanvasWidth, height: availableCanvasHeight },
+			scaleFactor: scaleFactor,
+			finalCanvasSize: { width: finalCanvasWidth, height: finalCanvasHeight },
+			finalModalSize: { width: finalModalWidth, height: finalModalHeight }
 		});
 		
 		// Store dimensions for onOpen
 		this.instanceDimensions.modalWidth = finalModalWidth;
-		this.instanceDimensions.modalHeight = requiredModalHeight;
-		this.instanceDimensions.canvasWidth = displayWidth;
-		this.instanceDimensions.canvasHeight = displayHeight;
+		this.instanceDimensions.modalHeight = finalModalHeight;
+		this.instanceDimensions.canvasWidth = finalCanvasWidth;
+		this.instanceDimensions.canvasHeight = finalCanvasHeight;
 		
-		// No display scaling - show at 1:1
-		this.preCalculatedDisplayScale = 1.0;
+		// Store original extended region dimensions for canvas logical size
+		this.instanceDimensions.originalExtendedWidth = extendedRegionWidth;
+		this.instanceDimensions.originalExtendedHeight = extendedRegionHeight;
+		
+		// Set the pre-calculated display scale (this will be the initial zoom level)
+		this.preCalculatedDisplayScale = scaleFactor;
+		
+		// Set initial user zoom to the calculated scale factor so image appears correctly sized
+		this.userZoom = scaleFactor;
 		
 		this.open();
 	}
@@ -1004,30 +1033,35 @@ export class ImageEditor extends Modal {
 			displayImg.onload = () => {
 				if (!this.canvas || !this.ctx) return;
 				
-				// Get display dimensions
-				const displayWidth = this.instanceDimensions.canvasWidth || displayImg.width;
-				const displayHeight = this.instanceDimensions.canvasHeight || displayImg.height;
+				// Get display dimensions from our pre-calculated values
+				const displayWidth = this.instanceDimensions.canvasWidth;
+				const displayHeight = this.instanceDimensions.canvasHeight;
 				
-				// Simple 1:1 display scaling
-				const finalScale = this.preCalculatedDisplayScale;
-				const finalDisplayWidth = Math.floor(displayWidth * finalScale);
-				const finalDisplayHeight = Math.floor(displayHeight * finalScale);
+				// Use 1:1 display scaling since we already calculated the final size
+				const finalScale = 1.0;
+				const finalDisplayWidth = displayWidth;
+				const finalDisplayHeight = displayHeight;
 				
-				// Store the display scale for coordinate conversion
+				// Store the display scale for coordinate conversion (always 1.0 now)
 				this.displayScale = finalScale;
 				
-				// Set canvas logical size (always extended region size)
-				this.canvas.width = displayWidth;
-				this.canvas.height = displayHeight;
+				// Set canvas logical size (use original extended region size)
+				// Canvas logical coordinates should be in the original extended region space
+				const originalExtendedWidth = this.instanceDimensions.originalExtendedWidth;
+				const originalExtendedHeight = this.instanceDimensions.originalExtendedHeight;
+				this.canvas.width = originalExtendedWidth;
+				this.canvas.height = originalExtendedHeight;
 				
 				// Set canvas CSS display size (usually 1:1 for auto-sizing)
 				this.canvas.style.width = finalDisplayWidth + 'px';
 				this.canvas.style.height = finalDisplayHeight + 'px';
 				
-				getLogger().log('🔍 Canvas auto-sizing:', {
-					extendedRegionSize: { width: displayWidth, height: displayHeight },
-					displayScale: finalScale,
-					canvasCSSSize: { width: this.canvas.style.width, height: this.canvas.style.height }
+				getLogger().log('🔍 Canvas sizing with constraints:', {
+					originalExtendedRegionSize: { width: originalExtendedWidth, height: originalExtendedHeight },
+					finalCanvasDisplaySize: { width: displayWidth, height: displayHeight },
+					canvasLogicalSize: { width: this.canvas.width, height: this.canvas.height },
+					canvasCSSSize: { width: this.canvas.style.width, height: this.canvas.style.height },
+					userZoom: this.userZoom
 				});
 				
 				// Initial render of all four layers
