@@ -93,6 +93,7 @@ export class ImageEditor extends Modal {
 	
 	// Display scaling factor - ratio between canvas logical coordinates and display coordinates
 	private displayScale = 1; // How much the canvas is scaled down for display
+	private preCalculatedDisplayScale = 1.2; // Pre-calculated display scale from showEditor
 	
 	// User zoom control (0.25x - 4x)
 	private userZoom = 1; // User-controlled zoom level  
@@ -206,35 +207,40 @@ export class ImageEditor extends Modal {
 		// Enable crop frame by default for extended regions
 		this.cropModeActive = !!extendedRegion;
 		
-		// Calculate modal size (same as before)
-		const toolbarHeight = 80; // 增加到80px支持双行
-		const buttonBarHeight = 60;
+		// Calculate modal size based on content
+		// displayWidth/displayHeight is the 1.2x extended region size
+		const extendedRegionWidth = displayWidth;
+		const extendedRegionHeight = displayHeight;
 		
+		// Calculate required modal size - ensure enough space for all components
+		const toolbarHeight = 80;
+		const buttonBarHeight = 120; // Increase to accommodate filename section properly
+		const headerHeight = 40;
+		const margins = 40; // margins around canvas container
+		const canvasContainerHeight = displayHeight + 40; // Canvas height plus padding
+		
+		const requiredModalWidth = displayWidth + margins;
+		const requiredModalHeight = toolbarHeight + canvasContainerHeight + buttonBarHeight + headerHeight + margins;
+		
+		// Apply minimum width constraint
 		const minModalWidth = 800;
-		const minModalHeight = 600;
+		const finalModalWidth = Math.max(requiredModalWidth, minModalWidth);
 		
-		const maxModalWidth = window.innerWidth * 0.9;
-		const maxModalHeight = window.innerHeight * 0.9;
-		
-		const preferredModalWidth = displayWidth + 140;
-		const preferredModalHeight = displayHeight + toolbarHeight + buttonBarHeight + 80;
-		
-		const modalWidth = Math.max(Math.min(preferredModalWidth, maxModalWidth), minModalWidth);
-		const modalHeight = Math.max(Math.min(preferredModalHeight, maxModalHeight), minModalHeight);
-		
-		getLogger().log('Four-layer system setup:', {
-			region: { width: region.width, height: region.height },
-			extendedRegion: extendedRegion,
-			fullScreenshotSize: this.fullScreenshotSize,
-			fixedCropRect: this.cropRect,
-			initialLayersOffset: this.layersOffset
+		getLogger().log('🔍 Modal size calculation:', {
+			originalRegionSize: { width: region.width, height: region.height },
+			extendedRegionSize: { width: extendedRegionWidth, height: extendedRegionHeight },
+			requiredModalSize: { width: requiredModalWidth, height: requiredModalHeight },
+			finalModalSize: { width: finalModalWidth, height: requiredModalHeight }
 		});
 		
-		// Store dimensions for use in onOpen
-		this.instanceDimensions.modalWidth = modalWidth;
-		this.instanceDimensions.modalHeight = modalHeight;
+		// Store dimensions for onOpen
+		this.instanceDimensions.modalWidth = finalModalWidth;
+		this.instanceDimensions.modalHeight = requiredModalHeight;
 		this.instanceDimensions.canvasWidth = displayWidth;
 		this.instanceDimensions.canvasHeight = displayHeight;
+		
+		// No display scaling - show at 1:1
+		this.preCalculatedDisplayScale = 1.0;
 		
 		this.open();
 	}
@@ -250,19 +256,15 @@ export class ImageEditor extends Modal {
 		// Add tooltip styles
 		this.addTooltipStyles();
 		
-		// Set modal size directly on modalEl to prevent scrollbars
-		const modalWidth = this.instanceDimensions.modalWidth || 500;
-		const modalHeight = this.instanceDimensions.modalHeight || 400;
+		// Always use calculated modal size
+		const modalWidth = this.instanceDimensions.modalWidth || 800;
+		const modalHeight = this.instanceDimensions.modalHeight || 600;
 		
 		this.modalEl.addClass('image-editor-modal-sized');
 		this.modalEl.style.setProperty('--modal-width', modalWidth + 'px');
 		this.modalEl.style.setProperty('--modal-height', modalHeight + 'px');
-		
-		// Also set contentEl to fill the modal without overflow
 		contentEl.addClass('image-editor-content-fullsize');
 		
-		// Create fixed header (minimal for image editor)
-		const headerEl = contentEl.createEl('div', { cls: 'modal-fixed-header image-editor-header' });
 		
 		// Create scrollable content area (though image editor shouldn't need scrolling)
 		const scrollableContent = contentEl.createEl('div', { cls: 'modal-scrollable-content image-editor-content' });
@@ -292,12 +294,15 @@ export class ImageEditor extends Modal {
 		const canvasDisplayHeight = this.instanceDimensions.canvasHeight || 200;
 		
 		// Define fixed UI element heights
-		const toolbarHeight = 80; // 增加到80px支持双行
+		const toolbarHeight = 80; // 恢复toolbar高度以确保双行显示
 		const textSectionHeight = 100;
-		const buttonBarHeight = 60;
+		const buttonBarHeight = 60; // 恢复button bar高度
 		
-		// Set container to use full modal space
+		// Set container to use full modal space with proper flex layout
 		container.addClass('image-editor-container-layout');
+		container.style.display = 'flex';
+		container.style.flexDirection = 'column';
+		container.style.height = '100%';
 		
 		// Store display dimensions
 		this.containerDimensions.set(container, {
@@ -309,12 +314,16 @@ export class ImageEditor extends Modal {
 		const toolbar = container.createDiv({ cls: 'image-editor-toolbar' });
 		toolbar.addClass('image-editor-toolbar-fixed');
 		toolbar.style.setProperty('--toolbar-height', toolbarHeight + 'px');
+		toolbar.style.flexShrink = '0'; // Ensure toolbar is always visible
 		this.createMainToolbar(toolbar);
 		
-		// Canvas container with exact size, no forced width
+		// Canvas container - sized to contain canvas naturally
 		const canvasContainer = container.createDiv({ cls: 'image-editor-canvas-container' });
-		canvasContainer.addClass('image-editor-canvas-container-sized');
-		canvasContainer.style.setProperty('--canvas-height', canvasDisplayHeight + 'px');
+		canvasContainer.addClass('image-editor-canvas-container-flex');
+		// Set the exact height needed for the canvas content
+		canvasContainer.style.height = `${canvasDisplayHeight + 40}px`; // Add 40px padding
+		canvasContainer.style.flexGrow = '0'; // Don't grow
+		canvasContainer.style.flexShrink = '0'; // Don't shrink
 		
 		this.canvas = canvasContainer.createEl('canvas', { cls: 'image-editor-canvas' });
 		
@@ -325,6 +334,7 @@ export class ImageEditor extends Modal {
 		const buttonBar = container.createDiv({ cls: 'image-editor-button-bar' });
 		buttonBar.addClass('image-editor-button-bar-fixed');
 		buttonBar.style.setProperty('--button-bar-height', buttonBarHeight + 'px');
+		buttonBar.style.flexShrink = '0'; // Ensure button bar is always visible
 		this.createActionButtons(buttonBar);
 	}
 
@@ -410,34 +420,6 @@ export class ImageEditor extends Modal {
 		// Separator
 		const separator1 = toolbar.createEl('div', { cls: 'image-editor-separator' });
 		
-		// Zoom control
-		this.createZoomControls(toolbar);
-		
-		// Another separator
-		const separator1_5 = toolbar.createEl('div', { cls: 'image-editor-separator' });
-		
-		// Note: Crop frame is automatically shown for extended regions
-		
-		// History buttons
-		const undoButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
-		setIcon(undoButton, 'undo');
-
-		undoButton.setAttribute('data-tooltip', t('imageEditor.undoTooltip'));
-		undoButton.addEventListener('click', () => this.undo());
-		
-		const redoButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
-		setIcon(redoButton, 'redo');
-		redoButton.setAttribute('data-tooltip', t('imageEditor.redoTooltip'));
-		redoButton.addEventListener('click', () => this.redo());
-		
-		const clearButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
-		setIcon(clearButton, 'trash-2');
-		clearButton.setAttribute('data-tooltip', t('imageEditor.clearCanvasTooltip'));
-		clearButton.addEventListener('click', () => this.clearCanvas());
-		
-		// Separator
-		const separator2 = toolbar.createEl('div', { cls: 'image-editor-separator' });
-		
 		// Color picker
 		const colorPicker = toolbar.createEl('input', { type: 'color', cls: 'image-editor-color-picker' });
 		colorPicker.value = this.currentColor;
@@ -489,11 +471,9 @@ export class ImageEditor extends Modal {
 			circle.setAttribute('cx', '12');  // 中心点从10改为12 (24/2)
 			circle.setAttribute('cy', '12');  // 中心点从10改为12 (24/2)
 			circle.setAttribute('r', radius.toString());
-			circle.setAttribute('fill', this.getCurrentColor() || '#000000'); // 确保有颜色
-			circle.setAttribute('stroke', '#333'); // 添加边框确保可见
-			circle.setAttribute('stroke-width', '0.5');
+			circle.setAttribute('fill', this.getCurrentColor() || '#000000');
 			
-			// Store circle element and original radius for updates
+			// Store button data for later updates
 			this.buttonProperties.set(button, {
 				circle: circle,
 				originalRadius: radius,
@@ -519,6 +499,35 @@ export class ImageEditor extends Modal {
 		const toolbarData = this.toolbarElements.get(toolbar) || {};
 		toolbarData.strokeSizeContainer = strokeSizeContainer;
 		this.toolbarElements.set(toolbar, toolbarData);
+		
+		// Separator before zoom controls
+		const separatorBeforeZoom = toolbar.createEl('div', { cls: 'image-editor-separator' });
+		
+		// Zoom control
+		this.createZoomControls(toolbar);
+		
+		// Another separator
+		const separator1_5 = toolbar.createEl('div', { cls: 'image-editor-separator' });
+		
+		// Note: Crop frame is automatically shown for extended regions
+		
+		// History buttons
+		const undoButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
+		setIcon(undoButton, 'undo');
+
+		undoButton.setAttribute('data-tooltip', t('imageEditor.undoTooltip'));
+		undoButton.addEventListener('click', () => this.undo());
+		
+		const redoButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
+		setIcon(redoButton, 'redo');
+		redoButton.setAttribute('data-tooltip', t('imageEditor.redoTooltip'));
+		redoButton.addEventListener('click', () => this.redo());
+		
+		const clearButton = toolbar.createEl('button', { cls: 'btn-base btn-icon non-tool image-editor-history-button' });
+		setIcon(clearButton, 'trash-2');
+		clearButton.setAttribute('data-tooltip', t('imageEditor.clearCanvasTooltip'));
+		clearButton.addEventListener('click', () => this.clearCanvas());
+		
 	}
 
 
@@ -999,50 +1008,30 @@ export class ImageEditor extends Modal {
 				const displayWidth = this.instanceDimensions.canvasWidth || displayImg.width;
 				const displayHeight = this.instanceDimensions.canvasHeight || displayImg.height;
 				
-				// Set main canvas size to display dimensions (viewport)
+				// Simple 1:1 display scaling
+				const finalScale = this.preCalculatedDisplayScale;
+				const finalDisplayWidth = Math.floor(displayWidth * finalScale);
+				const finalDisplayHeight = Math.floor(displayHeight * finalScale);
+				
+				// Store the display scale for coordinate conversion
+				this.displayScale = finalScale;
+				
+				// Set canvas logical size (always extended region size)
 				this.canvas.width = displayWidth;
 				this.canvas.height = displayHeight;
 				
+				// Set canvas CSS display size (usually 1:1 for auto-sizing)
+				this.canvas.style.width = finalDisplayWidth + 'px';
+				this.canvas.style.height = finalDisplayHeight + 'px';
+				
+				getLogger().log('🔍 Canvas auto-sizing:', {
+					extendedRegionSize: { width: displayWidth, height: displayHeight },
+					displayScale: finalScale,
+					canvasCSSSize: { width: this.canvas.style.width, height: this.canvas.style.height }
+				});
+				
 				// Initial render of all four layers
 				this.renderAllLayers();
-				
-				// Calculate and apply display scaling
-				const container = this.canvas.parentElement;
-				if (container) {
-					const containerRect = container.getBoundingClientRect();
-					const availableWidth = containerRect.width - 40;
-					const availableHeight = containerRect.height - 40;
-					
-					let finalDisplayWidth = displayWidth;
-					let finalDisplayHeight = displayHeight;
-					
-					// Only scale down if the image is larger than available space
-					if (displayWidth > availableWidth || displayHeight > availableHeight) {
-						const scaleX = availableWidth / displayWidth;
-						const scaleY = availableHeight / displayHeight;
-						const scale = Math.min(scaleX, scaleY);
-						
-						finalDisplayWidth = Math.floor(displayWidth * scale);
-						finalDisplayHeight = Math.floor(displayHeight * scale);
-						
-						// Store the display scale for coordinate conversion
-						this.displayScale = scale;
-					} else {
-						// No scaling needed
-						this.displayScale = 1;
-					}
-					
-					getLogger().log('Four-layer display calculation:', {
-						canvasSize: { width: displayWidth, height: displayHeight },
-						fullScreenshotSize: this.fullScreenshotSize,
-						availableSpace: { width: availableWidth, height: availableHeight },
-						finalDisplaySize: { width: finalDisplayWidth, height: finalDisplayHeight }
-					});
-					
-					// Apply the calculated dimensions to canvas CSS
-					this.canvas.style.width = finalDisplayWidth + 'px';
-					this.canvas.style.height = finalDisplayHeight + 'px';
-				}
 				
 				this.saveToHistory();
 			};
@@ -1218,6 +1207,9 @@ export class ImageEditor extends Modal {
 		this.canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
 		this.canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
 		this.canvas.addEventListener('mouseout', (e) => this.handleCanvasMouseOut(e));
+		
+		// Add mouse wheel event for zoom control
+		this.canvas.addEventListener('wheel', (e) => this.handleCanvasWheel(e));
 		
 		// Add global mouse event listeners for layer dragging
 		document.addEventListener('mousemove', (e) => this.handleGlobalMouseMove(e));
@@ -1735,6 +1727,63 @@ export class ImageEditor extends Modal {
 		}
 	}
 
+	private handleCanvasWheel(e: WheelEvent) {
+		// Only enable wheel zoom in crop mode when mouse is over the mask area (not crop area)
+		if (!this.cropModeActive || !this.canvas) return;
+		
+		const canvasCoords = this.screenToCanvasCoords(e.clientX, e.clientY);
+		
+		// Check if mouse is in the mask area (outside the crop area)
+		if (this.isMouseInMaskArea(canvasCoords.x, canvasCoords.y)) {
+			e.preventDefault(); // Prevent page scroll
+			
+			// Calculate zoom delta (negative deltaY means scroll up = zoom in)
+			const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+			const newZoom = Math.max(0.25, Math.min(4, this.userZoom * zoomFactor));
+			
+			this.setUserZoom(newZoom);
+			
+			getLogger().log('🔍 Mouse wheel zoom:', this.userZoom);
+		}
+	}
+
+	private isMouseInMaskArea(canvasX: number, canvasY: number): boolean {
+		if (!this.cropModeActive) return false;
+		
+		// Mouse is in mask area if in crop mode (including both semi-transparent area and crop area)
+		return true;
+	}
+
+	private isMouseInCropArea(canvasX: number, canvasY: number): boolean {
+		if (!this.cropModeActive) return false;
+		
+		// Calculate the correct crop area position using the same logic as rendering
+		const canvasCenterX = (this.canvas?.width || 0) / 2;
+		const canvasCenterY = (this.canvas?.height || 0) / 2;
+		const visualCenterX = canvasCenterX + this.viewportOffset.x;
+		const visualCenterY = canvasCenterY + this.viewportOffset.y;
+		
+		// Apply the same transformation as in renderSemiTransparentMask to get correct crop area
+		if (!this.ctx) return false;
+		
+		this.ctx.save();
+		this.ctx.translate(this.viewportOffset.x, this.viewportOffset.y);
+		this.ctx.translate(visualCenterX, visualCenterY);
+		this.ctx.scale(this.userZoom, this.userZoom);
+		this.ctx.translate(-visualCenterX, -visualCenterY);
+		
+		const correctTopLeft = this.ctx.getTransform().transformPoint(new DOMPoint(this.cropRect.x, this.cropRect.y));
+		const correctBottomRight = this.ctx.getTransform().transformPoint(new DOMPoint(this.cropRect.x + this.cropRect.width, this.cropRect.y + this.cropRect.height));
+		
+		this.ctx.restore();
+		
+		// Check if mouse is inside the transformed crop area
+		return canvasX >= correctTopLeft.x && 
+			   canvasX <= correctBottomRight.x && 
+			   canvasY >= correctTopLeft.y && 
+			   canvasY <= correctBottomRight.y;
+	}
+
 
 
 	private saveToHistory() {
@@ -2086,27 +2135,19 @@ export class ImageEditor extends Modal {
 		zoomContainer.style.alignItems = 'center';
 		zoomContainer.style.gap = '4px';
 		
-		// Zoom out button
-		const zoomOutBtn = zoomContainer.createEl('button', { cls: 'btn-base btn-icon zoom-btn' });
-		setIcon(zoomOutBtn, 'zoom-out');
-		zoomOutBtn.setAttribute('data-tooltip', 'Zoom Out');
-		zoomOutBtn.addEventListener('click', () => {
-			this.setUserZoom(Math.max(0.25, this.userZoom / 1.25));
-		});
-		
-		// Zoom slider
+		// Zoom slider (拉长到240px，原来是80px的3倍) - 移到最左边
 		const zoomSlider = zoomContainer.createEl('input', { 
 			type: 'range',
 			cls: 'zoom-slider',
 		});
-		zoomSlider.style.width = '80px';
-		zoomSlider.style.margin = '0 4px';
+		zoomSlider.style.width = '240px';  // 从80px增加到240px (3倍长)
+		zoomSlider.style.margin = '0 8px';  // 增加一点边距
 		zoomSlider.min = Math.log(0.25).toString();
 		zoomSlider.max = Math.log(4).toString();
 		zoomSlider.step = '0.01';
 		zoomSlider.value = Math.log(this.userZoom).toString();
 		
-		// Zoom level display
+		// Zoom level display - 放在滑块右边
 		const zoomDisplay = zoomContainer.createEl('span', { 
 			cls: 'zoom-display',
 			text: Math.round(this.userZoom * 100) + '%'
@@ -2115,7 +2156,15 @@ export class ImageEditor extends Modal {
 		zoomDisplay.style.textAlign = 'center';
 		zoomDisplay.style.fontSize = '12px';
 		
-		// Zoom in button
+		// Zoom out button (移到右侧)
+		const zoomOutBtn = zoomContainer.createEl('button', { cls: 'btn-base btn-icon zoom-btn' });
+		setIcon(zoomOutBtn, 'zoom-out');
+		zoomOutBtn.setAttribute('data-tooltip', 'Zoom Out');
+		zoomOutBtn.addEventListener('click', () => {
+			this.setUserZoom(Math.max(0.25, this.userZoom / 1.25));
+		});
+		
+		// Zoom in button (移到右侧)
 		const zoomInBtn = zoomContainer.createEl('button', { cls: 'btn-base btn-icon zoom-btn' });
 		setIcon(zoomInBtn, 'zoom-in');
 		zoomInBtn.setAttribute('data-tooltip', 'Zoom In');
@@ -2123,7 +2172,7 @@ export class ImageEditor extends Modal {
 			this.setUserZoom(Math.min(4, this.userZoom * 1.25));
 		});
 		
-		// Reset zoom button (100%)
+		// Reset zoom button (1:1) - 移到最右侧
 		const resetZoomBtn = zoomContainer.createEl('button', { cls: 'btn-base zoom-reset-btn' });
 		resetZoomBtn.textContent = '1:1';
 		resetZoomBtn.style.fontSize = '10px';
@@ -2151,8 +2200,9 @@ export class ImageEditor extends Modal {
 		});
 		
 		// Store references for later updates
+		const existingData = this.toolbarElements.get(toolbar) || {};
 		this.toolbarElements.set(toolbar, {
-			...this.toolbarElements.get(toolbar),
+			...existingData,
 			zoomSlider,
 			zoomDisplay
 		});
@@ -2181,7 +2231,12 @@ export class ImageEditor extends Modal {
 			if (toolbarData?.zoomSlider && toolbarData?.zoomDisplay) {
 				toolbarData.zoomSlider.value = Math.log(this.userZoom).toString();
 				toolbarData.zoomDisplay.textContent = Math.round(this.userZoom * 100) + '%';
+				getLogger().log('🔍 Updated zoom display to:', Math.round(this.userZoom * 100) + '%');
+			} else {
+				getLogger().warn('🔍 Could not find zoom UI elements to update');
 			}
+		} else {
+			getLogger().warn('🔍 Could not find image editor toolbar');
 		}
 	}
 

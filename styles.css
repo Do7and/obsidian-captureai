@@ -2568,9 +2568,15 @@ button.ai-chat-action-btn:hover::after,
 	box-sizing: border-box;
 }
 
+/* Override for proper canvas sizing */
+.image-editor-modal-sized .image-editor-container-layout {
+	height: auto; /* Let it size to content instead of 100% */
+	min-height: 100%; /* But maintain at least full height */
+}
+
 .image-editor-toolbar-fixed {
+	flex: 0 0 auto; /* Take up the space defined by height, don't grow or shrink */
 	min-height: var(--toolbar-height); /* 改为min-height，允许自动扩展 */
-	flex-shrink: 0;
 }
 
 .image-editor-main-toolbar {
@@ -2582,12 +2588,18 @@ button.ai-chat-action-btn:hover::after,
 	border-bottom: 1px solid var(--background-modifier-border);
 	gap: var(--spacing-sm);
 	flex-wrap: wrap;
-	min-height: 56px; /* 设置最小高度，确保双行显示 */
+	min-height: 56px; /* 恢复最小高度，确保双行显示 */
 }
 
 .image-editor-tool-button {
 	/* 工具按钮基本样式现在由统一按钮类提供 */
 	position: relative;
+}
+
+.image-editor-tool-button.active {
+	background: var(--interactive-accent) !important;
+	color: var(--text-on-accent) !important;
+	border-color: var(--interactive-accent) !important;
 }
 
 .image-editor-history-button {
@@ -2650,6 +2662,30 @@ button.ai-chat-action-btn:hover::after,
 	overflow: hidden;
 }
 
+/* New flex-based canvas container that properly takes up space in flex layout */
+.image-editor-canvas-container-flex {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	margin: 10px var(--spacing-xl);
+	flex: 0 0 auto; /* Take up the space defined by height, don't grow or shrink */
+	overflow: visible; /* Allow canvas to be fully visible */
+	/* Height is set programmatically based on canvas size */
+}
+
+/* Override canvas constraints for flex container - let canvas use its exact size */
+.image-editor-canvas-container-flex canvas {
+	/* Remove max-width/height constraints to prevent squashing */
+	max-width: none !important;
+	max-height: none !important;
+	box-shadow: 0 0 10px rgba(0,0,0,0.3);
+	border-radius: 4px;
+	/* Ensure canvas can expand the container */
+	flex-shrink: 0;
+}
+
 /* File name warning styles */
 .image-editor-filename-warning {
 	font-size: 12px !important;
@@ -2688,8 +2724,8 @@ button.ai-chat-action-btn:hover::after,
 }
 
 .image-editor-button-bar-fixed {
+	flex: 0 0 auto; /* Take up the space defined by height, don't grow or shrink */
 	height: var(--button-bar-height);
-	flex-shrink: 0;
 }
 
 .image-editor-action-buttons {
@@ -2704,7 +2740,7 @@ button.ai-chat-action-btn:hover::after,
 .image-editor-filename-section {
 	display: flex;
 	align-items: center;
-	gap: var(--spacing-sm);
+	gap: 0;
 }
 
 .image-editor-filename-label {
@@ -3051,7 +3087,6 @@ button.ai-chat-action-btn:hover::after,
 	padding: var(--spacing-md);
 	background: var(--background-secondary);
 	border-top: 1px solid var(--background-modifier-border);
-	gap: var(--spacing-md);
 }
 
 .image-editor-filename-section {
@@ -3062,9 +3097,8 @@ button.ai-chat-action-btn:hover::after,
 }
 
 .image-editor-filename-warnings-container {
-	margin-top: 4px !important;
 	width: 100% !important;
-	min-height: 32px !important; /* Reserve space to prevent layout shift */
+	min-height: 16px !important; /* Reserve space to prevent layout shift */
 	transition: none !important; /* Disable transitions to prevent animation effects */
 }
 
