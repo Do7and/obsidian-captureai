@@ -3169,6 +3169,62 @@ button.ai-chat-action-btn:hover::after,
 	cursor: not-allowed;
 }
 
+/* Image editor tooltip styles */
+.image-editor-toolbar button[data-tooltip] {
+	position: relative;
+}
+
+.image-editor-toolbar button[data-tooltip]::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	top: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	background: #374151;
+	color: white;
+	padding: 6px 8px;
+	border-radius: 4px;
+	font-size: 12px;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+	margin-top: 8px;
+	z-index: 1000;
+}
+
+.image-editor-toolbar button[data-tooltip]:hover::after {
+	opacity: 1;
+}
+
+/* Also add tooltip styles for stroke size buttons */
+.stroke-size-container button[data-tooltip] {
+	position: relative;
+}
+
+.stroke-size-container button[data-tooltip]::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	top: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	background: #374151;
+	color: white;
+	padding: 6px 8px;
+	border-radius: 4px;
+	font-size: 12px;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+	margin-top: 8px;
+	z-index: 1000;
+}
+
+.stroke-size-container button[data-tooltip]:hover::after {
+	opacity: 1;
+}
+
 /* Screenshot Manager Styles */
 
 /* Overlay base styling - 初始全局滤镜 */
@@ -3308,4 +3364,36 @@ button.ai-chat-action-btn:hover::after,
 	height: 100%;
 	display: flex;
 	flex-direction: column;
+}
+
+/* ============================================ */
+/* Chat History Modal Styles */
+/* ============================================ */
+
+/* Additional chat history modal specific styles */
+.chat-history-modal .modal-content {
+	padding: 20px;
+	max-width: 800px;
+	max-height: 80vh;
+}
+
+.conversation-item:hover {
+	background: var(--background-modifier-hover) !important;
+}
+
+.conversation-list::-webkit-scrollbar {
+	width: 8px;
+}
+
+.conversation-list::-webkit-scrollbar-track {
+	background: var(--background-secondary);
+}
+
+.conversation-list::-webkit-scrollbar-thumb {
+	background: var(--background-modifier-border);
+	border-radius: 4px;
+}
+
+.conversation-list::-webkit-scrollbar-thumb:hover {
+	background: var(--background-modifier-border-hover);
 }

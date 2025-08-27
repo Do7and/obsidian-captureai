@@ -41,7 +41,6 @@ class ImageReferenceManager {
 		while (this.tempImages.has(uniqueTempId)) {
 			counter++;
 			uniqueTempId = `${tempId}_${counter}`;
-			getLogger().warn(`Temp image ID conflict detected, using: ${uniqueTempId}`);
 		}
 		
 		this.tempImages.set(uniqueTempId, {
@@ -348,13 +347,6 @@ export class AIManager {
 		};
 
 		// Debug logging
-		getLogger().log('🔧 buildContextMessages called with:', {
-			currentMessage: currentMessage,
-			currentImagesCount: currentImages?.length || 0,
-			includeModeprompt,
-			conversationMessagesCount: conversation?.messages?.length || 0
-		});
-
 		// Determine target model config to check vision capability
 		const targetModelConfig = modelConfig || this.plugin.settings.modelConfigs.find(
 			mc => mc.id === this.plugin.settings.defaultModelConfigId
@@ -389,8 +381,6 @@ export class AIManager {
 				
 				// Parse image references from content
 				const imageReferences = this.parseImageReferences(msg.content || '');
-				
-				getLogger().log(`🔍 Message block: "${msg.content?.substring(0, 50)}..." has ${imageReferences.length} images`);
 				
 				// Remove image markdown from text content
 				let textContent = msg.content || '';
@@ -595,7 +585,6 @@ export class AIManager {
 		}
 
 		const responseText = response.text;
-		getLogger().log('API Response Length:', responseText.length);
 		getLogger().log('API Response Preview:', responseText.substring(0, 200) + '...');
 		getLogger().log('API Response End:', responseText.substring(Math.max(0, responseText.length - 200)));
 		
@@ -925,18 +914,15 @@ export class AIManager {
 			// Vault图片 - 从文件加载base64
 			if (imageRef.startsWith('data:')) {
 				// 已经是base64格式，直接返回
-				getLogger().log(`✅ Image is already base64, length: ${imageRef.length}`);
 				return imageRef;
 			} else if (imageRef.startsWith('[') && imageRef.endsWith(']')) {
 				// 跳过占位符路径
-				getLogger().log(`⏭️ Skipping placeholder path: ${imageRef}`);
 				return null;
 			} else {
 				// 从vault路径加载
-				getLogger().log(`🔍 Loading vault image from path: ${imageRef}`);
 				const result = await this.loadImageDataFromPath(imageRef);
 				if (result) {
-					getLogger().log(`✅ Loaded vault image, dataUrl length: ${result.length}`);
+					// Successfully loaded vault image
 				} else {
 					getLogger().warn(`❌ Failed to load vault image: ${imageRef}`);
 				}
@@ -1096,7 +1082,6 @@ export class AIManager {
 		const random2 = Math.random().toString(36).substr(2, 6);
 		const tempId = `temp_img_${timestamp}_${microseconds}_${random1}_${random2}`;
 		
-		getLogger().log(`Generated temp image ID: ${tempId}`);
 		return tempId;
 	}
 
@@ -1141,8 +1126,6 @@ export class AIManager {
 			const tempId = this.imageRefManager.addTempImage(dataUrl, 'screenshot', 'screenshot.png');
 			tempImages[tempId] = dataUrl;
 			placeholders.push(`![screenshot](temp:${tempId})`);
-			
-			getLogger().log(`Created temp image placeholder: temp:${tempId}`);
 		}
 
 		return {

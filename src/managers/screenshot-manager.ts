@@ -12,6 +12,8 @@ export class ScreenshotManager {
 	private isScreenshotModeActive = false; // 全局截图状态监控
 	private startX = 0;
 	private startY = 0;
+	private startClientX = 0;
+	private startClientY = 0;
 	private selectionCompleteCallback: ((region: Region | null) => void) | null = null;
 	
 	// Cache Electron API for performance
@@ -268,16 +270,16 @@ export class ScreenshotManager {
 		// Show crosshair when mouse enters overlay
 		const mouseEnterHandler = (e: MouseEvent) => {
 			if (mouseIndicator) {
-				mouseIndicator.style.display = 'block';
-				if (coordDisplay) coordDisplay.style.display = 'block';
+				mouseIndicator.toggleClass('hidden', false);
+				if (coordDisplay) coordDisplay.toggleClass('hidden', false);
 			}
 		};
 		
 		// Hide crosshair when mouse leaves overlay
 		const mouseLeaveHandler = (e: MouseEvent) => {
 			if (!this.isSelecting && mouseIndicator) {
-				mouseIndicator.style.display = 'none';
-				if (coordDisplay) coordDisplay.style.display = 'none';
+				mouseIndicator.toggleClass('hidden', true);
+				if (coordDisplay) coordDisplay.toggleClass('hidden', true);
 			}
 		};
 		
@@ -310,6 +312,9 @@ export class ScreenshotManager {
 		// Use direct screen coordinates - much simpler and more reliable
 		this.startX = e.screenX;
 		this.startY = e.screenY;
+		// Also store client coordinates for CSS variables
+		this.startClientX = e.clientX;
+		this.startClientY = e.clientY;
 		
 		// 隐藏全局滤镜，显示选择框滤镜
 		if (this.overlay) {
@@ -317,28 +322,28 @@ export class ScreenshotManager {
 		}
 		
 		if (this.selectionBox) {
-			this.selectionBox.style.display = 'block';
+			this.selectionBox.toggleClass('hidden', false);
 			// Position selection box using client coordinates for visual display
-			this.selectionBox.style.left = e.clientX + 'px';
-			this.selectionBox.style.top = e.clientY + 'px';
-			this.selectionBox.style.width = '0px';
-			this.selectionBox.style.height = '0px';
+			this.selectionBox.style.setProperty('--x', e.clientX + 'px');
+			this.selectionBox.style.setProperty('--y', e.clientY + 'px');
+			this.selectionBox.style.setProperty('--width', '0px');
+			this.selectionBox.style.setProperty('--height', '0px');
 		}
 		
 		// Hide crosshair indicators during selection
 		if (mouseIndicator) {
-			mouseIndicator.style.display = 'none';
+			mouseIndicator.toggleClass('hidden', true);
 		}
 	}
 
 	private handleMouseMove(e: MouseEvent, mouseIndicator?: HTMLElement, coordDisplay?: HTMLElement) {
 		// Update crosshair position if not selecting (use client coordinates for visual display)
 		if (!this.isSelecting && mouseIndicator) {
-			mouseIndicator.style.left = e.clientX + 'px';
+			mouseIndicator.style.setProperty('--x', e.clientX + 'px');
 			
 			if (coordDisplay) {
-				coordDisplay.style.left = (e.clientX + 10) + 'px';
-				coordDisplay.style.top = (e.clientY - 30) + 'px';
+				coordDisplay.style.setProperty('--x', (e.clientX + 10) + 'px');
+				coordDisplay.style.setProperty('--y', (e.clientY - 30) + 'px');
 				// Show screen coordinates in display for debugging
 				coordDisplay.textContent = `Screen: ${e.screenX}, ${e.screenY}`;
 			}
@@ -347,22 +352,15 @@ export class ScreenshotManager {
 		// Handle selection box during dragging
 		if (!this.isSelecting || !this.selectionBox) return;
 		
-		// Calculate visual selection box using client coordinates
-		const clientWidth = e.clientX - (this.selectionBox.style.left ? parseInt(this.selectionBox.style.left.replace('px', '')) : 0);
-		const clientHeight = e.clientY - (this.selectionBox.style.top ? parseInt(this.selectionBox.style.top.replace('px', '')) : 0);
-		
-		// Get the starting client position from the selection box
-		const startClientX = parseInt(this.selectionBox.style.left.replace('px', ''));
-		const startClientY = parseInt(this.selectionBox.style.top.replace('px', ''));
-		
-		const width = e.clientX - startClientX;
-		const height = e.clientY - startClientY;
+		// Calculate visual selection box using stored client coordinates
+		const width = e.clientX - this.startClientX;
+		const height = e.clientY - this.startClientY;
 		
 		// Update visual selection box position using client coordinates
-		this.selectionBox.style.left = (width < 0 ? e.clientX : startClientX) + 'px';
-		this.selectionBox.style.top = (height < 0 ? e.clientY : startClientY) + 'px';
-		this.selectionBox.style.width = Math.abs(width) + 'px';
-		this.selectionBox.style.height = Math.abs(height) + 'px';
+		this.selectionBox.style.setProperty('--x', (width < 0 ? e.clientX : this.startClientX) + 'px');
+		this.selectionBox.style.setProperty('--y', (height < 0 ? e.clientY : this.startClientY) + 'px');
+		this.selectionBox.style.setProperty('--width', Math.abs(width) + 'px');
+		this.selectionBox.style.setProperty('--height', Math.abs(height) + 'px');
 		
 		// Update coordinate display during selection
 		if (coordDisplay) {
@@ -370,8 +368,8 @@ export class ScreenshotManager {
 			const currentScreenY = e.screenY;
 			const screenWidth = Math.abs(currentScreenX - this.startX);
 			const screenHeight = Math.abs(currentScreenY - this.startY);
-			coordDisplay.style.left = (e.clientX + 10) + 'px';
-			coordDisplay.style.top = (e.clientY - 30) + 'px';
+			coordDisplay.style.setProperty('--x', (e.clientX + 10) + 'px');
+			coordDisplay.style.setProperty('--y', (e.clientY - 30) + 'px');
 			// Show both screen coordinates and dimensions
 			coordDisplay.textContent = `Screen: ${Math.min(this.startX, currentScreenX)}, ${Math.min(this.startY, currentScreenY)} ${screenWidth}×${screenHeight}`;
 		}

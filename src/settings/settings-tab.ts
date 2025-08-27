@@ -96,6 +96,10 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enableMinimizedCapture)
 				.onChange(async (value) => {
 					this.plugin.settings.enableMinimizedCapture = value;
+					// 如果关闭了最小化截图功能，也关闭相关按钮
+					if (!value) {
+						this.plugin.settings.showMinimizedCaptureButton = false;
+					}
 					await this.plugin.saveSettings();
 					// 刷新设置页面以显示/隐藏子选项
 					this.display();
@@ -147,6 +151,10 @@ export class ImageCaptureSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enableAIAnalysis)
 				.onChange(async (value) => {
 					this.plugin.settings.enableAIAnalysis = value;
+					// 如果关闭了AI功能，也关闭相关按钮
+					if (!value) {
+						this.plugin.settings.showAIChatPanelButton = false;
+					}
 					await this.plugin.saveSettings();
 					this.display(); // Refresh the display to show/hide AI settings
 				}));

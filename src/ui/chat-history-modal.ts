@@ -62,10 +62,6 @@ export class ChatHistoryModal extends Modal {
 
 		// Load and display conversations
 		this.loadConversations(autoSavedList, manualSavedList);
-
-
-		// Add custom styles
-		this.addModalStyles();
 	}
 
 	private async loadConversations(autoSavedList: HTMLElement, manualSavedList: HTMLElement) {
@@ -403,42 +399,6 @@ export class ChatHistoryModal extends Modal {
 			};
 			
 			conversation.messages.push(message);
-		}
-	}
-
-	private addModalStyles() {
-		if (!document.getElementById('chat-history-modal-styles')) {
-			const style = document.createElement('style');
-			style.id = 'chat-history-modal-styles';
-			style.textContent = `
-				.chat-history-modal .modal-content {
-					padding: 20px;
-					max-width: 800px;
-					max-height: 80vh;
-				}
-				
-				.conversation-item:hover {
-					background: var(--background-modifier-hover) !important;
-				}
-				
-				.conversation-list::-webkit-scrollbar {
-					width: 8px;
-				}
-				
-				.conversation-list::-webkit-scrollbar-track {
-					background: var(--background-secondary);
-				}
-				
-				.conversation-list::-webkit-scrollbar-thumb {
-					background: var(--background-modifier-border);
-					border-radius: 4px;
-				}
-				
-				.conversation-list::-webkit-scrollbar-thumb:hover {
-					background: var(--background-modifier-border-hover);
-				}
-			`;
-			document.head.appendChild(style);
 		}
 	}
 

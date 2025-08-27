@@ -80,34 +80,46 @@ export default class ImageCapturePlugin extends Plugin {
 	 * Update ribbon icons based on current settings
 	 */
 	public updateUIElements(): void {
-		// Clear existing ribbon icons
-		this.ribbonIcons.forEach(icon => icon.remove());
-		this.ribbonIcons.clear();
-
-		// Add normal capture ribbon icon (only if enabled in settings)
-		if (this.settings.showNormalCaptureButton) {
-			const normalCaptureIcon = this.addRibbonIcon('camera', t('ui.captureAI'), (evt: MouseEvent) => {
+		// New approach: rebuild only what's needed instead of clearing all
+		this.updateSpecificRibbonIcon('normal-capture', this.settings.showNormalCaptureButton, () => {
+			return this.addRibbonIcon('camera', t('ui.captureAI'), (evt: MouseEvent) => {
 				this.screenshotManager.startRegionCapture();
 			});
-			this.ribbonIcons.set('normal-capture', normalCaptureIcon);
-		}
+		});
 
-		// Add minimized capture ribbon icon (only if feature enabled AND button enabled)
-		if (this.settings.enableMinimizedCapture && this.settings.showMinimizedCaptureButton) {
-			const minimizedCaptureIcon = this.addRibbonIcon('minimize', t('ui.minimizedCapture'), (evt: MouseEvent) => {
+		this.updateSpecificRibbonIcon('minimized-capture', 
+			this.settings.enableMinimizedCapture && this.settings.showMinimizedCaptureButton, () => {
+			return this.addRibbonIcon('minimize', t('ui.minimizedCapture'), (evt: MouseEvent) => {
 				this.screenshotManager.startRegionCapture(true);
 			});
-			this.ribbonIcons.set('minimized-capture', minimizedCaptureIcon);
-		}
+		});
 
-		// Add AI Chat ribbon icon (only if AI is enabled AND button is enabled in settings)
-		if (this.settings.enableAIAnalysis && this.settings.showAIChatPanelButton) {
-			const aiChatIcon = this.addRibbonIcon('bot', t('ui.aiChatPanel'), (evt: MouseEvent) => {
+		this.updateSpecificRibbonIcon('ai-chat',
+			this.settings.enableAIAnalysis && this.settings.showAIChatPanelButton, () => {
+			return this.addRibbonIcon('bot', t('ui.aiChatPanel'), (evt: MouseEvent) => {
 				this.toggleAIChatPanel();
 			});
-			this.ribbonIcons.set('ai-chat', aiChatIcon);
-		}
+		});
 	}
+
+	/**
+	 * Update a specific ribbon icon based on condition
+	 */
+	private updateSpecificRibbonIcon(key: string, shouldShow: boolean, createFunction: () => HTMLElement): void {
+		const existingIcon = this.ribbonIcons.get(key);
+		
+		if (shouldShow && !existingIcon) {
+			// Need to add the icon
+			const newIcon = createFunction();
+			this.ribbonIcons.set(key, newIcon);
+		} else if (!shouldShow && existingIcon) {
+			// Need to remove the icon
+			existingIcon.remove();
+			this.ribbonIcons.delete(key);
+		}
+		// If shouldShow && existingIcon, or !shouldShow && !existingIcon, do nothing
+	}
+
 
 	/**
 	 * Update commands based on current settings
@@ -143,6 +155,14 @@ export default class ImageCapturePlugin extends Plugin {
 	}
 
 	async onunload() {
+		// Clear ribbon icons first
+		this.ribbonIcons.forEach((icon, key) => {
+			if (icon && icon.remove) {
+				icon.remove();
+			}
+		});
+		this.ribbonIcons.clear();
+		
 		// Perform final auto-save for any active AI chat sessions
 		try {
 			const aiChatLeaves = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE);

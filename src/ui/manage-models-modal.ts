@@ -136,16 +136,16 @@ export class ManageModelsModal extends Modal {
 		toggleBtn.addEventListener('click', () => {
 			isExpanded = !isExpanded;
 			if (isExpanded) {
-				settingsEl.style.display = 'block';
+				settingsEl.toggleClass('hidden', false);
 				toggleBtn.classList.add('expanded');
 				this.renderModelSettings(settingsEl, modelConfig);
 			} else {
-				settingsEl.style.display = 'none';
+				settingsEl.toggleClass('hidden', true);
 				toggleBtn.classList.remove('expanded');
 			}
 		});
 
-		settingsEl.style.display = 'none';
+		settingsEl.toggleClass('hidden', true);
 	}
 
 	private renderModelSettings(container: HTMLElement, modelConfig: ModelConfig) {

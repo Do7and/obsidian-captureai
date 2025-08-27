@@ -5,6 +5,17 @@ import { t } from '../i18n';
 import { getLogger } from '../utils/logger';
 import { formatTimestampForFilename } from '../utils/time';
 
+// ClipboardItem type declaration for browsers that support it
+declare global {
+	interface Window {
+		ClipboardItem?: typeof ClipboardItem;
+	}
+}
+
+interface ClipboardItem {
+	new (data: Record<string, Blob>): ClipboardItem;
+}
+
 // Simple interface for history state
 interface HistoryState {
 	edit: ImageData;
@@ -283,7 +294,6 @@ export class ImageEditor extends Modal {
 		contentEl.addClass('image-editor-container');
 		
 		// Add tooltip styles
-		this.addTooltipStyles();
 		
 		// Always use calculated modal size
 		const modalWidth = this.instanceDimensions.modalWidth || 800;
@@ -302,7 +312,6 @@ export class ImageEditor extends Modal {
 		this.loadImage();
 		
 		// Add tooltip styles for image editor
-		this.addTooltipStyles();
 	}
 
 	onClose() {
@@ -329,9 +338,7 @@ export class ImageEditor extends Modal {
 		
 		// Set container to use full modal space with proper flex layout
 		container.addClass('image-editor-container-layout');
-		container.style.display = 'flex';
-		container.style.flexDirection = 'column';
-		container.style.height = '100%';
+		container.toggleClass('flex-column', true);
 		
 		// Store display dimensions
 		this.containerDimensions.set(container, {
@@ -343,18 +350,18 @@ export class ImageEditor extends Modal {
 		const toolbar = container.createDiv({ cls: 'image-editor-toolbar' });
 		toolbar.addClass('image-editor-toolbar-fixed');
 		toolbar.style.setProperty('--toolbar-height', toolbarHeight + 'px');
-		toolbar.style.flexShrink = '0'; // Ensure toolbar is always visible
+		toolbar.toggleClass('flex-no-shrink', true); // Ensure toolbar is always visible
 		this.createMainToolbar(toolbar);
 		
 		// Canvas container - sized to contain canvas naturally  
 		const canvasContainer = container.createDiv({ cls: 'image-editor-canvas-container' });
 		canvasContainer.addClass('image-editor-canvas-container-flex');
 		// Set the exact height needed for the canvas content
-		canvasContainer.style.height = `${canvasDisplayHeight + 40}px`; // Add 40px padding
-		canvasContainer.style.flexGrow = '0'; // Don't grow
-		canvasContainer.style.flexShrink = '0'; // Don't shrink
+		canvasContainer.style.setProperty('--canvas-height', canvasDisplayHeight + 40 + 'px'); // Add 40px padding
+		canvasContainer.toggleClass('flex-no-grow', true); // Don't grow
+		canvasContainer.toggleClass('flex-no-shrink', true); // Don't shrink
 		// Add overflow control to prevent canvas from overflowing to other UI areas
-		canvasContainer.style.overflow = 'hidden';
+		canvasContainer.toggleClass('overflow-hidden', true);
 		
 		this.canvas = canvasContainer.createEl('canvas', { cls: 'image-editor-canvas' });
 		
@@ -365,7 +372,7 @@ export class ImageEditor extends Modal {
 		const buttonBar = container.createDiv({ cls: 'image-editor-button-bar' });
 		buttonBar.addClass('image-editor-button-bar-fixed');
 		buttonBar.style.setProperty('--button-bar-height', buttonBarHeight + 'px');
-		buttonBar.style.flexShrink = '0'; // Ensure button bar is always visible
+		buttonBar.toggleClass('flex-no-shrink', true); // Ensure button bar is always visible
 		this.createActionButtons(buttonBar);
 	}
 
@@ -424,9 +431,13 @@ export class ImageEditor extends Modal {
 					// Update cursor based on tool
 					if (this.canvas) {
 						if (tool.name === 'hand' && this.cropModeActive) {
-							this.canvas.style.cursor = 'move';
+							this.canvas.toggleClass('cursor-move', true);
+							this.canvas.toggleClass('cursor-crosshair', false);
+							this.canvas.toggleClass('cursor-grab', false);
 						} else {
-							this.canvas.style.cursor = tool.cursor;
+							this.canvas.toggleClass('cursor-move', tool.cursor === 'move');
+							this.canvas.toggleClass('cursor-crosshair', tool.cursor === 'crosshair');
+							this.canvas.toggleClass('cursor-grab', tool.cursor === 'grab');
 						}
 					}
 					
@@ -923,8 +934,8 @@ export class ImageEditor extends Modal {
 			const blob = new Blob([response.arrayBuffer], { type: response.headers['content-type'] || 'image/png' });
 			
 			// Copy to clipboard using ClipboardItem
-			if (navigator.clipboard && (window as any).ClipboardItem) {
-				const item = new (window as any).ClipboardItem({
+			if (navigator.clipboard && window.ClipboardItem) {
+				const item = new window.ClipboardItem({
 					'image/png': blob
 				});
 				await navigator.clipboard.write([item]);
@@ -944,7 +955,7 @@ export class ImageEditor extends Modal {
 					tempCanvas.toBlob(async (blob) => {
 						if (blob && navigator.clipboard) {
 							try {
-								const item = new (window as any).ClipboardItem({
+								const item = new window.ClipboardItem!({
 									'image/png': blob
 								});
 								await navigator.clipboard.write([item]);
@@ -1034,8 +1045,8 @@ export class ImageEditor extends Modal {
 				this.canvas.height = originalExtendedHeight;
 				
 				// Set canvas CSS display size (usually 1:1 for auto-sizing)
-				this.canvas.style.width = finalDisplayWidth + 'px';
-				this.canvas.style.height = finalDisplayHeight + 'px';
+				this.canvas.style.setProperty('--canvas-width', finalDisplayWidth + 'px');
+				this.canvas.style.setProperty('--canvas-height', finalDisplayHeight + 'px');
 				
 				getLogger().log('🔍 Canvas sizing with constraints:', {
 					originalExtendedRegionSize: { width: originalExtendedWidth, height: originalExtendedHeight },
@@ -1344,22 +1355,41 @@ export class ImageEditor extends Modal {
 		if (this.cropModeActive && this.canvas) {
 			const resizeHandle = this.getCropResizeHandle(canvasCoords.x, canvasCoords.y);
 			if (resizeHandle) {
+				// Clear all cursor classes first
+				this.canvas.toggleClass('cursor-ew-resize', false);
+				this.canvas.toggleClass('cursor-ns-resize', false);
+				this.canvas.toggleClass('cursor-move', false);
+				this.canvas.toggleClass('cursor-grab', false);
+				this.canvas.toggleClass('cursor-crosshair', false);
+				
 				switch (resizeHandle) {
 					case 'left':
 					case 'right':
-						this.canvas.style.cursor = 'ew-resize';
+						this.canvas.toggleClass('cursor-ew-resize', true);
 						break;
 					case 'top':
 					case 'bottom':
-						this.canvas.style.cursor = 'ns-resize';
+						this.canvas.toggleClass('cursor-ns-resize', true);
 						break;
 				}
 			} else if (this.currentTool === 'hand') {
-				this.canvas.style.cursor = 'move';
+				this.canvas.toggleClass('cursor-ew-resize', false);
+				this.canvas.toggleClass('cursor-ns-resize', false);
+				this.canvas.toggleClass('cursor-move', true);
+				this.canvas.toggleClass('cursor-grab', false);
+				this.canvas.toggleClass('cursor-crosshair', false);
 			} else if (this.currentTool === 'viewport-pan') {
-				this.canvas.style.cursor = 'grab';
+				this.canvas.toggleClass('cursor-ew-resize', false);
+				this.canvas.toggleClass('cursor-ns-resize', false);
+				this.canvas.toggleClass('cursor-move', false);
+				this.canvas.toggleClass('cursor-grab', true);
+				this.canvas.toggleClass('cursor-crosshair', false);
 			} else {
-				this.canvas.style.cursor = 'crosshair';
+				this.canvas.toggleClass('cursor-ew-resize', false);
+				this.canvas.toggleClass('cursor-ns-resize', false);
+				this.canvas.toggleClass('cursor-move', false);
+				this.canvas.toggleClass('cursor-grab', false);
+				this.canvas.toggleClass('cursor-crosshair', true);
 			}
 		}
 		
@@ -2136,17 +2166,15 @@ export class ImageEditor extends Modal {
 	private createZoomControls(toolbar: HTMLElement) {
 		// Create zoom control container with horizontal layout
 		const zoomContainer = toolbar.createDiv({ cls: 'zoom-controls-container' });
-		zoomContainer.style.display = 'flex';
-		zoomContainer.style.alignItems = 'center';
-		zoomContainer.style.gap = '4px';
+		zoomContainer.toggleClass('flex-center-gap', true);
 		
 		// Zoom slider (拉长到240px，原来是80px的3倍) - 移到最左边
 		const zoomSlider = zoomContainer.createEl('input', { 
 			type: 'range',
 			cls: 'zoom-slider',
 		});
-		zoomSlider.style.width = '240px';  // 从80px增加到240px (3倍长)
-		zoomSlider.style.margin = '0 8px';  // 增加一点边距
+		zoomSlider.style.setProperty('--slider-width', '240px');  // 从80px增加到240px (3倍长)
+		zoomSlider.style.setProperty('--slider-margin', '0 8px');  // 增加一点边距
 		zoomSlider.min = Math.log(0.25).toString();
 		zoomSlider.max = Math.log(4).toString();
 		zoomSlider.step = '0.01';
@@ -2157,9 +2185,7 @@ export class ImageEditor extends Modal {
 			cls: 'zoom-display',
 			text: Math.round(this.userZoom * 100) + '%'
 		});
-		zoomDisplay.style.minWidth = '40px';
-		zoomDisplay.style.textAlign = 'center';
-		zoomDisplay.style.fontSize = '12px';
+		zoomDisplay.toggleClass('zoom-display-styled', true);
 		
 		// Zoom out button (移到右侧)
 		const zoomOutBtn = zoomContainer.createEl('button', { cls: 'btn-base btn-icon zoom-btn' });
@@ -2180,8 +2206,7 @@ export class ImageEditor extends Modal {
 		// Reset zoom button (1:1) - 移到最右侧
 		const resetZoomBtn = zoomContainer.createEl('button', { cls: 'btn-base zoom-reset-btn' });
 		resetZoomBtn.textContent = '1:1';
-		resetZoomBtn.style.fontSize = '10px';
-		resetZoomBtn.style.minWidth = '24px';
+		resetZoomBtn.toggleClass('reset-zoom-btn-styled', true);
 		resetZoomBtn.setAttribute('data-tooltip', t('imageEditor.resetZoomTooltip'));
 		resetZoomBtn.addEventListener('click', () => {
 			this.setUserZoom(1.0);
@@ -2308,70 +2333,5 @@ export class ImageEditor extends Modal {
 		this.close();
 	}
 
-	private addTooltipStyles(): void {
-		// Add CSS styles for tooltips in image editor
-		if (!document.getElementById('image-editor-tooltip-styles')) {
-			const style = document.createElement('style');
-			style.id = 'image-editor-tooltip-styles';
-			style.textContent = `
-				/* Image editor tooltip styles */
-				.image-editor-toolbar button[data-tooltip] {
-					position: relative;
-				}
-
-				.image-editor-toolbar button[data-tooltip]::after {
-					content: attr(data-tooltip);
-					position: absolute;
-					top: 100%;
-					left: 50%;
-					transform: translateX(-50%);
-					background: #374151;
-					color: white;
-					padding: 6px 8px;
-					border-radius: 4px;
-					font-size: 12px;
-					white-space: nowrap;
-					opacity: 0;
-					pointer-events: none;
-					transition: opacity 0.2s ease;
-					margin-top: 8px;
-					z-index: 1000;
-				}
-
-				.image-editor-toolbar button[data-tooltip]:hover::after {
-					opacity: 1;
-				}
-
-				/* Also add tooltip styles for stroke size buttons */
-				.stroke-size-container button[data-tooltip] {
-					position: relative;
-				}
-
-				.stroke-size-container button[data-tooltip]::after {
-					content: attr(data-tooltip);
-					position: absolute;
-					top: 100%;
-					left: 50%;
-					transform: translateX(-50%);
-					background: #374151;
-					color: white;
-					padding: 6px 8px;
-					border-radius: 4px;
-					font-size: 12px;
-					white-space: nowrap;
-					opacity: 0;
-					pointer-events: none;
-					transition: opacity 0.2s ease;
-					margin-top: 8px;
-					z-index: 1000;
-				}
-
-				.stroke-size-container button[data-tooltip]:hover::after {
-					opacity: 1;
-				}
-			`;
-			document.head.appendChild(style);
-		}
-	}
 	
 }

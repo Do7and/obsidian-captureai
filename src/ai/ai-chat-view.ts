@@ -69,6 +69,9 @@ export class AIChatView extends ItemView {
 	// AI Chat Mode management  
 	private currentMode: import('../types').AIChatMode = 'analyze';
 	private modeSelector: HTMLButtonElement | null = null;
+	
+	// Current session model management (separate from global default)
+	private currentModelConfigId: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: ImageCapturePlugin) {
 		super(leaf);
@@ -80,6 +83,17 @@ export class AIChatView extends ItemView {
 		getLogger().log('Initializing AI chat mode:', plugin.settings.defaultAIChatMode);
 		this.currentMode = plugin.settings.defaultAIChatMode || 'analyze';
 		getLogger().log('Current mode set to:', this.currentMode);
+		
+		// Initialize session-level model from global default
+		this.currentModelConfigId = plugin.settings.defaultModelConfigId;
+	}
+
+	/**
+	 * Get the current session model configuration
+	 */
+	private getCurrentSessionModel(): any {
+		const allModels = this.plugin.settings.modelConfigs;
+		return allModels.find(mc => mc.id === this.currentModelConfigId) || allModels[0];
 	}
 
 	private createSVGIcon(iconPath: string, size = 16): string {
@@ -187,7 +201,7 @@ export class AIChatView extends ItemView {
 				
 				const imagePreviewArea = inputData.imagePreviewArea;
 				if (imagePreviewArea) {
-					imagePreviewArea.style.display = 'block';
+					imagePreviewArea.toggleClass('hidden', false);
 					this.renderImagePreviews(imagePreviewArea, savedImageQueue, newInputArea);
 					getLogger().log('Restored image queue:', savedImageQueue.length, 'images');
 				}
@@ -256,7 +270,7 @@ export class AIChatView extends ItemView {
 		}
 
 		// Update button content with current model
-		const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+		const currentModel = this.getCurrentSessionModel();
 		this.updateSelectorButtonContent(selectorButton, currentModel);
 
 		// Update dropdown options
@@ -277,7 +291,7 @@ export class AIChatView extends ItemView {
 				setIcon(visionIcon, 'eye');
 			}
 			
-			if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
+			if (modelConfig.id === this.currentModelConfigId) {
 				option.addClass('selected');
 			}
 			
@@ -290,9 +304,8 @@ export class AIChatView extends ItemView {
 				// Update button content
 				this.updateSelectorButtonContent(selectorButton, modelConfig);
 				
-				// Save settings
-				this.plugin.settings.defaultModelConfigId = modelConfig.id;
-				await this.plugin.saveSettings();
+				// Update session model (not global default)
+				this.currentModelConfigId = modelConfig.id;
 				
 				// Update last used timestamp
 				modelConfig.lastUsed = new Date();
@@ -319,9 +332,6 @@ export class AIChatView extends ItemView {
 				if (instanceMethods && instanceMethods.updateSendButtonState) {
 					instanceMethods.updateSendButtonState();
 				}
-				
-				// Refresh other model-dependent components (settings page, other AI chat views)
-				this.refreshModelDependentComponents();
 				
 				// Hide dropdown
 				const dropdownIcon = selectorButton.querySelector('.model-dropdown-arrow') as HTMLElement;
@@ -376,7 +386,7 @@ export class AIChatView extends ItemView {
 				(this.plugin.app as AppWithSettings).setting?.openTabById?.(this.plugin.manifest.id);
 			});
 		} else {
-			const defaultModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+			const defaultModel = this.getCurrentSessionModel();
 			const isDefaultVisionCapable = defaultModel.isVisionCapable;
 			
 			if (isDefaultVisionCapable) {
@@ -768,7 +778,7 @@ export class AIChatView extends ItemView {
 			
 			// Create option content
 			const optionContent = option.createEl('span', { cls: 'mode-option-content dropdown-option-content' });
-			optionContent.createEl('span', { text: this.getModeDisplayName(mode.id), cls: 'mode-name' });
+			optionContent.createEl('span', { text: t(mode.nameKey), cls: 'mode-name' });
 			
 			if (mode.id === this.currentMode) {
 				option.addClass('selected');
@@ -898,7 +908,7 @@ export class AIChatView extends ItemView {
 
 		// Image preview area (initially hidden)
 		const imagePreviewArea = inputArea.createEl('div', { cls: 'ai-chat-image-preview-area' });
-		imagePreviewArea.style.display = 'none';
+		imagePreviewArea.toggleClass('hidden', true);
 
 		// Drag and drop zone (like original design)
 		const dropZone = inputArea.createEl('div', { cls: 'ai-chat-drop-zone' });
@@ -1008,7 +1018,7 @@ export class AIChatView extends ItemView {
 			let isVisionCapable = false;
 			if (!sendOnly) {
 				const allModels = this.plugin.settings.modelConfigs;
-				currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+				currentModel = this.getCurrentSessionModel();
 				isVisionCapable = currentModel?.isVisionCapable || false;
 			}
 
@@ -1233,8 +1243,8 @@ export class AIChatView extends ItemView {
 
 		// Auto-resize textarea
 		textInput.addEventListener('input', () => {
-			textInput.style.height = 'auto';
-			textInput.style.height = Math.min(textInput.scrollHeight, 120) + 'px';
+			textInput.style.setProperty('--textarea-height', 'auto');
+			textInput.style.setProperty('--textarea-height', Math.min(textInput.scrollHeight, 120) + 'px');
 		});
 
 		// Store update function for later use
@@ -1259,7 +1269,7 @@ export class AIChatView extends ItemView {
 		const selectorWrapper = container.createEl('div', { cls: 'model-selector-wrapper dropdown-selector-wrapper' });
 		
 		// Current model display button
-		const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+		const currentModel = this.getCurrentSessionModel();
 		const selectorButton = selectorWrapper.createEl('button', { 
 			cls: 'model-selector-button dropdown-selector-button'
 		});
@@ -1292,7 +1302,7 @@ export class AIChatView extends ItemView {
 				setIcon(visionIcon, 'eye');
 			}
 			
-			if (modelConfig.id === this.plugin.settings.defaultModelConfigId) {
+			if (modelConfig.id === this.currentModelConfigId) {
 				option.addClass('selected');
 			}
 			
@@ -1305,9 +1315,8 @@ export class AIChatView extends ItemView {
 				// Update button content
 				this.updateSelectorButtonContent(selectorButton, modelConfig);
 				
-				// Save settings
-				this.plugin.settings.defaultModelConfigId = modelConfig.id;
-				await this.plugin.saveSettings();
+				// Update session model (not global default)
+				this.currentModelConfigId = modelConfig.id;
 				
 				// Update last used timestamp
 				modelConfig.lastUsed = new Date();
@@ -1329,21 +1338,11 @@ export class AIChatView extends ItemView {
 					}
 				}
 				
-				// Update model selector content and send button state
-				const modelSelectorContainer = this.containerEl.querySelector('.model-selector-container');
-				if (modelSelectorContainer) {
-					modelSelectorContainer.empty();
-					this.createModelSelector(modelSelectorContainer as HTMLElement);
-				}
-				
 				// Update send button state
 				const instanceMethods = this.instanceMethods.get(this);
 				if (instanceMethods && instanceMethods.updateSendButtonState) {
 					instanceMethods.updateSendButtonState();
 				}
-				
-				// Refresh other model-dependent components (settings page, other AI chat views)
-				this.refreshModelDependentComponents();
 				
 				// Hide dropdown
 				this.hideDropdown(dropdown, dropdownIcon);
@@ -1433,14 +1432,14 @@ export class AIChatView extends ItemView {
 		container.empty();
 
 		if (imageDataList.length === 0) {
-			container.style.display = 'none';
+			container.toggleClass('hidden', true);
 			return;
 		}
 		
 		// Check current model vision capability if not explicitly provided
 		if (!isNonVisionModel) {
 			const allModels = this.plugin.settings.modelConfigs;
-			const currentModel = allModels.find(mc => mc.id === this.plugin.settings.defaultModelConfigId) || allModels[0];
+			const currentModel = this.getCurrentSessionModel();
 			isNonVisionModel = !(currentModel?.isVisionCapable || false);
 		}
 		
@@ -1643,7 +1642,7 @@ export class AIChatView extends ItemView {
 			imageIds: imageDataList.map(img => ({ id: img.id, fileName: img.fileName, source: img.source }))
 		});
 		
-		inputData.imagePreviewArea.style.display = 'block';
+		inputData.imagePreviewArea.toggleClass('hidden', false);
 
 		// Render all images in preview
 		this.renderImagePreviews(inputData.imagePreviewArea, imageDataList, inputArea);
@@ -1759,7 +1758,7 @@ export class AIChatView extends ItemView {
 		});
 		
 		// 清理UI显示
-		inputData.imagePreviewArea.style.display = 'none';
+		inputData.imagePreviewArea.toggleClass('hidden', true);
 		inputData.imagePreviewArea.empty();
 		inputData.currentImageDataList = [];
 		this.inputAreaElements.set(inputArea, inputData);
@@ -2395,7 +2394,7 @@ export class AIChatView extends ItemView {
 		try {
 			const conversation = this.aiManager.getCurrentConversationData();
 			if (!conversation || conversation.messages.length === 0) {
-				getLogger().log('Auto-save skipped: No conversation or empty conversation');
+				// getLogger().log('Auto-save skipped: No conversation or empty conversation');
 				return;
 			}
 
@@ -2406,20 +2405,20 @@ export class AIChatView extends ItemView {
 			const conversationIdShort = conversation.id.slice(-8); // Last 8 chars of conversation ID  
 			const sanitizedTitle = this.sanitizeFileName(conversation.title || 'Untitled Conversation');
 			const fileName = `${sanitizedTitle}.md`;
-			getLogger().log('Auto-save using title-based filename:', fileName);
+			// getLogger().log('Auto-save using title-based filename:', fileName);
 
 			// Generate markdown content first to check for changes (auto-save mode, without timestamp update for comparison)
 			const markdownContent = await this.generateConversationMarkdown(conversation, 'auto', false);
 			
 			// Check if content has changed since last save
 			if (this.lastAutoSaveContent && this.lastAutoSaveContent === markdownContent) {
-				getLogger().log('Auto-save skipped: No content changes detected for conversation', conversationIdShort);
+				// getLogger().log('Auto-save skipped: No content changes detected for conversation', conversationIdShort);
 				return;
 			}
 
-			getLogger().log('Auto-save proceeding: Content changes detected for conversation', conversationIdShort, 
-				'(previous content length:', this.lastAutoSaveContent?.length || 0, 
-				', new content length:', markdownContent.length, ')');
+			// getLogger().log('Auto-save proceeding: Content changes detected for conversation', conversationIdShort, 
+			// 	'(previous content length:', this.lastAutoSaveContent?.length || 0, 
+			// 	', new content length:', markdownContent.length, ')');
 
 			// Generate final content with updated timestamp for actual saving
 			const finalMarkdownContent = await this.generateConversationMarkdown(conversation, 'auto', true);
@@ -2868,7 +2867,7 @@ export class AIChatView extends ItemView {
 		
 		markdown += `---
 conversationID: ${conversationId}
-model: ${this.plugin.settings.defaultModelConfigId || 'default'}
+model: ${this.currentModelConfigId || 'default'}
 created: ${createdTime}
 lastModified: ${lastModifiedTime}
 tags:
@@ -3275,22 +3274,12 @@ tags:
 		// Clear button content
 		
 		// Add mode name
-		const modeName = button.createEl('span', { text: this.getModeDisplayName(modeData.id), cls: 'mode-name' });
+		const modeName = button.createEl('span', { text: t(modeData.nameKey), cls: 'mode-name' });
 		
 		// Re-add dropdown arrow
 		if (dropdownArrow) {
 			button.appendChild(dropdownArrow);
 		}
-	}
-
-	private getModeDisplayName(modeId: string): string {
-		const modeNames: { [key: string]: string } = {
-			'analyze': 'Analyze Image',
-			'ocr': 'Extract Text (OCR)',
-			'chat': 'Chat without Image',
-			'custom': 'Use Custom Prompt'
-		};
-		return modeNames[modeId] || modeId;
 	}
 
 	/**
@@ -3357,17 +3346,17 @@ tags:
 		textarea.value = content;
 		
 		// Auto-resize textarea
-		textarea.style.minHeight = '100px';
+		textarea.style.setProperty('--textarea-min-height', '100px');
 		textarea.addEventListener('input', () => {
-			textarea.style.height = 'auto';
-			textarea.style.height = Math.min(textarea.scrollHeight, 400) + 'px';
+			textarea.style.setProperty('--textarea-height', 'auto');
+			textarea.style.setProperty('--textarea-height', Math.min(textarea.scrollHeight, 400) + 'px');
 		});
 		
 		// Focus and auto-resize initially
 		setTimeout(() => {
 			textarea.focus();
-			textarea.style.height = 'auto';
-			textarea.style.height = Math.min(textarea.scrollHeight, 400) + 'px';
+			textarea.style.setProperty('--textarea-height', 'auto');
+			textarea.style.setProperty('--textarea-height', Math.min(textarea.scrollHeight, 400) + 'px');
 		}, 10);
 	}
 
@@ -3645,7 +3634,7 @@ tags:
 			
 			// Remove the default modal header by clearing it
 			modal.titleEl.empty();
-			modal.titleEl.style.display = 'none';
+			modal.titleEl.toggleClass('hidden', true);
 			
 			modal.contentEl.className = 'ai-chat-modal-content';
 			

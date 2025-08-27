@@ -351,7 +351,7 @@ export class MessageRenderManager {
         }
         
         // 更新typing状态
-        const isTyping = (message as any).isTyping || false;
+        const isTyping = message.isTyping || false;
         element.toggleClass('typing', isTyping);
         
         // 更新按钮状态
@@ -442,7 +442,7 @@ export class MessageRenderManager {
         });
         
         // Check if message is currently being typed (AI response in progress)
-        const isTyping = (message as any).isTyping || false;
+        const isTyping = message.isTyping || false;
         
         // 1. Insert at cursor button
         const insertBtn = actionButtons.createEl('button', { 
@@ -520,7 +520,7 @@ export class MessageRenderManager {
         messageEl.setAttribute('tabindex', '0'); // Make it focusable for keyboard events
 
         // Show text content or typing indicator
-        if ((message as any).isTyping) {
+        if (message.isTyping) {
             const typingEl = messageContent.createEl('div', { cls: 'ai-chat-typing-indicator' });
             typingEl.empty();
             for (let i = 0; i < 3; i++) {
@@ -834,7 +834,7 @@ export class MessageRenderManager {
                     let isCollapsed = false;
                     header.addEventListener('click', () => {
                         isCollapsed = !isCollapsed;
-                        contentEl.style.display = isCollapsed ? 'none' : 'block';
+                        contentEl.toggleClass('hidden', isCollapsed);
                         // Toggle between Brain and ChevronDown icons
                         if (isCollapsed) {
                             setIcon(toggleIcon, 'chevron-up');

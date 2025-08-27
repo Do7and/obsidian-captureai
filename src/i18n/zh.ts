@@ -462,8 +462,8 @@ export default {
   // AI Chat Modes
   "aiChat.modes.analyze": "图像分析",
   "aiChat.modes.ocr": "提取文本 (OCR)",
-  "aiChat.modes.chat": "纯文字对话",
-  "aiChat.modes.custom": "使用自定义提示词",
+  "aiChat.modes.chat": "文本对话",
+  "aiChat.modes.custom": "自定义提示词",
 
   // Main plugin messages
   "plugin.aiChatPanelToggleFailed": "❌ 切换 AI 会话面板失败: {{message}}",
